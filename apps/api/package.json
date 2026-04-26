@@ -5,15 +5,23 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "migrate": "node-pg-migrate -m migrations",
+    "migrate:up": "npm run migrate up",
+    "migrate:down": "npm run migrate down",
+    "migrate:create": "npm run migrate create",
+    "db:seed": "node script/seed.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "helmet": "^7.1.0"
+    "helmet": "^7.1.0",
+    "pg": "^8.20.0",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "node-pg-migrate": "^8.0.4",
     "nodemon": "^3.1.0"
   }
 }
