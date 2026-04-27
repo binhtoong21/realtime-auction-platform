@@ -1,21 +1,21 @@
-module.exports = {
-  AuctionStatus: {
+export const AuctionStatus = {
     ACTIVE: 'active',
     ENDED: 'ended',
     PENDING_PAYMENT: 'pending_payment',
     NO_SALE: 'no_sale'
-  },
-  EventNames: {
+};
+
+export const EventNames = {
     BID_NEW: 'bid:new',
     BID_OUTBID: 'bid:outbid',
     AUCTION_STARTED: 'auction:started',
     AUCTION_EXTENDED: 'auction:extended',
     AUCTION_ENDED: 'auction:ended',
     AUCTION_CATCHUP: 'auction:catchup'
-  },
-  ErrorCodes: {
+};
+
+export const ErrorCodes = {
     OUTBID: 'ERR_OUTBID',
     AUCTION_ENDED: 'ERR_AUCTION_ENDED',
     INVALID_AMOUNT: 'ERR_INVALID_AMOUNT'
-  }
 };

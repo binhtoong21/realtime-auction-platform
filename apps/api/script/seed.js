@@ -1,6 +1,6 @@
-require('dotenv').config();
-const { pool } = require('../src/config/database');
-const { v7: uuidv7 } = require('uuid');
+import 'dotenv/config';
+import { pool } from '../src/config/database.js';
+import { v7 as uuidv7 } from 'uuid';
 
 async function seed() {
   const client = await pool.connect();

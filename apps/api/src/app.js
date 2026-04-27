@@ -1,8 +1,8 @@
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const errorHandler = require('./middleware/errorHandler');
-const { pool } = require('./config/database');
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import errorHandler from './middleware/errorHandler.js';
+import { pool } from './config/database.js';
 
 const app = express();
 
@@ -36,4 +36,4 @@ app.get('/health', async (req, res, next) => {
 // Global Error Handler must be the last middleware
 app.use(errorHandler);
 
-module.exports = app;
+export default app;

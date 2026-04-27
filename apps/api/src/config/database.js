@@ -1,7 +1,8 @@
-require('dotenv').config();
-const { Pool } = require('pg');
+import 'dotenv/config';
+import pg from 'pg';
+const { Pool } = pg;
 
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
@@ -14,7 +15,7 @@ pool.on('error', (err, client) => {
  * Execute a callback within a transaction.
  * @param {Function} callback - Function receiving the client, e.g. async (client) => { ... }
  */
-const withTransaction = async (callback) => {
+export const withTransaction = async (callback) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -29,8 +30,4 @@ const withTransaction = async (callback) => {
   }
 };
 
-module.exports = {
-  pool,
-  withTransaction,
-  query: (text, params) => pool.query(text, params),
-};
+export const query = (text, params) => pool.query(text, params);
