@@ -1,9 +1,10 @@
 import { pool, withTransaction } from '../config/database.js';
 import { ErrorCodes } from '@auction/shared-constants';
 import { v7 as uuidv7 } from 'uuid';
+import { emitToAuctionRoom, emitToUser } from './socket.service.js';
 
 export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) => {
-  return await withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     // 1. Atomic UPDATE on auctions table to prevent snipe and check conditions
     const updateResult = await client.query(
       `UPDATE auctions 
@@ -53,15 +54,42 @@ export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) 
 
     const newBid = insertBidResult.rows[0];
 
-    // 3. Update previous winning bids for this auction to false
-    await client.query(
-      `UPDATE bids SET is_winning = false WHERE auction_id = $1 AND id != $2`,
+    // 3. Find previous winner to notify them they've been outbid
+    const previousWinnerResult = await client.query(
+      `UPDATE bids SET is_winning = false 
+       WHERE auction_id = $1 AND id != $2 AND is_winning = true
+       RETURNING bidder_id`,
       [auctionId, bidId]
     );
 
     return {
       bid: newBid,
-      auction: updatedAuction
+      auction: updatedAuction,
+      previousWinnerId: previousWinnerResult.rows[0]?.bidder_id || null
     };
   });
+
+  // 4. Emit WebSocket events AFTER transaction commits (websocket_design.md Mục 5)
+  // Broadcast to auction room: new bid placed
+  await emitToAuctionRoom(auctionId, 'bid:new', {
+    bidderId: userId,
+    amount: result.bid.amount,
+    newPrice: result.auction.current_price,
+    endAt: result.auction.end_at,
+    extendedCount: result.auction.extended_count
+  });
+
+  // Notify previous winner they've been outbid (private event)
+  if (result.previousWinnerId && result.previousWinnerId !== userId) {
+    emitToUser(result.previousWinnerId, 'bid:outbid', {
+      auctionId,
+      currentPrice: result.auction.current_price,
+      outbidBy: userId
+    });
+  }
+
+  return {
+    bid: result.bid,
+    auction: result.auction
+  };
 };

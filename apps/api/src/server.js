@@ -2,24 +2,38 @@ import 'dotenv/config';
 import http from 'http';
 import app from './app.js';
 import { pool } from './config/database.js';
+import { redisClient } from './config/redis.js';
+import { initSocket } from './config/socket.js';
 
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
+
+// Initialize Socket.IO (Phase 5)
+const io = initSocket(server);
+console.log('🔌 Socket.IO initialized');
 
 // Graceful Shutdown Logic
 const shutdown = async (signal) => {
   console.log(`\n[${signal}] Received. Shutting down gracefully...`);
   
-  // 1. Stop accepting new HTTP requests
+  // 1. Close Socket.IO connections
+  io.close();
+  console.log('Socket.IO closed.');
+
+  // 2. Stop accepting new HTTP requests
   server.close(async () => {
     console.log('HTTP server closed.');
     
     try {
-      // 2. Stop BullMQ Workers (Tích hợp ở Phase 6)
+      // 3. Stop BullMQ Workers (Tích hợp ở Phase 6)
       // if (worker) await worker.close();
       // console.log('BullMQ workers closed.');
       
-      // 3. Close Database Pool
+      // 4. Close Redis
+      await redisClient.quit();
+      console.log('Redis connection closed.');
+
+      // 5. Close Database Pool
       await pool.end();
       console.log('PostgreSQL pool closed.');
       
