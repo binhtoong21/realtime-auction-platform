@@ -4,7 +4,6 @@ import { redisClient } from '../config/redis.js';
 /**
  * Emit a realtime event to an auction room.
  * Increments the sequence number for catch-up sync support.
- * Reference: websocket_design.md Mục 5, 6
  */
 export const emitToAuctionRoom = async (auctionId, eventName, data) => {
   const io = getIO();

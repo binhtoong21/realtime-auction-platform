@@ -8,7 +8,6 @@ let io;
 
 /**
  * Initialize Socket.IO server and attach to HTTP server.
- * References: websocket_design.md — Mục 2, 3, 4
  */
 export const initSocket = (httpServer) => {
   io = new Server(httpServer, {
@@ -23,7 +22,7 @@ export const initSocket = (httpServer) => {
   const subClient = redisClient.duplicate();
   io.adapter(createAdapter(pubClient, subClient));
 
-  // --- Auth Middleware (websocket_design.md Mục 3) ---
+  // --- Auth Middleware ---
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) {
@@ -40,7 +39,7 @@ export const initSocket = (httpServer) => {
     }
   });
 
-  // --- Connection Handler (websocket_design.md Mục 4) ---
+  // --- Connection Handler ---
   io.on('connection', (socket) => {
     const { userId, role } = socket.data;
     console.log(`[WS] User connected: ${userId}`);
@@ -68,7 +67,7 @@ export const initSocket = (httpServer) => {
 
         socket.join(`auction:${auctionId}`);
 
-        // Catch-up Sync: Send current state (websocket_design.md Mục 6)
+        // Catch-up Sync: Send current state
         const auction = auctionResult.rows[0];
         const bidsResult = await pool.query(
           'SELECT id, bidder_id, amount, created_at FROM bids WHERE auction_id = $1 ORDER BY amount DESC LIMIT 50',
@@ -98,7 +97,7 @@ export const initSocket = (httpServer) => {
       socket.leave(`auction:${auctionId}`);
     });
 
-    // --- Token Refresh (websocket_design.md Mục 3) ---
+    // --- Token Refresh ---
     socket.on('auth:refresh', ({ token }) => {
       try {
         const decoded = verifyToken(token);

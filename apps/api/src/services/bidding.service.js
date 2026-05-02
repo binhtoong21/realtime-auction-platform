@@ -69,7 +69,7 @@ export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) 
     };
   });
 
-  // 4. Emit WebSocket events AFTER transaction commits (websocket_design.md Mục 5)
+  // 4. Emit WebSocket events AFTER transaction commits
   // Broadcast to auction room: new bid placed
   await emitToAuctionRoom(auctionId, 'bid:new', {
     bidderId: userId,

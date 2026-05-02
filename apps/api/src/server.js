@@ -4,11 +4,12 @@ import app from './app.js';
 import { pool } from './config/database.js';
 import { redisClient } from './config/redis.js';
 import { initSocket } from './config/socket.js';
+import auctionEndWorker from './jobs/auctionEnd.worker.js';
 
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
-// Initialize Socket.IO (Phase 5)
+// Initialize Socket.IO
 const io = initSocket(server);
 console.log('🔌 Socket.IO initialized');
 
@@ -25,9 +26,9 @@ const shutdown = async (signal) => {
     console.log('HTTP server closed.');
     
     try {
-      // 3. Stop BullMQ Workers (Tích hợp ở Phase 6)
-      // if (worker) await worker.close();
-      // console.log('BullMQ workers closed.');
+      // 3. Stop BullMQ Workers
+      await auctionEndWorker.close();
+      console.log('BullMQ workers closed.');
       
       // 4. Close Redis
       await redisClient.quit();

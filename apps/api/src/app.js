@@ -17,7 +17,7 @@ app.use(express.json());
 // API Routes
 app.use('/auctions', auctionRoutes);
 
-// Health Check Route (Phase 3.4)
+// Health Check Route
 app.get('/health', async (req, res, next) => {
   try {
     // Check DB
