@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import errorHandler from './middleware/errorHandler.js';
 import { pool } from './config/database.js';
 import auctionRoutes from './routes/auctions.routes.js';
+import authRoutes from './routes/auth.routes.js';
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 // API Routes
+app.use('/auth', authRoutes);
 app.use('/auctions', auctionRoutes);
 
 // Health Check Route

@@ -1,6 +1,7 @@
-import { verifyToken } from '../utils/jwt.js';
+import { verifyAccessToken } from '../utils/jwt.js';
+import { pool } from '../config/database.js';
 
-const requireAuth = (req, res, next) => {
+const requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -16,8 +17,37 @@ const requireAuth = (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = verifyToken(token);
-    req.user = decoded; // { id, role, ... }
+    const decoded = verifyAccessToken(token);
+
+    const result = await pool.query(
+      'SELECT status FROM users WHERE id = $1',
+      [decoded.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'USER_NOT_FOUND', message: 'User no longer exists' }
+      });
+    }
+
+    const userStatus = result.rows[0].status;
+
+    if (userStatus === 'banned') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ACCOUNT_BANNED', message: 'Account has been banned' }
+      });
+    }
+
+    if (userStatus === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ACCOUNT_SUSPENDED', message: 'Account is temporarily suspended' }
+      });
+    }
+
+    req.user = decoded;
     next();
   } catch (error) {
     return res.status(401).json({
