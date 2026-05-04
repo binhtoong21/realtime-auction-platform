@@ -6,6 +6,8 @@ import { pool } from './config/database.js';
 import auctionRoutes from './routes/auctions.routes.js';
 import authRoutes from './routes/auth.routes.js';
 
+import categoriesRoutes from './routes/categories.routes.js';
+
 const app = express();
 
 // Security Middlewares
@@ -17,6 +19,7 @@ app.use(express.json());
 
 // API Routes
 app.use('/auth', authRoutes);
+app.use('/categories', categoriesRoutes);
 app.use('/auctions', auctionRoutes);
 
 // Health Check Route

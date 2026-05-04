@@ -7,12 +7,22 @@ import { debounceBid } from '../middleware/debounce.js';
 import { rateLimiter } from '../middleware/rateLimiter.js';
 import { placeBid } from '../controllers/bidding.controller.js';
 
+import optionalAuth from '../middleware/optionalAuth.js';
+import { getAuctionsSchema, getAuctionBidsSchema } from '../validations/auction.validation.js';
+import { getAuctions, getAuctionById, getAuctionBids } from '../controllers/auction.controller.js';
+
 const router = Router();
+
+// Read routes (Public or Guest allowed)
+router.get('/', optionalAuth, validate(getAuctionsSchema, 'query'), getAuctions);
+router.get('/:id', getAuctionById);
+router.get('/:id/bids', validate(getAuctionBidsSchema, 'query'), getAuctionBids);
 
 const bidSchema = Joi.object({
   amount: Joi.number().positive().precision(2).required()
 });
 
+// Write routes
 router.post(
   '/:id/bids',
   requireAuth,
