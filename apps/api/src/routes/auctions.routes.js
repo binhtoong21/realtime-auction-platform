@@ -8,8 +8,9 @@ import { rateLimiter } from '../middleware/rateLimiter.js';
 import { placeBid } from '../controllers/bidding.controller.js';
 
 import optionalAuth from '../middleware/optionalAuth.js';
-import { getAuctionsSchema, getAuctionBidsSchema } from '../validations/auction.validation.js';
-import { getAuctions, getAuctionById, getAuctionBids } from '../controllers/auction.controller.js';
+import requireKYC from '../middleware/requireKYC.js';
+import { getAuctionsSchema, getAuctionBidsSchema, createAuctionSchema, updateAuctionSchema } from '../validations/auction.validation.js';
+import { getAuctions, getAuctionById, getAuctionBids, createAuction, updateAuction, cancelAuction } from '../controllers/auction.controller.js';
 
 const router = Router();
 
@@ -23,6 +24,27 @@ const bidSchema = Joi.object({
 });
 
 // Write routes
+router.post(
+  '/',
+  requireAuth,
+  requireKYC,
+  validate(createAuctionSchema),
+  createAuction
+);
+
+router.patch(
+  '/:id',
+  requireAuth,
+  validate(updateAuctionSchema),
+  updateAuction
+);
+
+router.patch(
+  '/:id/cancel',
+  requireAuth,
+  cancelAuction
+);
+
 router.post(
   '/:id/bids',
   requireAuth,

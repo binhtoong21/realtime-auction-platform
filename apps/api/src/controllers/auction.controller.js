@@ -58,3 +58,49 @@ export const getAuctionBids = async (req, res, next) => {
     next(error);
   }
 };
+
+export const createAuction = async (req, res, next) => {
+  try {
+    const sellerId = req.user.id;
+    const auction = await auctionService.createAuction(sellerId, req.body);
+    
+    res.status(201).json({
+      success: true,
+      data: auction,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateAuction = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const sellerId = req.user.id;
+    
+    const auction = await auctionService.updateAuction(id, sellerId, req.body);
+    
+    res.status(200).json({
+      success: true,
+      data: auction,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const cancelAuction = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const sellerId = req.user.id;
+    
+    const auction = await auctionService.cancelAuction(id, sellerId);
+    
+    res.status(200).json({
+      success: true,
+      data: auction,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
