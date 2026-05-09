@@ -20,7 +20,7 @@ router.get('/:id', getAuctionById);
 router.get('/:id/bids', validate(getAuctionBidsSchema, 'query'), getAuctionBids);
 
 const bidSchema = Joi.object({
-  amount: Joi.number().positive().precision(2).required()
+  amount: Joi.number().integer().positive().required()
 });
 
 // Write routes

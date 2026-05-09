@@ -42,7 +42,7 @@ async function seedQuickAuction() {
     await client.query(
       `INSERT INTO auctions (id, seller_id, title, current_price, bid_increment, status, end_at) 
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [auctionId, sellerId, 'Quick Test Auction (30s)', 100.00, 10.00, 'active', endAt]
+      [auctionId, sellerId, 'Quick Test Auction (30s)', 10000, 1000, 'active', endAt]
     );
 
     await client.query('COMMIT');
