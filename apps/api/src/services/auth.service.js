@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { pool, withTransaction } from '../config/database.js';
+import stripe from '../config/stripe.js';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -60,6 +61,21 @@ const register = async ({ email, password, displayName }) => {
   });
 
   await sendVerificationEmail(email, verifyToken);
+
+  // Create Stripe Customer (non-blocking — user is created even if this fails)
+  try {
+    const customer = await stripe.customers.create({
+      email: email.toLowerCase(),
+      name: displayName || undefined,
+      metadata: { user_id: userId },
+    });
+    await pool.query(
+      'UPDATE users SET stripe_cus_id = $1 WHERE id = $2',
+      [customer.id, userId]
+    );
+  } catch (stripeErr) {
+    console.error('[Stripe] Failed to create customer for user', userId, stripeErr.message);
+  }
 
   return { userId };
 };

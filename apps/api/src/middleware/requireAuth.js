@@ -20,7 +20,7 @@ const requireAuth = async (req, res, next) => {
     const decoded = verifyAccessToken(token);
 
     const result = await pool.query(
-      'SELECT status FROM users WHERE id = $1',
+      'SELECT status, identity_status FROM users WHERE id = $1',
       [decoded.id]
     );
 
@@ -31,23 +31,26 @@ const requireAuth = async (req, res, next) => {
       });
     }
 
-    const userStatus = result.rows[0].status;
+    const userRow = result.rows[0];
 
-    if (userStatus === 'banned') {
+    if (userRow.status === 'banned') {
       return res.status(403).json({
         success: false,
         error: { code: 'ACCOUNT_BANNED', message: 'Account has been banned' }
       });
     }
 
-    if (userStatus === 'suspended') {
+    if (userRow.status === 'suspended') {
       return res.status(403).json({
         success: false,
         error: { code: 'ACCOUNT_SUSPENDED', message: 'Account is temporarily suspended' }
       });
     }
 
-    req.user = decoded;
+    req.user = {
+      ...decoded,
+      identity_status: userRow.identity_status,
+    };
     next();
   } catch (error) {
     return res.status(401).json({

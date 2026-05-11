@@ -5,14 +5,18 @@ import errorHandler from './middleware/errorHandler.js';
 import { pool } from './config/database.js';
 import auctionRoutes from './routes/auctions.routes.js';
 import authRoutes from './routes/auth.routes.js';
-
 import categoriesRoutes from './routes/categories.routes.js';
+import usersRoutes from './routes/users.routes.js';
+import webhooksRoutes from './routes/webhooks.routes.js';
 
 const app = express();
 
 // Security Middlewares
 app.use(helmet());
 app.use(cors());
+
+// Webhook route MUST be before express.json() — Stripe requires raw body
+app.use('/webhooks', webhooksRoutes);
 
 // Parse JSON payload
 app.use(express.json());
@@ -21,6 +25,7 @@ app.use(express.json());
 app.use('/auth', authRoutes);
 app.use('/categories', categoriesRoutes);
 app.use('/auctions', auctionRoutes);
+app.use('/users', usersRoutes);
 
 // Health Check Route
 app.get('/health', async (req, res, next) => {

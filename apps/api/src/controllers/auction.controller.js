@@ -104,3 +104,26 @@ export const cancelAuction = async (req, res, next) => {
     next(error);
   }
 };
+
+export const joinAuction = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const result = await auctionService.joinAuction(userId, id);
+
+    if (result.alreadyJoined) {
+      return res.status(200).json({
+        success: true,
+        data: { message: 'Already joined this auction' },
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: { clientSecret: result.clientSecret },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

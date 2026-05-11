@@ -1,6 +1,8 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { scheduleAuctionStart, scheduleAuctionEnd, removeAuctionJobs } from '../jobs/queue.js';
+import stripe from '../config/stripe.js';
+import { ensureStripeCustomer } from './kyc.service.js';
 /**
  * Lấy danh sách auctions với Cursor-based Pagination
  * Cursor dựa trên created_at để tránh duplicate/skip khi có auction mới.
@@ -301,4 +303,77 @@ export const cancelAuction = async (id, sellerId) => {
   } finally {
     client.release();
   }
+};
+
+/**
+ * Join an auction — creates a Stripe SetupIntent for the buyer.
+ * Handles 3 states: new join, already confirmed, pending-expired (re-create SI).
+ */
+export const joinAuction = async (userId, auctionId) => {
+  // Validate auction exists and is active
+  const auctionResult = await pool.query(
+    'SELECT id, seller_id, status FROM auctions WHERE id = $1',
+    [auctionId]
+  );
+
+  if (auctionResult.rows.length === 0) {
+    const error = new Error('Auction not found');
+    error.statusCode = 404;
+    error.errorCode = 'AUCTION_NOT_FOUND';
+    throw error;
+  }
+
+  const auction = auctionResult.rows[0];
+
+  if (auction.status !== 'active') {
+    const error = new Error('Auction is not active');
+    error.statusCode = 400;
+    error.errorCode = 'AUCTION_NOT_ACTIVE';
+    throw error;
+  }
+
+  if (auction.seller_id === userId) {
+    const error = new Error('Seller cannot join their own auction');
+    error.statusCode = 403;
+    error.errorCode = 'SELLER_CANNOT_BID';
+    throw error;
+  }
+
+  // Check existing participant row
+  const existingResult = await pool.query(
+    'SELECT id, payment_method_id, stripe_si_id FROM auction_participants WHERE auction_id = $1 AND user_id = $2',
+    [auctionId, userId]
+  );
+
+  // Case 2: Already joined and confirmed
+  if (existingResult.rows.length > 0 && existingResult.rows[0].payment_method_id) {
+    return { alreadyJoined: true };
+  }
+
+  // Ensure user has a Stripe Customer
+  const user = await ensureStripeCustomer(userId);
+
+  // Create a new SetupIntent
+  const setupIntent = await stripe.setupIntents.create({
+    customer: user.stripe_cus_id,
+    usage: 'off_session',
+    metadata: { auction_id: auctionId, user_id: userId },
+  });
+
+  if (existingResult.rows.length > 0) {
+    // Case 3: Row exists but payment_method_id is NULL (SI expired or abandoned)
+    await pool.query(
+      'UPDATE auction_participants SET stripe_si_id = $1, joined_at = NOW() WHERE id = $2',
+      [setupIntent.id, existingResult.rows[0].id]
+    );
+  } else {
+    // Case 1: New participant
+    await pool.query(
+      `INSERT INTO auction_participants (id, auction_id, user_id, stripe_si_id)
+       VALUES ($1, $2, $3, $4)`,
+      [uuidv7(), auctionId, userId, setupIntent.id]
+    );
+  }
+
+  return { clientSecret: setupIntent.client_secret };
 };

@@ -4,8 +4,21 @@ import { v7 as uuidv7 } from 'uuid';
 import { emitToAuctionRoom, emitToUser } from './socket.service.js';
 
 export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) => {
+  // Card Check: user must have joined auction with confirmed payment method
+  const participantCheck = await pool.query(
+    `SELECT id FROM auction_participants 
+     WHERE auction_id = $1 AND user_id = $2 AND payment_method_id IS NOT NULL`,
+    [auctionId, userId]
+  );
+
+  if (participantCheck.rows.length === 0) {
+    throw {
+      code: 'CARD_NOT_REGISTERED',
+      message: 'You must join this auction and register a payment method before bidding',
+    };
+  }
+
   const result = await withTransaction(async (client) => {
-    // 1. Atomic UPDATE on auctions table to prevent snipe and check conditions
     const updateResult = await client.query(
       `UPDATE auctions 
        SET 
