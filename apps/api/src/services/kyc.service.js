@@ -1,5 +1,6 @@
 import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
+import { v7 as uuidv7 } from 'uuid';
 
 const IDENTITY_MAX_RETRIES = 3;
 
@@ -352,45 +353,55 @@ const handleSetupIntentSucceeded = async (setupIntent) => {
   const pm = await stripe.paymentMethods.retrieve(pmId);
   const card = pm.card || {};
 
-  const { v7: uuidv7 } = await import('uuid');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  // Upsert into payment_methods
-  const pmResult = await pool.query(
-    `INSERT INTO payment_methods (id, user_id, stripe_pm_id, last4, brand, is_default, expires_at)
-     VALUES ($1, $2, $3, $4, $5, false, $6)
-     ON CONFLICT (stripe_pm_id) DO UPDATE SET last4 = $4, brand = $5
-     RETURNING id`,
-    [
-      uuidv7(),
-      user_id,
-      pmId,
-      card.last4 || '****',
-      card.brand || 'unknown',
-      card.exp_month && card.exp_year
-        ? new Date(card.exp_year, card.exp_month - 1)
-        : null,
-    ]
-  );
+    // Upsert into payment_methods
+    const pmResult = await client.query(
+      `INSERT INTO payment_methods (id, user_id, stripe_pm_id, last4, brand, is_default, expires_at)
+       VALUES ($1, $2, $3, $4, $5, false, $6)
+       ON CONFLICT (stripe_pm_id) DO UPDATE SET last4 = $4, brand = $5
+       RETURNING id`,
+      [
+        uuidv7(),
+        user_id,
+        pmId,
+        card.last4 || '****',
+        card.brand || 'unknown',
+        card.exp_month && card.exp_year
+          ? new Date(card.exp_year, card.exp_month, 0)
+          : null,
+      ]
+    );
 
-  const paymentMethodId = pmResult.rows[0].id;
+    const paymentMethodId = pmResult.rows[0].id;
 
-  // Set as default if user has no other default
-  await pool.query(
-    `UPDATE payment_methods SET is_default = true 
-     WHERE id = $1 AND NOT EXISTS (
-       SELECT 1 FROM payment_methods 
-       WHERE user_id = $2 AND is_default = true AND id != $1
-     )`,
-    [paymentMethodId, user_id]
-  );
+    // Set as default if user has no other default
+    await client.query(
+      `UPDATE payment_methods SET is_default = true 
+       WHERE id = $1 AND NOT EXISTS (
+         SELECT 1 FROM payment_methods 
+         WHERE user_id = $2 AND is_default = true AND id != $1
+       )`,
+      [paymentMethodId, user_id]
+    );
 
-  // Update auction_participants
-  await pool.query(
-    `UPDATE auction_participants 
-     SET payment_method_id = $1
-     WHERE auction_id = $2 AND user_id = $3`,
-    [paymentMethodId, auction_id, user_id]
-  );
+    // Update auction_participants
+    await client.query(
+      `UPDATE auction_participants 
+       SET payment_method_id = $1
+       WHERE auction_id = $2 AND user_id = $3`,
+      [paymentMethodId, auction_id, user_id]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 export {

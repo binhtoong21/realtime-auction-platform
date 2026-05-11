@@ -26,7 +26,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
 
   // 1. Lazy Evaluation: Check if auction has been extended (Anti-snipe)
   const auctionResult = await pool.query(
-    'SELECT id, status, end_at, current_price, winner_id FROM auctions WHERE id = $1',
+    'SELECT id, status, end_at, current_price, reserve_price, winner_id FROM auctions WHERE id = $1',
     [auctionId]
   );
 
@@ -53,27 +53,36 @@ const auctionEndWorker = new Worker('auction', async (job) => {
     return;
   }
 
-  // 2. Determine winner — highest bid
-  const winnerBidResult = await pool.query(
-    `SELECT bidder_id, amount FROM bids 
-     WHERE auction_id = $1 AND is_winning = true 
-     LIMIT 1`,
-    [auctionId]
-  );
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    if (winnerBidResult.rowCount === 0) {
-      // No bids → NO_SALE
-      await client.query(
-        `UPDATE auctions SET status = 'no_sale' WHERE id = $1`,
+    // 2. Determine winner — highest bid
+    const winnerBidResult = await client.query(
+      `SELECT bidder_id, amount FROM bids 
+       WHERE auction_id = $1 AND is_winning = true 
+       ORDER BY amount DESC
+       LIMIT 1`,
+      [auctionId]
+    );
+
+    if (winnerBidResult.rowCount === 0 || (auction.reserve_price && winnerBidResult.rows[0].amount < auction.reserve_price)) {
+      // No bids or reserve price not met → NO_SALE
+      const updateResult = await client.query(
+        `UPDATE auctions SET status = 'no_sale' 
+         WHERE id = $1 AND status = 'active'
+         RETURNING id`,
         [auctionId]
       );
+
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return; // Đã bị worker khác xử lý
+      }
+
       await client.query('COMMIT');
 
-      console.log(`[Worker] Auction ${auctionId} ended with NO_SALE (no bids).`);
+      console.log(`[Worker] Auction ${auctionId} ended with NO_SALE (no bids or reserve price not met).`);
       await emitToAuctionRoom(auctionId, 'auction:ended', {
         auctionId,
         winnerId: null,
@@ -86,10 +95,17 @@ const auctionEndWorker = new Worker('auction', async (job) => {
     const winner = winnerBidResult.rows[0];
 
     // 3. Update auction status and set winner
-    await client.query(
-      `UPDATE auctions SET status = 'ended', winner_id = $1 WHERE id = $2`,
+    const updateResult = await client.query(
+      `UPDATE auctions SET status = 'ended', winner_id = $1 
+       WHERE id = $2 AND status = 'active'
+       RETURNING id`,
       [winner.bidder_id, auctionId]
     );
+
+    if (updateResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return; // Đã bị worker khác xử lý
+    }
 
     await client.query('COMMIT');
 
@@ -105,7 +121,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
     });
 
     // Private: notify winner
-    emitToUser(winner.bidder_id, 'auction:won', {
+    await emitToUser(winner.bidder_id, 'auction:won', {
       auctionId,
       finalPrice: winner.amount,
       paymentStatus: 'pending'  // Will trigger Auth Hold when payment is implemented
@@ -119,7 +135,8 @@ const auctionEndWorker = new Worker('auction', async (job) => {
     );
 
     for (const loser of losersResult.rows) {
-      emitToUser(loser.bidder_id, 'auction:lost', {
+      // TODO: Phase 13 - Save loser notification to DB for offline users
+      await emitToUser(loser.bidder_id, 'auction:lost', {
         auctionId,
         finalPrice: winner.amount
       });
