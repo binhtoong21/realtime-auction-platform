@@ -135,7 +135,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
     );
 
     for (const loser of losersResult.rows) {
-      // TODO: Phase 13 - Save loser notification to DB for offline users
+      // TODO: Save loser notification to DB for offline users
       await emitToUser(loser.bidder_id, 'auction:lost', {
         auctionId,
         finalPrice: winner.amount

@@ -344,7 +344,7 @@ const handleConnectAccountUpdated = async (account) => {
  */
 const handleSetupIntentSucceeded = async (setupIntent) => {
   const { auction_id, user_id } = setupIntent.metadata || {};
-  if (!auction_id || !user_id) return;
+  if (!user_id) return; // auction_id is optional when just adding a card
 
   const pmId = setupIntent.payment_method;
   if (!pmId) return;
@@ -361,7 +361,7 @@ const handleSetupIntentSucceeded = async (setupIntent) => {
     const pmResult = await client.query(
       `INSERT INTO payment_methods (id, user_id, stripe_pm_id, last4, brand, is_default, expires_at)
        VALUES ($1, $2, $3, $4, $5, false, $6)
-       ON CONFLICT (stripe_pm_id) DO UPDATE SET last4 = $4, brand = $5
+       ON CONFLICT (stripe_pm_id) DO UPDATE SET last4 = $4, brand = $5, expires_at = $6
        RETURNING id`,
       [
         uuidv7(),
@@ -387,13 +387,15 @@ const handleSetupIntentSucceeded = async (setupIntent) => {
       [paymentMethodId, user_id]
     );
 
-    // Update auction_participants
-    await client.query(
-      `UPDATE auction_participants 
-       SET payment_method_id = $1
-       WHERE auction_id = $2 AND user_id = $3`,
-      [paymentMethodId, auction_id, user_id]
-    );
+    // Update auction_participants if auction_id is provided
+    if (auction_id) {
+      await client.query(
+        `UPDATE auction_participants 
+         SET payment_method_id = $1
+         WHERE auction_id = $2 AND user_id = $3`,
+        [paymentMethodId, auction_id, user_id]
+      );
+    }
 
     await client.query('COMMIT');
   } catch (err) {
