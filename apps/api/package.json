@@ -11,7 +11,11 @@
     "migrate:up": "npm run migrate up",
     "migrate:down": "npm run migrate down",
     "migrate:create": "npm run migrate create",
-    "db:seed": "node script/seed.js"
+    "db:seed": "node script/seed.js",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
@@ -32,6 +36,7 @@
   },
   "devDependencies": {
     "node-pg-migrate": "^8.0.4",
-    "nodemon": "^3.1.0"
+    "nodemon": "^3.1.0",
+    "vitest": "^4.1.6"
   }
 }
