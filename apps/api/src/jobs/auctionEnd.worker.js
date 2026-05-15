@@ -3,6 +3,7 @@ import IORedis from 'ioredis';
 import { pool } from '../config/database.js';
 import { scheduleAuctionEnd } from './queue.js';
 import { emitToAuctionRoom, emitToUser } from '../services/socket.service.js';
+import { createAuthHold, schedulePostHoldJobs } from '../services/payment.service.js';
 
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null
@@ -17,8 +18,9 @@ const connection = new IORedis(process.env.REDIS_URL, {
  *    If no  → proceed to determine winner and finalize.
  * 2. Determine winner (highest bid).
  * 3. Update auction status to 'ended'.
- * 4. Emit WebSocket events (auction:ended, auction:won, auction:lost).
- * 5. TODO: Trigger Stripe Auth Hold on winner's card.
+ * 4. Create Stripe Auth Hold (PaymentIntent with capture_method: manual).
+ * 5. Emit WebSocket events (auction:ended, auction:won, auction:lost).
+ * 6. Schedule follow-up jobs based on hold result.
  */
 const auctionEndWorker = new Worker('auction', async (job) => {
   const { auctionId } = job.data;
@@ -26,7 +28,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
 
   // 1. Lazy Evaluation: Check if auction has been extended (Anti-snipe)
   const auctionResult = await pool.query(
-    'SELECT id, status, end_at, current_price, reserve_price, winner_id FROM auctions WHERE id = $1',
+    'SELECT id, status, end_at, current_price, reserve_price, winner_id, seller_id FROM auctions WHERE id = $1',
     [auctionId]
   );
 
@@ -66,7 +68,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
       [auctionId]
     );
 
-    if (winnerBidResult.rowCount === 0 || (auction.reserve_price && winnerBidResult.rows[0].amount < auction.reserve_price)) {
+    if (winnerBidResult.rowCount === 0 || (auction.reserve_price && Number(winnerBidResult.rows[0].amount) < Number(auction.reserve_price))) {
       // No bids or reserve price not met → NO_SALE
       const updateResult = await client.query(
         `UPDATE auctions SET status = 'no_sale' 
@@ -77,7 +79,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
 
       if (updateResult.rowCount === 0) {
         await client.query('ROLLBACK');
-        return; // Đã bị worker khác xử lý
+        return;
       }
 
       await client.query('COMMIT');
@@ -94,7 +96,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
 
     const winner = winnerBidResult.rows[0];
 
-    // 3. Update auction status and set winner
+    // 3. Update auction status to 'ended' and set winner
     const updateResult = await client.query(
       `UPDATE auctions SET status = 'ended', winner_id = $1 
        WHERE id = $2 AND status = 'active'
@@ -104,15 +106,31 @@ const auctionEndWorker = new Worker('auction', async (job) => {
 
     if (updateResult.rowCount === 0) {
       await client.query('ROLLBACK');
-      return; // Đã bị worker khác xử lý
+      client.release();
+      return;
     }
 
     await client.query('COMMIT');
+    client.release();
 
-    console.log(`[Worker] Auction ${auctionId} ended. Winner: ${winner.bidder_id}, Price: ${winner.amount}`);
+    // 4. Create Auth Hold (OUTSIDE transaction to avoid pool exhaustion)
+    const holdResult = await createAuthHold({
+      auctionId,
+      winnerId: winner.bidder_id,
+      sellerId: auction.seller_id,
+      amountInCents: Number(winner.amount),
+    });
 
-    // 4. Emit WebSocket events
-    // Public: auction has ended
+    console.log(`[Worker] Auction ${auctionId} ended. Winner: ${winner.bidder_id}, Price: ${winner.amount}, Hold: ${holdResult.holdSuccess ? 'OK' : 'FAILED'}`);
+
+    // 5. Schedule follow-up jobs AFTER commit
+    await schedulePostHoldJobs({
+      paymentId: holdResult.paymentId,
+      auctionId,
+      holdSuccess: holdResult.holdSuccess,
+    });
+
+    // 6. Emit WebSocket events
     await emitToAuctionRoom(auctionId, 'auction:ended', {
       auctionId,
       winnerId: winner.bidder_id,
@@ -120,14 +138,27 @@ const auctionEndWorker = new Worker('auction', async (job) => {
       status: 'ended'
     });
 
-    // Private: notify winner
-    await emitToUser(winner.bidder_id, 'auction:won', {
-      auctionId,
-      finalPrice: winner.amount,
-      paymentStatus: 'pending'  // Will trigger Auth Hold when payment is implemented
-    });
+    if (holdResult.holdSuccess) {
+      // Hold succeeded — tell winner their payment is being held
+      await emitToUser(winner.bidder_id, 'auction:won', {
+        auctionId,
+        finalPrice: winner.amount,
+        paymentStatus: 'authorized',
+        paymentId: holdResult.paymentId,
+      });
+    } else {
+      // Hold failed — tell winner they need to update payment
+      await emitToUser(winner.bidder_id, 'auction:won', {
+        auctionId,
+        finalPrice: winner.amount,
+        paymentStatus: 'grace_period',
+        paymentId: holdResult.paymentId,
+        graceExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        message: 'Payment hold failed. Please update your payment method within 24 hours.',
+      });
+    }
 
-    // Private: notify all other bidders they lost
+    // Notify all other bidders they lost
     const losersResult = await pool.query(
       `SELECT DISTINCT bidder_id FROM bids 
        WHERE auction_id = $1 AND bidder_id != $2`,
@@ -135,24 +166,27 @@ const auctionEndWorker = new Worker('auction', async (job) => {
     );
 
     for (const loser of losersResult.rows) {
-      // TODO: Save loser notification to DB for offline users
       await emitToUser(loser.bidder_id, 'auction:lost', {
         auctionId,
         finalPrice: winner.amount
       });
     }
 
-    // 5. TODO: Trigger Stripe PaymentIntent.create with capture_method: 'manual'
-
   } catch (err) {
-    await client.query('ROLLBACK');
+    // Note: client might have been released if we successfully committed above
+    try {
+      await client.query('ROLLBACK');
+    } catch (e) { /* ignore if already closed */ }
+    
+    try {
+      client.release();
+    } catch (e) { /* ignore if already released */ }
+    
     throw err;
-  } finally {
-    client.release();
   }
 }, {
   connection,
-  concurrency: 5  // Process up to 5 auction-end jobs in parallel
+  concurrency: 5
 });
 
 auctionEndWorker.on('completed', (job) => {

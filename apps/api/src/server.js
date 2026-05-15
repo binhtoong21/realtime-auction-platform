@@ -6,6 +6,7 @@ import { redisClient } from './config/redis.js';
 import { initSocket } from './config/socket.js';
 import auctionEndWorker from './jobs/auctionEnd.worker.js';
 import auctionStartWorker from './jobs/auctionStart.worker.js';
+import paymentWorker from './jobs/payment.worker.js';
 
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
@@ -30,6 +31,7 @@ const shutdown = async (signal) => {
       // 3. Stop BullMQ Workers
       await auctionStartWorker.close();
       await auctionEndWorker.close();
+      await paymentWorker.close();
       console.log('BullMQ workers closed.');
       
       // 4. Close Redis

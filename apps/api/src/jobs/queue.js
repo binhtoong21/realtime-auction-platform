@@ -84,3 +84,49 @@ export const removeAuctionJobs = async (auctionId) => {
 
   console.log(`[Queue] Removed scheduled jobs for auction ${auctionId}`);
 };
+
+// ============================================================
+// Payment Lifecycle Queue
+// ============================================================
+
+export const paymentQueue = new Queue('payment', {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 10000
+    },
+    removeOnComplete: 100,
+    removeOnFail: 200
+  }
+});
+
+const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Schedule an emergency-capture job 6 days after Auth Hold success.
+ * If a dispute is open near auth expiry (Day 7), this job force-captures.
+ */
+export const scheduleEmergencyCapture = async (paymentId, auctionId) => {
+  await paymentQueue.add('emergency-capture', { paymentId, auctionId }, {
+    jobId: `emergency_capture_${paymentId}`,
+    delay: SIX_DAYS_MS,
+  });
+
+  console.log(`[Queue] Scheduled emergency-capture for payment ${paymentId} in 6 days`);
+};
+
+/**
+ * Schedule a grace-period-expiry job 24h after Auth Hold failure.
+ * If buyer hasn't retried successfully, transitions to Second Chance.
+ */
+export const scheduleGracePeriodExpiry = async (paymentId, auctionId) => {
+  await paymentQueue.add('grace-period-expiry', { paymentId, auctionId }, {
+    jobId: `grace_expiry_${paymentId}`,
+    delay: TWENTY_FOUR_HOURS_MS,
+  });
+
+  console.log(`[Queue] Scheduled grace-period-expiry for payment ${paymentId} in 24h`);
+};
