@@ -99,9 +99,9 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
       [paymentIntent.id, paymentId]
     );
 
-    // Update auction status to paid (Hold is successful, waiting for shipment)
+    // Update auction status to awaiting_ship (Hold is successful, waiting for shipment)
     await pool.query(
-      `UPDATE auctions SET status = 'paid', updated_at = NOW()
+      `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW()
        WHERE id = $1`,
       [auctionId]
     );

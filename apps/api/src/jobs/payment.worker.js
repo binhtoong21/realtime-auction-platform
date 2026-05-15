@@ -78,9 +78,9 @@ async function processEmergencyCapture({ paymentId, auctionId }) {
   try {
     await client.query('BEGIN');
 
-    // Atomic status check — prevent double capture
+    // Atomic status check — claim the payment by setting to 'capture_pending'
     const lockResult = await client.query(
-      `UPDATE payments SET status = 'captured', updated_at = NOW()
+      `UPDATE payments SET status = 'capture_pending', updated_at = NOW()
        WHERE id = $1 AND status = 'authorized'
        RETURNING id`,
       [paymentId]
@@ -88,15 +88,31 @@ async function processEmergencyCapture({ paymentId, auctionId }) {
 
     if (lockResult.rowCount === 0) {
       await client.query('ROLLBACK');
+      client.release();
       console.log(`[PaymentWorker] Payment ${paymentId} already transitioned. Skipping.`);
       return;
     }
 
-    // Stripe capture
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    client.release();
+    throw err;
+  }
+  client.release();
+
+  try {
+    // Stripe capture OUTSIDE transaction
     await stripe.paymentIntents.capture(payment.stripe_pi_id);
 
+    // Confirm in DB
+    await pool.query(
+      `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1`,
+      [paymentId]
+    );
+
     // Audit log
-    await writeAuditLog(client, {
+    await writeAuditLog({
       referenceId: paymentId,
       referenceType: 'payment',
       action: 'emergency_capture',
@@ -109,12 +125,10 @@ async function processEmergencyCapture({ paymentId, auctionId }) {
       actorId: null,
     });
 
-    await client.query('COMMIT');
-
     console.log(`[PaymentWorker] Emergency capture executed for payment ${paymentId}`);
 
     // Notify admin
-    emitToAdmin('payment:emergency-capture', {
+    await emitToAdmin('payment:emergency-capture', {
       paymentId,
       auctionId,
       amount: Number(payment.amount),
@@ -122,11 +136,8 @@ async function processEmergencyCapture({ paymentId, auctionId }) {
     });
 
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error(`[PaymentWorker] Emergency capture failed for ${paymentId}:`, err.message);
-    throw err; // BullMQ will retry
-  } finally {
-    client.release();
+    throw err; // BullMQ will retry (Needs a reconciliation job to retry capture_pending later)
   }
 }
 
@@ -170,7 +181,7 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
   try {
     await client.query('BEGIN');
 
-    // Atomic status transition
+    // Atomic status transition for payment
     const lockResult = await client.query(
       `UPDATE payments SET status = 'second_chance', updated_at = NOW()
        WHERE id = $1 AND status = 'grace_period'
@@ -182,6 +193,13 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
       await client.query('ROLLBACK');
       return;
     }
+
+    // Also transition auction status to second_chance
+    await client.query(
+      `UPDATE auctions SET status = 'second_chance', updated_at = NOW()
+       WHERE id = $1`,
+      [auctionId]
+    );
 
     // Mark the failed winner's bid as no longer winning
     await client.query(
@@ -199,7 +217,7 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
     );
 
     // Audit log
-    await writeAuditLog(client, {
+    await writeAuditLog({
       referenceId: paymentId,
       referenceType: 'payment',
       action: 'grace_period_expired',
@@ -211,10 +229,8 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
       actorId: null,
     });
 
-    await client.query('COMMIT');
-
     // Notify original winner they lost the purchase
-    emitToUser(payment.buyer_id, 'payment:grace-expired', {
+    await emitToUser(payment.buyer_id, 'payment:grace-expired', {
       auctionId,
       paymentId,
       message: 'Your grace period has expired. The item will be offered to the next bidder.',
@@ -223,7 +239,7 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
     // Notify runner-up if exists (Second Chance will be implemented in Phase 9.7)
     if (runnerUpResult.rows.length > 0) {
       const runnerUp = runnerUpResult.rows[0];
-      emitToUser(runnerUp.bidder_id, 'auction:second-chance', {
+      await emitToUser(runnerUp.bidder_id, 'auction:second-chance', {
         auctionId,
         offerAmount: Number(runnerUp.amount),
         expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
@@ -231,16 +247,18 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
       console.log(`[PaymentWorker] Second chance offered to ${runnerUp.bidder_id} for auction ${auctionId}`);
     } else {
       // No runner-up → NO_SALE
-      await pool.query(
+      await client.query(
         `UPDATE payments SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
         [paymentId]
       );
-      await pool.query(
+      await client.query(
         `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
         [auctionId]
       );
       console.log(`[PaymentWorker] No runner-up for auction ${auctionId}. Status → NO_SALE.`);
     }
+
+    await client.query('COMMIT');
 
   } catch (err) {
     await client.query('ROLLBACK');

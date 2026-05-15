@@ -41,6 +41,34 @@ const auctionEndWorker = new Worker('auction', async (job) => {
 
   // Skip if already ended (idempotent)
   if (auction.status !== 'active') {
+    if (auction.status === 'ended' && auction.winner_id) {
+      // Check if payment exists
+      const existingPayment = await pool.query(
+        'SELECT id FROM payments WHERE auction_id = $1', [auctionId]
+      );
+      if (existingPayment.rowCount === 0) {
+        // Crash scenario: resume Auth Hold
+        console.log(`[Worker] Resuming interrupted Auth Hold for auction ${auctionId}`);
+        const winnerResult = await pool.query(
+          'SELECT amount FROM bids WHERE auction_id = $1 AND bidder_id = $2 AND is_winning = true LIMIT 1',
+          [auctionId, auction.winner_id]
+        );
+        const amountInCents = winnerResult.rowCount > 0 ? Number(winnerResult.rows[0].amount) : 0;
+        
+        const holdResult = await createAuthHold({
+          auctionId,
+          winnerId: auction.winner_id,
+          sellerId: auction.seller_id,
+          amountInCents,
+        });
+        await schedulePostHoldJobs({
+          paymentId: holdResult.paymentId,
+          auctionId,
+          holdSuccess: holdResult.holdSuccess,
+        });
+        return;
+      }
+    }
     console.log(`[Worker] Auction ${auctionId} is already '${auction.status}'. Skipping.`);
     return;
   }
@@ -56,6 +84,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
   }
 
   const client = await pool.connect();
+  let transactionCommitted = false;
   try {
     await client.query('BEGIN');
 
@@ -79,10 +108,13 @@ const auctionEndWorker = new Worker('auction', async (job) => {
 
       if (updateResult.rowCount === 0) {
         await client.query('ROLLBACK');
+        client.release();
         return;
       }
 
       await client.query('COMMIT');
+      transactionCommitted = true;
+      client.release();
 
       console.log(`[Worker] Auction ${auctionId} ended with NO_SALE (no bids or reserve price not met).`);
       await emitToAuctionRoom(auctionId, 'auction:ended', {
@@ -106,12 +138,12 @@ const auctionEndWorker = new Worker('auction', async (job) => {
 
     if (updateResult.rowCount === 0) {
       await client.query('ROLLBACK');
-      client.release();
       return;
     }
 
     await client.query('COMMIT');
-    client.release();
+    transactionCommitted = true;
+    client.release(); // Free connection early since we are done with the transaction
 
     // 4. Create Auth Hold (OUTSIDE transaction to avoid pool exhaustion)
     const holdResult = await createAuthHold({
@@ -173,16 +205,14 @@ const auctionEndWorker = new Worker('auction', async (job) => {
     }
 
   } catch (err) {
-    // Note: client might have been released if we successfully committed above
-    try {
-      await client.query('ROLLBACK');
-    } catch (e) { /* ignore if already closed */ }
-    
-    try {
-      client.release();
-    } catch (e) { /* ignore if already released */ }
-    
+    if (!transactionCommitted) {
+      try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    }
     throw err;
+  } finally {
+    if (!transactionCommitted) {
+      try { client.release(); } catch (e) { /* ignore */ }
+    }
   }
 }, {
   connection,

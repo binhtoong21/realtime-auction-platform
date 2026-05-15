@@ -3,7 +3,6 @@ export const AuctionStatus = {
     ACTIVE: 'active',
     ENDED: 'ended',
     PENDING_PAYMENT: 'pending_payment',
-    PAID: 'paid',
     AWAITING_SHIP: 'awaiting_ship',
     SHIPPED: 'shipped',
     COMPLETED: 'completed',
