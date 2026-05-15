@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://coderabbit.ai/export/schema.json
+language: "vi-VN"
+tone_instructions: "Hãy đóng vai một Senior Backend Engineer khó tính nhưng mang tính xây dựng. Focus vào các vấn đề về Distributed Systems, Race Conditions, Memory/Connection Leaks, và Idempotency."
+reviews:
+  profile: "backend"
+  request_changes_workflow: false
+  high_level_summary: true
+  poetry_instructions: false
+  path_instructions:
+    - path: "apps/api/**/*.js"
+      instructions: "Kiểm tra kỹ việc rò rỉ kết nối Database (client.release), việc quản lý Transaction và đảm bảo không có API gọi ra ngoài (Stripe, v.v.) bị khóa cứng trong Database Transaction."
+    - path: "apps/api/src/jobs/**/*.js"
+      instructions: "Kiểm tra các worker BullMQ xem có xử lý an toàn với retry không (Idempotency), cập nhật DB có atomic không."
+chat:
+  auto_reply: true
