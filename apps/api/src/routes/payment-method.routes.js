@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAuth } from '../middlewares/requireAuth.js';
+import { requireAuth } from '../middleware/requireAuth.js';
 import * as paymentMethodController from '../controllers/payment-method.controller.js';
 
 const router = express.Router();

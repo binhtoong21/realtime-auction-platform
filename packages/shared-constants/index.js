@@ -1,8 +1,24 @@
 export const AuctionStatus = {
+    DRAFT: 'draft',
     ACTIVE: 'active',
     ENDED: 'ended',
     PENDING_PAYMENT: 'pending_payment',
-    NO_SALE: 'no_sale'
+    PAID: 'paid',
+    AWAITING_SHIP: 'awaiting_ship',
+    SHIPPED: 'shipped',
+    COMPLETED: 'completed',
+    NO_SALE: 'no_sale',
+    CANCELLED: 'cancelled',
+    DISPUTED: 'disputed',
+};
+
+export const DisputeStatus = {
+    OPEN: 'open',
+    UNDER_REVIEW: 'under_review',
+    RESOLVED_BUYER_WINS: 'resolved_buyer_wins',
+    RESOLVED_SELLER_WINS: 'resolved_seller_wins',
+    EXPIRED: 'expired',
+    WITHDRAWN: 'withdrawn',
 };
 
 export const EventNames = {
