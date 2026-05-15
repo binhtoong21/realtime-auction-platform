@@ -31,3 +31,25 @@ export const UserRole = {
     USER: 'user',
     ADMIN: 'admin'
 };
+
+export const PaymentStatus = {
+    HOLD_PENDING: 'hold_pending',
+    AUTHORIZED: 'authorized',
+    HOLD_FAILED: 'hold_failed',
+    GRACE_PERIOD: 'grace_period',
+    SECOND_CHANCE: 'second_chance',
+    CAPTURED: 'captured',
+    FROZEN: 'frozen',
+    TRANSFERRED: 'transferred',
+    REFUNDED: 'refunded',
+    RELEASED: 'released',
+    NO_SALE: 'no_sale',
+    CANCELLED: 'cancelled',
+};
+
+export const DEFAULT_FEE_TIERS = [
+    { maxAmount: 10000, rate: 0.10 },
+    { maxAmount: 100000, rate: 0.07 },
+    { maxAmount: 1000000, rate: 0.05 },
+    { maxAmount: null, rate: 0.03 },
+];
