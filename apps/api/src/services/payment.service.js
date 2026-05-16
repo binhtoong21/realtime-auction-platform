@@ -379,6 +379,14 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
          WHERE id = $1`,
         [paymentId]
       );
+
+      await writeAuditLog({
+        referenceId: paymentId,
+        referenceType: 'payment',
+        action: 'auth_hold_retry_failed',
+        deltaState: { error: err.message, stripe_code: err.code || null, system_error: true },
+        actorId: buyerId,
+      });
       
       throw { status: 503, code: 'SYSTEM_ERROR', message: 'Hệ thống thanh toán đang gián đoạn, vui lòng thử lại sau' };
     }
