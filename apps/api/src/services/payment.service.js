@@ -336,13 +336,6 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
       amount: Number(payment.amount)
     });
 
-    // Emit event to seller
-    await emitToUser(payment.seller_id, 'payment:status', {
-      auctionId: payment.auction_id,
-      status: 'authorized',
-      amount: Number(payment.amount)
-    });
-
     return { success: true };
 
   } catch (err) {
