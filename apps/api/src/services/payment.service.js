@@ -6,6 +6,7 @@ import {
   scheduleEmergencyCapture,
   scheduleGracePeriodExpiry,
 } from '../jobs/queue.js';
+import { emitToUser } from './socket.service.js';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
 
@@ -224,6 +225,153 @@ const writeAuditLog = async ({ referenceId, referenceType, action, deltaState, a
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [uuidv7(), referenceId, referenceType, action, JSON.stringify(deltaState), actorId, ipAddress || null]
   );
+};
+
+/**
+ * Retry an Auth Hold that previously failed.
+ * Can use a new payment method or the existing one.
+ */
+export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
+  const paymentResult = await pool.query(
+    `SELECT p.id, p.auction_id, p.buyer_id, p.seller_id, p.amount, p.status, p.payment_method_id, u.stripe_cus_id
+     FROM payments p
+     JOIN users u ON u.id = p.buyer_id
+     WHERE p.id = $1`,
+    [paymentId]
+  );
+
+  if (paymentResult.rows.length === 0) {
+    throw { status: 404, message: 'Payment not found' };
+  }
+
+  const payment = paymentResult.rows[0];
+
+  if (payment.buyer_id !== buyerId) {
+    throw { status: 403, message: 'Forbidden' };
+  }
+
+  if (payment.status !== 'grace_period') {
+    throw { status: 422, message: `Cannot retry payment in state: ${payment.status}` };
+  }
+
+  let finalPaymentMethodId = payment.payment_method_id;
+  let stripePmId = null;
+
+  if (paymentMethodId && paymentMethodId !== finalPaymentMethodId) {
+    // Verify the new payment method belongs to the user
+    const pmResult = await pool.query(
+      'SELECT id, stripe_pm_id FROM payment_methods WHERE id = $1 AND user_id = $2',
+      [paymentMethodId, buyerId]
+    );
+    if (pmResult.rows.length === 0) {
+      throw { status: 404, message: 'Payment method not found or does not belong to user' };
+    }
+    finalPaymentMethodId = pmResult.rows[0].id;
+    stripePmId = pmResult.rows[0].stripe_pm_id;
+
+    // Update the payment record with the new payment method
+    await pool.query(
+      'UPDATE payments SET payment_method_id = $1, updated_at = NOW() WHERE id = $2',
+      [finalPaymentMethodId, paymentId]
+    );
+  } else if (finalPaymentMethodId) {
+    // Fetch stripe_pm_id for existing payment method
+    const pmResult = await pool.query(
+      'SELECT stripe_pm_id FROM payment_methods WHERE id = $1',
+      [finalPaymentMethodId]
+    );
+    stripePmId = pmResult.rows[0]?.stripe_pm_id;
+  }
+
+  if (!stripePmId) {
+    throw { status: 400, message: 'No valid payment method available to retry' };
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Number(payment.amount),
+      currency: CURRENCY,
+      customer: payment.stripe_cus_id,
+      payment_method: stripePmId,
+      capture_method: 'manual',
+      confirm: true,
+      off_session: true,
+      metadata: {
+        auction_id: payment.auction_id,
+        buyer_id: payment.buyer_id,
+        seller_id: payment.seller_id,
+        platform: 'realtime-auction',
+        retry: 'true'
+      },
+    });
+
+    // Hold succeeded
+    await pool.query(
+      `UPDATE payments
+       SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
+       WHERE id = $2`,
+      [paymentIntent.id, paymentId]
+    );
+
+    await pool.query(
+      `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW()
+       WHERE id = $1`,
+      [payment.auction_id]
+    );
+
+    await writeAuditLog({
+      referenceId: paymentId,
+      referenceType: 'payment',
+      action: 'auth_hold_retry_success',
+      deltaState: { stripe_pi_id: paymentIntent.id },
+      actorId: buyerId,
+    });
+
+    await scheduleEmergencyCapture(paymentId, payment.auction_id);
+
+    // Emit event to buyer
+    await emitToUser(buyerId, 'payment:status', {
+      auctionId: payment.auction_id,
+      status: 'authorized',
+      amount: Number(payment.amount)
+    });
+
+    // Emit event to seller
+    await emitToUser(payment.seller_id, 'payment:status', {
+      auctionId: payment.auction_id,
+      status: 'authorized',
+      amount: Number(payment.amount)
+    });
+
+    return { success: true };
+
+  } catch (err) {
+    console.error(`[Payment] Retry failed for payment ${paymentId}:`, err.message);
+
+    if (err.type === 'StripeCardError') {
+      // It's a card error, user's fault
+      await pool.query(
+        `UPDATE payments
+         SET capture_attempts = capture_attempts + 1, updated_at = NOW()
+         WHERE id = $1`,
+        [paymentId]
+      );
+
+      await writeAuditLog({
+        referenceId: paymentId,
+        referenceType: 'payment',
+        action: 'auth_hold_retry_failed',
+        deltaState: { error: err.message, stripe_code: err.code || null },
+        actorId: buyerId,
+      });
+
+      throw { status: 402, code: 'HOLD_FAILED', message: err.message };
+    } else {
+      // System/Network error (StripeAPIError, StripeConnectionError)
+      // Do not increment attempts or penalize the user
+      throw { status: 503, code: 'SYSTEM_ERROR', message: 'Hệ thống thanh toán đang gián đoạn, vui lòng thử lại sau' };
+    }
+  }
 };
 
 export { writeAuditLog };
