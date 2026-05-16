@@ -254,25 +254,10 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     throw { status: 422, message: `Cannot retry payment in state: ${payment.status}` };
   }
 
-  if (payment.grace_expires_at && new Date(payment.grace_expires_at) < new Date()) {
-    throw { status: 422, message: 'Grace period expired' };
-  }
-
-  // Atomic lock: prevent duplicate holds by transitioning to 'hold_pending'
-  const lockResult = await pool.query(
-    `UPDATE payments SET status = 'hold_pending', updated_at = NOW()
-     WHERE id = $1 AND status = 'grace_period'
-     RETURNING id`,
-    [paymentId]
-  );
-
-  if (lockResult.rowCount === 0) {
-    throw { status: 409, message: 'Payment is currently being processed or status changed' };
-  }
-
   let finalPaymentMethodId = payment.payment_method_id;
   let stripePmId = null;
 
+  // Resolve payment method BEFORE acquiring the lock to prevent stuck payments
   if (paymentMethodId && paymentMethodId !== finalPaymentMethodId) {
     // Verify the new payment method belongs to the user
     const pmResult = await pool.query(
@@ -284,12 +269,6 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     }
     finalPaymentMethodId = pmResult.rows[0].id;
     stripePmId = pmResult.rows[0].stripe_pm_id;
-
-    // Update the payment record with the new payment method
-    await pool.query(
-      'UPDATE payments SET payment_method_id = $1, updated_at = NOW() WHERE id = $2',
-      [finalPaymentMethodId, paymentId]
-    );
   } else if (finalPaymentMethodId) {
     // Fetch stripe_pm_id for existing payment method
     const pmResult = await pool.query(
@@ -301,6 +280,19 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
 
   if (!stripePmId) {
     throw { status: 400, message: 'No valid payment method available to retry' };
+  }
+
+  // Atomic lock: prevent duplicate holds and TOCTOU on grace_expires_at
+  const lockResult = await pool.query(
+    `UPDATE payments 
+     SET status = 'hold_pending', payment_method_id = $1, updated_at = NOW()
+     WHERE id = $2 AND status = 'grace_period' AND grace_expires_at IS NOT NULL AND grace_expires_at > NOW()
+     RETURNING id`,
+    [finalPaymentMethodId, paymentId]
+  );
+
+  if (lockResult.rowCount === 0) {
+    throw { status: 422, message: 'Payment is currently being processed, status changed, or grace period expired' };
   }
 
   try {
