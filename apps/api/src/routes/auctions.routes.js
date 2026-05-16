@@ -55,7 +55,7 @@ router.post(
 router.post(
   '/:id/bids',
   requireAuth,
-  rateLimiter(5, 10),
+  rateLimiter('bid', 5, 10),
   validate(bidSchema),
   checkIdempotency,
   debounceBid,
