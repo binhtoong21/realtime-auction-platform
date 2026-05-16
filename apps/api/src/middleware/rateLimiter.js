@@ -14,13 +14,13 @@ export const rateLimiter = (actionPrefix, limit = 5, windowInSeconds = 10) => {
     const currentCount = replies[0][1];
     let ttlMs = replies[1][1];
 
-    if (currentCount === 1) {
+    if (ttlMs <= 0) {
       await redisClient.pexpire(key, windowInSeconds * 1000);
       ttlMs = windowInSeconds * 1000;
     }
 
     if (currentCount > limit) {
-      const retryAfterSec = ttlMs > 0 ? Math.ceil(ttlMs / 1000) : windowInSeconds;
+      const retryAfterSec = Math.ceil(ttlMs / 1000);
       
       res.setHeader('Retry-After', retryAfterSec);
       res.setHeader('X-RateLimit-Reset', Math.floor(Date.now() / 1000) + retryAfterSec);

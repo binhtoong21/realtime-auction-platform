@@ -233,7 +233,7 @@ const writeAuditLog = async ({ referenceId, referenceType, action, deltaState, a
  */
 export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
   const paymentResult = await pool.query(
-    `SELECT p.id, p.auction_id, p.buyer_id, p.seller_id, p.amount, p.status, p.payment_method_id, u.stripe_cus_id
+    `SELECT p.id, p.auction_id, p.buyer_id, p.seller_id, p.amount, p.status, p.payment_method_id, p.grace_expires_at, u.stripe_cus_id
      FROM payments p
      JOIN users u ON u.id = p.buyer_id
      WHERE p.id = $1`,
@@ -252,6 +252,22 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
 
   if (payment.status !== 'grace_period') {
     throw { status: 422, message: `Cannot retry payment in state: ${payment.status}` };
+  }
+
+  if (payment.grace_expires_at && new Date(payment.grace_expires_at) < new Date()) {
+    throw { status: 422, message: 'Grace period expired' };
+  }
+
+  // Atomic lock: prevent duplicate holds by transitioning to 'hold_pending'
+  const lockResult = await pool.query(
+    `UPDATE payments SET status = 'hold_pending', updated_at = NOW()
+     WHERE id = $1 AND status = 'grace_period'
+     RETURNING id`,
+    [paymentId]
+  );
+
+  if (lockResult.rowCount === 0) {
+    throw { status: 409, message: 'Payment is currently being processed or status changed' };
   }
 
   let finalPaymentMethodId = payment.payment_method_id;
@@ -327,14 +343,17 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
       actorId: buyerId,
     });
 
-    await scheduleEmergencyCapture(paymentId, payment.auction_id);
-
-    // Emit event to buyer
-    await emitToUser(buyerId, 'payment:status', {
-      auctionId: payment.auction_id,
-      status: 'authorized',
-      amount: Number(payment.amount)
-    });
+    // Isolate side effects
+    try {
+      await scheduleEmergencyCapture(paymentId, payment.auction_id);
+      await emitToUser(buyerId, 'payment:status', {
+        auctionId: payment.auction_id,
+        status: 'authorized',
+        amount: Number(payment.amount)
+      });
+    } catch (sideEffectError) {
+      console.error(`[Payment] Retry side-effects failed for payment ${paymentId}:`, sideEffectError);
+    }
 
     return { success: true };
 
@@ -342,10 +361,10 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     console.error(`[Payment] Retry failed for payment ${paymentId}:`, err.message);
 
     if (err.type === 'StripeCardError') {
-      // It's a card error, user's fault
+      // It's a card error, user's fault, revert to grace_period and increment attempts
       await pool.query(
         `UPDATE payments
-         SET capture_attempts = capture_attempts + 1, updated_at = NOW()
+         SET status = 'grace_period', capture_attempts = capture_attempts + 1, updated_at = NOW()
          WHERE id = $1`,
         [paymentId]
       );
@@ -361,7 +380,14 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
       throw { status: 402, code: 'HOLD_FAILED', message: err.message };
     } else {
       // System/Network error (StripeAPIError, StripeConnectionError)
-      // Do not increment attempts or penalize the user
+      // Revert to grace_period, do not increment attempts
+      await pool.query(
+        `UPDATE payments
+         SET status = 'grace_period', updated_at = NOW()
+         WHERE id = $1`,
+        [paymentId]
+      );
+      
       throw { status: 503, code: 'SYSTEM_ERROR', message: 'Hệ thống thanh toán đang gián đoạn, vui lòng thử lại sau' };
     }
   }
