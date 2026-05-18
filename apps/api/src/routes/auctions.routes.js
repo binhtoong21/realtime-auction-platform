@@ -7,6 +7,7 @@ import { checkIdempotency } from '../middleware/idempotency.js';
 import { debounceBid } from '../middleware/debounce.js';
 import { rateLimiter } from '../middleware/rateLimiter.js';
 import { placeBid } from '../controllers/bidding.controller.js';
+import { handleAcceptSecondChance, handleDeclineSecondChance } from '../controllers/payment.controller.js';
 
 import optionalAuth from '../middleware/optionalAuth.js';
 import { getAuctionsSchema, getAuctionBidsSchema, createAuctionSchema, updateAuctionSchema } from '../validations/auction.validation.js';
@@ -61,5 +62,9 @@ router.post(
   debounceBid,
   placeBid
 );
+
+// Second Chance Offer
+router.post('/:id/second-chance/accept', requireAuth, handleAcceptSecondChance);
+router.post('/:id/second-chance/decline', requireAuth, handleDeclineSecondChance);
 
 export default router;

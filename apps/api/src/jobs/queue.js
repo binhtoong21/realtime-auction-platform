@@ -104,6 +104,7 @@ export const paymentQueue = new Queue('payment', {
 
 const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
 /**
  * Schedule an emergency-capture job 6 days after Auth Hold success.
@@ -129,4 +130,17 @@ export const scheduleGracePeriodExpiry = async (paymentId, auctionId) => {
   });
 
   console.log(`[Queue] Scheduled grace-period-expiry for payment ${paymentId} in 24h`);
+};
+
+/**
+ * Schedule a second-chance-expiry job 48h after Second Chance offer is created.
+ * If runner-up hasn't accepted or declined, transitions to NO_SALE.
+ */
+export const scheduleSecondChanceExpiry = async (paymentId, auctionId) => {
+  await paymentQueue.add('second-chance-expiry', { paymentId, auctionId }, {
+    jobId: `second_chance_expiry_${paymentId}`,
+    delay: FORTY_EIGHT_HOURS_MS,
+  });
+
+  console.log(`[Queue] Scheduled second-chance-expiry for payment ${paymentId} in 48h`);
 };
