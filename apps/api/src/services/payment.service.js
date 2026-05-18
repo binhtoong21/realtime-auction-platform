@@ -219,8 +219,9 @@ export const schedulePostHoldJobs = async ({ paymentId, auctionId, holdSuccess }
 /**
  * Write an immutable financial audit log entry.
  */
-const writeAuditLog = async ({ referenceId, referenceType, action, deltaState, actorId, ipAddress }) => {
-  await pool.query(
+const writeAuditLog = async ({ referenceId, referenceType, action, deltaState, actorId, ipAddress }, client) => {
+  const queryFn = client || pool;
+  await queryFn.query(
     `INSERT INTO financial_audit_logs (id, reference_id, reference_type, action, delta_state, actor_id, ip_address)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [uuidv7(), referenceId, referenceType, action, JSON.stringify(deltaState), actorId, ipAddress || null]
@@ -533,7 +534,7 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
           new_fee: feeAmount,
         },
         actorId: userId,
-      });
+      }, client);
 
       // Update payment: swap buyer, amount, PI
       await client.query(
@@ -640,77 +641,93 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
  * Auction transitions to NO_SALE.
  */
 export const declineSecondChance = async ({ auctionId, userId }) => {
-  const result = await pool.query(
-    `UPDATE payments
-     SET status = 'no_sale', updated_at = NOW()
-     WHERE auction_id = $1
-       AND status = 'second_chance'
-       AND second_chance_runner_up_id = $2
-     RETURNING id, buyer_id, seller_id`,
-    [auctionId, userId]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (result.rowCount === 0) {
-    // Check if user is not the runner-up vs payment not in right state
-    const checkResult = await pool.query(
-      `SELECT status, second_chance_runner_up_id FROM payments WHERE auction_id = $1`,
+    const result = await client.query(
+      `UPDATE payments
+       SET status = 'no_sale', updated_at = NOW()
+       WHERE auction_id = $1
+         AND status = 'second_chance'
+         AND second_chance_runner_up_id = $2
+       RETURNING id, buyer_id, seller_id`,
+      [auctionId, userId]
+    );
+
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+
+      // Diagnostic SELECT to provide specific error
+      const checkResult = await pool.query(
+        `SELECT status, second_chance_runner_up_id FROM payments WHERE auction_id = $1`,
+        [auctionId]
+      );
+
+      if (checkResult.rows.length === 0) {
+        throw { status: 404, code: 'SECOND_CHANCE_NOT_FOUND', message: 'No payment found for this auction' };
+      }
+
+      const p = checkResult.rows[0];
+      if (p.second_chance_runner_up_id !== userId) {
+        throw { status: 403, code: 'FORBIDDEN', message: 'You are not the runner-up for this auction' };
+      }
+
+      throw { status: 422, code: 'INVALID_PAYMENT_STATE', message: `Cannot decline in state: ${p.status}` };
+    }
+
+    const payment = result.rows[0];
+
+    // Cascade auction status (same transaction)
+    await client.query(
+      `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
       [auctionId]
     );
 
-    if (checkResult.rows.length === 0) {
-      throw { status: 404, code: 'SECOND_CHANCE_NOT_FOUND', message: 'No payment found for this auction' };
+    // Audit log (same transaction)
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'second_chance_declined',
+      deltaState: {
+        runner_up_id: userId,
+        original_buyer_id: payment.buyer_id,
+      },
+      actorId: userId,
+    }, client);
+
+    await client.query('COMMIT');
+    client.release();
+
+    // Notifications AFTER commit
+    try {
+      await emitToUser(payment.seller_id, 'auction:no-sale', {
+        auctionId,
+        message: 'The runner-up declined the offer. No buyer found for your auction.',
+      });
+
+      await emitToUser(userId, 'auction:second-chance-declined', {
+        auctionId,
+        message: 'You have declined the second chance offer.',
+      });
+
+      // Notify original winner that auction ended
+      await emitToUser(payment.buyer_id, 'auction:no-sale', {
+        auctionId,
+        message: 'The auction has ended without a sale.',
+      });
+    } catch (notifyErr) {
+      console.error(`[Payment] Decline notification failed for auction ${auctionId}:`, notifyErr);
     }
 
-    const p = checkResult.rows[0];
-    if (p.second_chance_runner_up_id !== userId) {
-      throw { status: 403, code: 'FORBIDDEN', message: 'You are not the runner-up for this auction' };
-    }
+    return { status: 'no_sale' };
 
-    throw { status: 422, code: 'INVALID_PAYMENT_STATE', message: `Cannot decline in state: ${p.status}` };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+    client.release();
+    throw err;
   }
-
-  const payment = result.rows[0];
-
-  // Cascade auction status
-  await pool.query(
-    `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
-    [auctionId]
-  );
-
-  // Audit log
-  await writeAuditLog({
-    referenceId: payment.id,
-    referenceType: 'payment',
-    action: 'second_chance_declined',
-    deltaState: {
-      runner_up_id: userId,
-      original_buyer_id: payment.buyer_id,
-    },
-    actorId: userId,
-  });
-
-  // Notifications
-  try {
-    await emitToUser(payment.seller_id, 'auction:no-sale', {
-      auctionId,
-      message: 'The runner-up declined the offer. No buyer found for your auction.',
-    });
-
-    await emitToUser(userId, 'auction:second-chance-declined', {
-      auctionId,
-      message: 'You have declined the second chance offer.',
-    });
-
-    // Notify original winner that auction ended
-    await emitToUser(payment.buyer_id, 'auction:no-sale', {
-      auctionId,
-      message: 'The auction has ended without a sale.',
-    });
-  } catch (notifyErr) {
-    console.error(`[Payment] Decline notification failed for auction ${auctionId}:`, notifyErr);
-  }
-
-  return { status: 'no_sale' };
 };
 
 /**
