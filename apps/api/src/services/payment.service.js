@@ -561,6 +561,13 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
         [userId, payment.second_chance_amount, auctionId]
       );
 
+      // Clear old winner's bid (defense-in-depth, worker already does this)
+      await client.query(
+        `UPDATE bids SET is_winning = false
+         WHERE auction_id = $1 AND bidder_id = $2 AND is_winning = true`,
+        [auctionId, payment.original_buyer_id]
+      );
+
       // Mark runner-up's bid as winning
       await client.query(
         `UPDATE bids SET is_winning = true
@@ -570,11 +577,34 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
       );
 
       await client.query('COMMIT');
-      client.release();
     } catch (txErr) {
       await client.query('ROLLBACK');
+
+      // Compensating action: cancel the live Stripe hold
+      try {
+        await stripe.paymentIntents.cancel(paymentIntent.id);
+        // PI cancelled — safe to let runner-up retry
+        await pool.query(
+          `UPDATE payments SET status = 'second_chance', updated_at = NOW() WHERE id = $1`,
+          [payment.id]
+        );
+        console.error(`[Payment] DB TX failed for auction ${auctionId}, cancelled PI ${paymentIntent.id}`);
+      } catch (cancelErr) {
+        // Orphan hold — transition to no_sale, sweeper will reconcile
+        console.error(`[Payment] CRITICAL: Failed to cancel PI ${paymentIntent.id}:`, cancelErr.message);
+        await pool.query(
+          `UPDATE payments SET status = 'no_sale', stripe_pi_id = $1, updated_at = NOW() WHERE id = $2`,
+          [paymentIntent.id, payment.id]
+        );
+        await pool.query(
+          `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
+          [auctionId]
+        );
+      }
+
+      throw { status: 503, code: 'SYSTEM_ERROR', message: 'Payment system is temporarily unavailable, please try again' };
+    } finally {
       client.release();
-      throw txErr;
     }
 
     // Side effects AFTER commit (isolated)
@@ -624,6 +654,9 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
       throw { status: 402, code: 'HOLD_FAILED', message: 'Payment hold failed. The auction will end without a sale.' };
     }
 
+    // Already-handled error from DB TX failure (PI compensation done above)
+    if (err.status && err.code) throw err;
+
     // System error — revert to second_chance so runner-up can try again
     // (network timeout, Stripe outage — not runner-up's fault)
     console.error(`[Payment] Second chance system error for auction ${auctionId}:`, err.message);
@@ -642,6 +675,8 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
  */
 export const declineSecondChance = async ({ auctionId, userId }) => {
   const client = await pool.connect();
+  let payment = null;
+
   try {
     await client.query('BEGIN');
 
@@ -657,9 +692,8 @@ export const declineSecondChance = async ({ auctionId, userId }) => {
 
     if (result.rowCount === 0) {
       await client.query('ROLLBACK');
-      client.release();
 
-      // Diagnostic SELECT to provide specific error
+      // Diagnostic SELECT to provide specific error (uses pool, TX already rolled back)
       const checkResult = await pool.query(
         `SELECT status, second_chance_runner_up_id FROM payments WHERE auction_id = $1`,
         [auctionId]
@@ -677,7 +711,7 @@ export const declineSecondChance = async ({ auctionId, userId }) => {
       throw { status: 422, code: 'INVALID_PAYMENT_STATE', message: `Cannot decline in state: ${p.status}` };
     }
 
-    const payment = result.rows[0];
+    payment = result.rows[0];
 
     // Cascade auction status (same transaction)
     await client.query(
@@ -698,36 +732,34 @@ export const declineSecondChance = async ({ auctionId, userId }) => {
     }, client);
 
     await client.query('COMMIT');
-    client.release();
-
-    // Notifications AFTER commit
-    try {
-      await emitToUser(payment.seller_id, 'auction:no-sale', {
-        auctionId,
-        message: 'The runner-up declined the offer. No buyer found for your auction.',
-      });
-
-      await emitToUser(userId, 'auction:second-chance-declined', {
-        auctionId,
-        message: 'You have declined the second chance offer.',
-      });
-
-      // Notify original winner that auction ended
-      await emitToUser(payment.buyer_id, 'auction:no-sale', {
-        auctionId,
-        message: 'The auction has ended without a sale.',
-      });
-    } catch (notifyErr) {
-      console.error(`[Payment] Decline notification failed for auction ${auctionId}:`, notifyErr);
-    }
-
-    return { status: 'no_sale' };
-
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
-    client.release();
     throw err;
+  } finally {
+    client.release();
   }
+
+  // Notifications AFTER commit and release
+  try {
+    await emitToUser(payment.seller_id, 'auction:no-sale', {
+      auctionId,
+      message: 'The runner-up declined the offer. No buyer found for your auction.',
+    });
+
+    await emitToUser(userId, 'auction:second-chance-declined', {
+      auctionId,
+      message: 'You have declined the second chance offer.',
+    });
+
+    await emitToUser(payment.buyer_id, 'auction:no-sale', {
+      auctionId,
+      message: 'The auction has ended without a sale.',
+    });
+  } catch (notifyErr) {
+    console.error(`[Payment] Decline notification failed for auction ${auctionId}:`, notifyErr);
+  }
+
+  return { status: 'no_sale' };
 };
 
 /**
@@ -759,7 +791,7 @@ const transitionToNoSale = async ({ paymentId, auctionId, payment, reason, userI
         reason,
       },
       actorId: null,
-    });
+    }, client);
 
     await client.query('COMMIT');
   } catch (err) {
