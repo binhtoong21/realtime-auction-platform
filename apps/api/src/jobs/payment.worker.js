@@ -4,6 +4,7 @@ import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { writeAuditLog } from '../services/payment.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
+import { scheduleSecondChanceExpiry } from './queue.js';
 
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null
@@ -15,6 +16,7 @@ const connection = new IORedis(process.env.REDIS_URL, {
  * Job types:
  *   - emergency-capture: Day 6 after Auth Hold, force capture if dispute open
  *   - grace-period-expiry: 24h after Hold fail, transition to Second Chance
+ *   - second-chance-expiry: 48h after Second Chance offer, timeout to NO_SALE
  */
 const paymentWorker = new Worker('payment', async (job) => {
   switch (job.name) {
@@ -23,6 +25,9 @@ const paymentWorker = new Worker('payment', async (job) => {
       break;
     case 'grace-period-expiry':
       await processGracePeriodExpiry(job.data);
+      break;
+    case 'second-chance-expiry':
+      await processSecondChanceExpiry(job.data);
       break;
     default:
       console.warn(`[PaymentWorker] Unknown job type: ${job.name}`);
@@ -181,26 +186,6 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
   try {
     await client.query('BEGIN');
 
-    // Atomic status transition for payment
-    const lockResult = await client.query(
-      `UPDATE payments SET status = 'second_chance', updated_at = NOW()
-       WHERE id = $1 AND status = 'grace_period'
-       RETURNING id`,
-      [paymentId]
-    );
-
-    if (lockResult.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return;
-    }
-
-    // Also transition auction status to second_chance
-    await client.query(
-      `UPDATE auctions SET status = 'second_chance', updated_at = NOW()
-       WHERE id = $1`,
-      [auctionId]
-    );
-
     // Mark the failed winner's bid as no longer winning
     await client.query(
       `UPDATE bids SET is_winning = false WHERE auction_id = $1 AND bidder_id = $2 AND is_winning = true`,
@@ -216,53 +201,211 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
       [auctionId, payment.buyer_id]
     );
 
-    // Audit log
-    await writeAuditLog({
-      referenceId: paymentId,
-      referenceType: 'payment',
-      action: 'grace_period_expired',
-      deltaState: {
-        original_buyer_id: payment.buyer_id,
-        runner_up_id: runnerUpResult.rows[0]?.bidder_id || null,
-        runner_up_amount: runnerUpResult.rows[0] ? Number(runnerUpResult.rows[0].amount) : null,
-      },
-      actorId: null,
-    });
-
-    // Notify original winner they lost the purchase
-    await emitToUser(payment.buyer_id, 'payment:grace-expired', {
-      auctionId,
-      paymentId,
-      message: 'Your grace period has expired. The item will be offered to the next bidder.',
-    });
-
-    // Notify runner-up if exists (Second Chance will be implemented in Phase 9.7)
     if (runnerUpResult.rows.length > 0) {
       const runnerUp = runnerUpResult.rows[0];
+      const scExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+      // Transition payment to second_chance with runner-up metadata
+      const lockResult = await client.query(
+        `UPDATE payments
+         SET status = 'second_chance',
+             second_chance_runner_up_id = $2,
+             second_chance_amount = $3,
+             second_chance_expires_at = $4,
+             updated_at = NOW()
+         WHERE id = $1 AND status = 'grace_period'
+         RETURNING id`,
+        [paymentId, runnerUp.bidder_id, runnerUp.amount, scExpiresAt]
+      );
+
+      if (lockResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return;
+      }
+
+      // Transition auction status to second_chance
+      await client.query(
+        `UPDATE auctions SET status = 'second_chance', updated_at = NOW()
+         WHERE id = $1`,
+        [auctionId]
+      );
+
+      // Audit log
+      await writeAuditLog({
+        referenceId: paymentId,
+        referenceType: 'payment',
+        action: 'grace_period_expired',
+        deltaState: {
+          original_buyer_id: payment.buyer_id,
+          runner_up_id: runnerUp.bidder_id,
+          runner_up_amount: Number(runnerUp.amount),
+          second_chance_expires_at: scExpiresAt.toISOString(),
+        },
+        actorId: null,
+      });
+
+      await client.query('COMMIT');
+
+      // Schedule and notify AFTER commit
+      try {
+        await scheduleSecondChanceExpiry(paymentId, auctionId);
+      } catch (scheduleErr) {
+        console.error(`[PaymentWorker] Failed to schedule second-chance-expiry for ${paymentId}:`, scheduleErr.message);
+      }
+
+      await emitToUser(payment.buyer_id, 'payment:grace-expired', {
+        auctionId,
+        paymentId,
+        message: 'Your grace period has expired. The item will be offered to the next bidder.',
+      });
+
       await emitToUser(runnerUp.bidder_id, 'auction:second-chance', {
         auctionId,
         offerAmount: Number(runnerUp.amount),
-        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        expiresAt: scExpiresAt.toISOString(),
       });
+
       console.log(`[PaymentWorker] Second chance offered to ${runnerUp.bidder_id} for auction ${auctionId}`);
+
     } else {
       // No runner-up → NO_SALE
-      await client.query(
-        `UPDATE payments SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
+      const lockResult = await client.query(
+        `UPDATE payments SET status = 'no_sale', updated_at = NOW()
+         WHERE id = $1 AND status = 'grace_period'
+         RETURNING id`,
         [paymentId]
       );
+
+      if (lockResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return;
+      }
+
       await client.query(
-        `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
+        `UPDATE auctions SET status = 'no_sale', updated_at = NOW()
+         WHERE id = $1`,
         [auctionId]
       );
+
+      await writeAuditLog({
+        referenceId: paymentId,
+        referenceType: 'payment',
+        action: 'grace_period_expired',
+        deltaState: {
+          original_buyer_id: payment.buyer_id,
+          runner_up_id: null,
+          reason: 'no_runner_up',
+        },
+        actorId: null,
+      });
+
+      await client.query('COMMIT');
+
+      await emitToUser(payment.buyer_id, 'payment:grace-expired', {
+        auctionId,
+        paymentId,
+        message: 'Your grace period has expired. No other buyers were found.',
+      });
+
       console.log(`[PaymentWorker] No runner-up for auction ${auctionId}. Status → NO_SALE.`);
     }
-
-    await client.query('COMMIT');
 
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(`[PaymentWorker] Grace period expiry failed for ${paymentId}:`, err.message);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Second Chance Expiry — 48h after offer sent.
+ *
+ * If runner-up hasn't accepted or declined within 48 hours,
+ * auction transitions to NO_SALE.
+ */
+async function processSecondChanceExpiry({ paymentId, auctionId }) {
+  console.log(`[PaymentWorker] Processing second-chance-expiry for payment: ${paymentId}`);
+
+  const result = await pool.query(
+    'SELECT id, status, buyer_id, seller_id, second_chance_runner_up_id FROM payments WHERE id = $1',
+    [paymentId]
+  );
+
+  if (result.rows.length === 0) {
+    console.log(`[PaymentWorker] Payment ${paymentId} not found. Skipping.`);
+    return;
+  }
+
+  const payment = result.rows[0];
+
+  // Skip if already resolved (accepted → authorized, declined → no_sale, etc.)
+  if (payment.status !== 'second_chance') {
+    console.log(`[PaymentWorker] Payment ${paymentId} is '${payment.status}', not second_chance. Skipping.`);
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Atomic transition → no_sale
+    const lockResult = await client.query(
+      `UPDATE payments SET status = 'no_sale', updated_at = NOW()
+       WHERE id = $1 AND status = 'second_chance'
+       RETURNING id`,
+      [paymentId]
+    );
+
+    if (lockResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return;
+    }
+
+    await client.query(
+      `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
+      [auctionId]
+    );
+
+    await writeAuditLog({
+      referenceId: paymentId,
+      referenceType: 'payment',
+      action: 'second_chance_expired',
+      deltaState: {
+        runner_up_id: payment.second_chance_runner_up_id,
+        original_buyer_id: payment.buyer_id,
+        reason: 'timeout_48h',
+      },
+      actorId: null,
+    });
+
+    await client.query('COMMIT');
+
+    // Notifications after commit
+    if (payment.second_chance_runner_up_id) {
+      await emitToUser(payment.second_chance_runner_up_id, 'auction:second-chance-expired', {
+        auctionId,
+        message: 'Your second chance offer has expired.',
+      });
+    }
+
+    await emitToUser(payment.seller_id, 'auction:no-sale', {
+      auctionId,
+      message: 'No buyer found for your auction.',
+    });
+
+    // Notify original winner that the auction ended without a sale
+    await emitToUser(payment.buyer_id, 'auction:no-sale', {
+      auctionId,
+      message: 'The auction has ended without a sale.',
+    });
+
+    console.log(`[PaymentWorker] Second chance expired for payment ${paymentId}. Status → NO_SALE.`);
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(`[PaymentWorker] Second chance expiry failed for ${paymentId}:`, err.message);
     throw err;
   } finally {
     client.release();
