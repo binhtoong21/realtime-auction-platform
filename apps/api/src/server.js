@@ -7,6 +7,7 @@ import { initSocket } from './config/socket.js';
 import auctionEndWorker from './jobs/auctionEnd.worker.js';
 import auctionStartWorker from './jobs/auctionStart.worker.js';
 import paymentWorker from './jobs/payment.worker.js';
+import { startPaymentSweeper } from './jobs/queue.js';
 
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
@@ -57,8 +58,15 @@ const shutdown = async (signal) => {
 };
 
 // Start server
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
+
+  // Register repeatable background jobs
+  try {
+    await startPaymentSweeper();
+  } catch (err) {
+    console.error('Failed to register payment sweeper:', err.message);
+  }
 });
 
 // Listen for termination signals
