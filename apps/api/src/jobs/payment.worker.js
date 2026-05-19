@@ -279,10 +279,14 @@ async function reconcileCaptureState(payment, auctionId) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        await client.query(
-          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
-          [newStatus, payment.id]
+        const updateResult = await client.query(
+          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
+          [newStatus, payment.id, payment.status]
         );
+        if (updateResult.rowCount === 0) {
+          await client.query('ROLLBACK');
+          return;
+        }
         await writeAuditLog({
           referenceId: payment.id,
           referenceType: 'payment',
