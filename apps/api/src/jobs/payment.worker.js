@@ -4,7 +4,7 @@ import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { writeAuditLog } from '../services/payment.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
-import { scheduleSecondChanceExpiry } from './queue.js';
+import { scheduleSecondChanceExpiry, scheduleGracePeriodExpiry } from './queue.js';
 
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null
@@ -270,30 +270,44 @@ async function reconcileCaptureState(payment, auctionId) {
 
     } else {
       // Unexpected PI state (canceled, requires_payment_method, etc.)
-      // Revert to authorized so sweeper or admin can investigate
-      await pool.query(
-        `UPDATE payments SET status = 'authorized', updated_at = NOW() WHERE id = $1`,
-        [payment.id]
-      );
-      await writeAuditLog({
-        referenceId: payment.id,
-        referenceType: 'payment',
-        action: 'emergency_capture_failed',
-        deltaState: {
-          stripe_pi_status: pi.status,
-          stripe_pi_id: payment.stripe_pi_id,
-          auction_id: auctionId,
-          reverted_to: 'authorized',
-        },
-        actorId: null,
-      });
+      // Map terminal states appropriately
+      const isTerminal = ['canceled', 'requires_payment_method', 'requires_action'].includes(pi.status);
+      const newStatus = isTerminal ? 'hold_failed' : 'frozen';
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
+          [newStatus, payment.id]
+        );
+        await writeAuditLog({
+          referenceId: payment.id,
+          referenceType: 'payment',
+          action: 'emergency_capture_failed',
+          deltaState: {
+            stripe_pi_status: pi.status,
+            stripe_pi_id: payment.stripe_pi_id,
+            auction_id: auctionId,
+            mapped_to: newStatus,
+          },
+          actorId: null,
+        }, client);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+
       await emitToAdmin('payment:emergency-capture-failed', {
         paymentId: payment.id,
         auctionId,
         stripePiStatus: pi.status,
-        message: `Unexpected Stripe PI state: ${pi.status}. Payment reverted to authorized.`,
+        message: `Unexpected Stripe PI state: ${pi.status}. Payment mapped to ${newStatus}.`,
       });
-      console.warn(`[PaymentWorker] Payment ${payment.id} has unexpected PI state '${pi.status}'. Reverted to authorized.`);
+      console.warn(`[PaymentWorker] Payment ${payment.id} has unexpected PI state '${pi.status}'. Mapped to ${newStatus}.`);
     }
 
   } catch (err) {
@@ -584,7 +598,7 @@ async function processPaymentSweeper() {
   console.log('[PaymentWorker] Running payment sweeper...');
 
   const stuckResult = await pool.query(
-    `SELECT id, status, stripe_pi_id, auction_id, buyer_id, seller_id, amount
+    `SELECT id, status, stripe_pi_id, auction_id, buyer_id, seller_id, amount, updated_at
      FROM payments
      WHERE status IN ('capture_pending', 'hold_pending')
        AND updated_at < NOW() - INTERVAL '10 minutes'`
@@ -611,6 +625,17 @@ async function processPaymentSweeper() {
  * Reconcile a single stuck payment with Stripe.
  */
 async function sweepSinglePayment(payment) {
+  // Atomic DB claim to prevent concurrent worker races
+  const claimResult = await pool.query(
+    `UPDATE payments SET updated_at = NOW()
+     WHERE id = $1 AND status = $2 AND updated_at = $3
+     RETURNING id`,
+    [payment.id, payment.status, payment.updated_at]
+  );
+  if (claimResult.rowCount === 0) {
+    console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} already claimed. Skipping.`);
+    return;
+  }
   // No stripe_pi_id → cannot auto-reconcile, alert Admin
   if (!payment.stripe_pi_id) {
     console.warn(`[PaymentWorker] Sweeper: Payment ${payment.id} (${payment.status}) has no stripe_pi_id. Alerting admin.`);
@@ -750,55 +775,78 @@ async function sweepCapturePending(payment, pi) {
 async function sweepHoldPending(payment, pi) {
   if (pi.status === 'requires_capture') {
     // Hold succeeded on Stripe but DB wasn't updated — sync to authorized
-    await pool.query(
-      `UPDATE payments SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
-       WHERE id = $2 AND status = 'hold_pending'`,
-      [payment.stripe_pi_id, payment.id]
-    );
-    await pool.query(
-      `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW() WHERE id = $1`,
-      [payment.auction_id]
-    );
-    await writeAuditLog({
-      referenceId: payment.id,
-      referenceType: 'payment',
-      action: 'sweeper_capture_synced',
-      deltaState: {
-        stripe_pi_id: payment.stripe_pi_id,
-        stripe_pi_status: 'requires_capture',
-        synced_to: 'authorized',
-        auction_id: payment.auction_id,
-      },
-      actorId: null,
-    });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE payments SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
+         WHERE id = $2 AND status = 'hold_pending'`,
+        [payment.stripe_pi_id, payment.id]
+      );
+      await client.query(
+        `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW() WHERE id = $1`,
+        [payment.auction_id]
+      );
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'sweeper_capture_synced',
+        deltaState: {
+          stripe_pi_id: payment.stripe_pi_id,
+          stripe_pi_status: 'requires_capture',
+          synced_to: 'authorized',
+          auction_id: payment.auction_id,
+        },
+        actorId: null,
+      }, client);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
     console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} hold synced → authorized.`);
 
   } else if (pi.status === 'canceled' || pi.status === 'requires_payment_method') {
     // Hold failed on Stripe — transition to grace_period
     const graceExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await pool.query(
-      `UPDATE payments SET status = 'grace_period', grace_expires_at = $1,
-              capture_attempts = capture_attempts + 1, updated_at = NOW()
-       WHERE id = $2 AND status = 'hold_pending'`,
-      [graceExpiresAt, payment.id]
-    );
-    await pool.query(
-      `UPDATE auctions SET status = 'pending_payment', updated_at = NOW() WHERE id = $1`,
-      [payment.auction_id]
-    );
-    await writeAuditLog({
-      referenceId: payment.id,
-      referenceType: 'payment',
-      action: 'sweeper_hold_reverted',
-      deltaState: {
-        stripe_pi_id: payment.stripe_pi_id,
-        stripe_pi_status: pi.status,
-        reverted_to: 'grace_period',
-        grace_expires_at: graceExpiresAt.toISOString(),
-        auction_id: payment.auction_id,
-      },
-      actorId: null,
-    });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE payments SET status = 'grace_period', grace_expires_at = $1,
+                capture_attempts = capture_attempts + 1, updated_at = NOW()
+         WHERE id = $2 AND status = 'hold_pending'`,
+        [graceExpiresAt, payment.id]
+      );
+      await client.query(
+        `UPDATE auctions SET status = 'pending_payment', updated_at = NOW() WHERE id = $1`,
+        [payment.auction_id]
+      );
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'sweeper_hold_reverted',
+        deltaState: {
+          stripe_pi_id: payment.stripe_pi_id,
+          stripe_pi_status: pi.status,
+          reverted_to: 'grace_period',
+          grace_expires_at: graceExpiresAt.toISOString(),
+          auction_id: payment.auction_id,
+        },
+        actorId: null,
+      }, client);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+    // Schedule grace-period-expiry follow-up job
+    await scheduleGracePeriodExpiry(payment.id, payment.auction_id);
     console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} hold failed on Stripe → grace_period.`);
 
   } else {
