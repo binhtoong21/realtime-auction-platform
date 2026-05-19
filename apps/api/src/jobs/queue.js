@@ -144,3 +144,20 @@ export const scheduleSecondChanceExpiry = async (paymentId, auctionId) => {
 
   console.log(`[Queue] Scheduled second-chance-expiry for payment ${paymentId} in 48h`);
 };
+
+/**
+ * Register a repeatable payment sweeper job.
+ *
+ * Runs every 10 minutes to reconcile payments stuck in transitional states
+ * (capture_pending, hold_pending) that indicate a crash between a Stripe
+ * API call and the subsequent DB update.
+ *
+ * BullMQ deduplicates repeatables by name + repeat config hash,
+ * so calling this on every server restart is safe (no-op if already registered).
+ */
+export const startPaymentSweeper = async () => {
+  await paymentQueue.add('payment-sweeper', {}, {
+    repeat: { every: 10 * 60 * 1000 },
+  });
+  console.log('[Queue] Payment sweeper registered (every 10 min)');
+};

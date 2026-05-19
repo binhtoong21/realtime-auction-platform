@@ -53,6 +53,7 @@ export const PaymentStatus = {
     HOLD_FAILED: 'hold_failed',
     GRACE_PERIOD: 'grace_period',
     SECOND_CHANCE: 'second_chance',
+    CAPTURE_PENDING: 'capture_pending',
     CAPTURED: 'captured',
     FROZEN: 'frozen',
     TRANSFERRED: 'transferred',

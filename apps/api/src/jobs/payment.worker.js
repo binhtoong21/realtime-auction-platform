@@ -4,7 +4,7 @@ import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { writeAuditLog } from '../services/payment.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
-import { scheduleSecondChanceExpiry } from './queue.js';
+import { scheduleSecondChanceExpiry, scheduleGracePeriodExpiry } from './queue.js';
 
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null
@@ -17,6 +17,7 @@ const connection = new IORedis(process.env.REDIS_URL, {
  *   - emergency-capture: Day 6 after Auth Hold, force capture if dispute open
  *   - grace-period-expiry: 24h after Hold fail, transition to Second Chance
  *   - second-chance-expiry: 48h after Second Chance offer, timeout to NO_SALE
+ *   - payment-sweeper: Every 10 min, reconcile stuck transitional states
  */
 const paymentWorker = new Worker('payment', async (job) => {
   switch (job.name) {
@@ -28,6 +29,9 @@ const paymentWorker = new Worker('payment', async (job) => {
       break;
     case 'second-chance-expiry':
       await processSecondChanceExpiry(job.data);
+      break;
+    case 'payment-sweeper':
+      await processPaymentSweeper();
       break;
     default:
       console.warn(`[PaymentWorker] Unknown job type: ${job.name}`);
@@ -44,18 +48,21 @@ const paymentWorker = new Worker('payment', async (job) => {
  * we must force-capture to prevent losing the funds.
  *
  * Logic:
+ *   - If payment is capture_pending (retry after crash) → retrieve PI from Stripe
+ *     to determine actual state before deciding action
  *   - If no dispute open → skip (auto-capture or already settled)
  *   - If dispute open + payment still authorized → force capture
+ *
+ * Error handling:
+ *   - StripeCardError / payment_intent_unexpected_state → permanent, no retry
+ *   - Transient Stripe errors → throw for BullMQ retry
  */
 async function processEmergencyCapture({ paymentId, auctionId }) {
   console.log(`[PaymentWorker] Processing emergency-capture for payment: ${paymentId}`);
 
   const result = await pool.query(
-    `SELECT p.id, p.status, p.stripe_pi_id, p.buyer_id, p.seller_id, p.amount,
-            d.id AS dispute_id, d.status AS dispute_status
-     FROM payments p
-     LEFT JOIN disputes d ON d.payment_id = p.id AND d.status IN ('open', 'under_review')
-     WHERE p.id = $1`,
+    `SELECT id, status, stripe_pi_id, buyer_id, seller_id, amount
+     FROM payments WHERE id = $1`,
     [paymentId]
   );
 
@@ -66,48 +73,61 @@ async function processEmergencyCapture({ paymentId, auctionId }) {
 
   const payment = result.rows[0];
 
-  // Skip if not in authorized state (already captured, refunded, etc.)
+  // Handle capture_pending (BullMQ retry after crash between Stripe call and DB update)
+  if (payment.status === 'capture_pending') {
+    console.log(`[PaymentWorker] Payment ${paymentId} stuck in capture_pending. Reconciling with Stripe...`);
+    await reconcileCaptureState(payment, auctionId);
+    return;
+  }
+
+  // Only process if authorized
   if (payment.status !== 'authorized') {
     console.log(`[PaymentWorker] Payment ${paymentId} is '${payment.status}', not authorized. Skipping emergency capture.`);
     return;
   }
 
-  // Skip if no active dispute — normal capture flow will handle it
-  if (!payment.dispute_id) {
+  // Check for active disputes (defensive — table may not exist until Phase 11)
+  let disputeInfo = null;
+  try {
+    const disputeResult = await pool.query(
+      `SELECT id, status FROM disputes
+       WHERE payment_id = $1 AND status IN ('open', 'under_review')
+       LIMIT 1`,
+      [paymentId]
+    );
+    if (disputeResult.rowCount > 0) {
+      disputeInfo = disputeResult.rows[0];
+    }
+  } catch (err) {
+    if (err.code === '42P01') {
+      // relation "disputes" does not exist — not yet deployed
+      console.log(`[PaymentWorker] Disputes table not yet created. No disputes possible. Skipping emergency capture.`);
+      return;
+    }
+    throw err;
+  }
+
+  // No active dispute → normal capture flow will handle it
+  if (!disputeInfo) {
     console.log(`[PaymentWorker] Payment ${paymentId} has no active dispute. Skipping emergency capture.`);
     return;
   }
 
-  // Force capture
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  // Atomic lock: authorized → capture_pending
+  const lockResult = await pool.query(
+    `UPDATE payments SET status = 'capture_pending', updated_at = NOW()
+     WHERE id = $1 AND status = 'authorized'
+     RETURNING id`,
+    [paymentId]
+  );
 
-    // Atomic status check — claim the payment by setting to 'capture_pending'
-    const lockResult = await client.query(
-      `UPDATE payments SET status = 'capture_pending', updated_at = NOW()
-       WHERE id = $1 AND status = 'authorized'
-       RETURNING id`,
-      [paymentId]
-    );
-
-    if (lockResult.rowCount === 0) {
-      await client.query('ROLLBACK');
-      client.release();
-      console.log(`[PaymentWorker] Payment ${paymentId} already transitioned. Skipping.`);
-      return;
-    }
-
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    client.release();
-    throw err;
+  if (lockResult.rowCount === 0) {
+    console.log(`[PaymentWorker] Payment ${paymentId} already transitioned. Skipping.`);
+    return;
   }
-  client.release();
 
+  // Stripe capture OUTSIDE transaction (3-step pattern: lock → Stripe → confirm)
   try {
-    // Stripe capture OUTSIDE transaction
     await stripe.paymentIntents.capture(payment.stripe_pi_id);
 
     // Confirm in DB
@@ -116,33 +136,190 @@ async function processEmergencyCapture({ paymentId, auctionId }) {
       [paymentId]
     );
 
-    // Audit log
     await writeAuditLog({
       referenceId: paymentId,
       referenceType: 'payment',
       action: 'emergency_capture',
       deltaState: {
         reason: 'auth_expiry_imminent',
-        dispute_id: payment.dispute_id,
-        dispute_status: payment.dispute_status,
+        dispute_id: disputeInfo.id,
+        dispute_status: disputeInfo.status,
         amount: Number(payment.amount),
+        seller_id: payment.seller_id,
+        auction_id: auctionId,
+        stripe_pi_id: payment.stripe_pi_id,
       },
       actorId: null,
     });
 
     console.log(`[PaymentWorker] Emergency capture executed for payment ${paymentId}`);
 
-    // Notify admin
     await emitToAdmin('payment:emergency-capture', {
       paymentId,
       auctionId,
       amount: Number(payment.amount),
-      disputeId: payment.dispute_id,
+      disputeId: disputeInfo.id,
     });
 
   } catch (err) {
-    console.error(`[PaymentWorker] Emergency capture failed for ${paymentId}:`, err.message);
-    throw err; // BullMQ will retry (Needs a reconciliation job to retry capture_pending later)
+    console.error(`[PaymentWorker] Emergency capture Stripe call failed for ${paymentId}:`, err.message);
+
+    // Distinguish permanent vs transient errors
+    const isPermanent = err.type === 'StripeCardError' ||
+      (err.type === 'StripeInvalidRequestError' && err.code === 'payment_intent_unexpected_state');
+
+    if (isPermanent) {
+      // Check actual Stripe state — maybe it's already captured
+      await reconcileCaptureState(payment, auctionId);
+      return; // Don't throw — permanent failure, no BullMQ retry
+    }
+
+    // Transient error (StripeAPIError, StripeConnectionError) — throw for BullMQ retry
+    throw err;
+  }
+}
+
+/**
+ * Reconcile a payment stuck in capture_pending with Stripe's actual PI state.
+ *
+ * Called when:
+ *   - BullMQ retries after crash between Stripe capture and DB update
+ *   - Stripe returns payment_intent_unexpected_state during capture
+ */
+async function reconcileCaptureState(payment, auctionId) {
+  if (!payment.stripe_pi_id) {
+    console.error(`[PaymentWorker] Payment ${payment.id} in capture_pending but no stripe_pi_id. Alerting admin.`);
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'sweeper_admin_alert',
+      deltaState: {
+        stuck_status: payment.status,
+        reason: 'no_stripe_pi_id',
+        auction_id: auctionId,
+      },
+      actorId: null,
+    });
+    await emitToAdmin('payment:reconciliation-alert', {
+      paymentId: payment.id,
+      auctionId,
+      reason: 'Payment stuck in capture_pending without Stripe PI ID',
+    });
+    return;
+  }
+
+  try {
+    const pi = await stripe.paymentIntents.retrieve(payment.stripe_pi_id);
+
+    if (pi.status === 'succeeded') {
+      // Stripe already captured — sync DB
+      const updateResult = await pool.query(
+        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = $2 RETURNING id`,
+        [payment.id, payment.status]
+      );
+      if (updateResult.rowCount === 0) return;
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'emergency_capture',
+        deltaState: {
+          reason: 'auth_expiry_imminent',
+          recovery: 'synced_from_stripe',
+          stripe_pi_id: payment.stripe_pi_id,
+          amount: Number(payment.amount),
+          seller_id: payment.seller_id,
+          auction_id: auctionId,
+        },
+        actorId: null,
+      });
+      await emitToAdmin('payment:emergency-capture', {
+        paymentId: payment.id,
+        auctionId,
+        amount: Number(payment.amount),
+        reconciled: true,
+      });
+      console.log(`[PaymentWorker] Reconciled payment ${payment.id}: Stripe already captured → DB synced.`);
+
+    } else if (pi.status === 'requires_capture') {
+      // Stripe hasn't captured — try again
+      await stripe.paymentIntents.capture(payment.stripe_pi_id);
+      const updateResult = await pool.query(
+        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = $2 RETURNING id`,
+        [payment.id, payment.status]
+      );
+      if (updateResult.rowCount === 0) return;
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'emergency_capture',
+        deltaState: {
+          reason: 'auth_expiry_imminent',
+          recovery: 'retry_after_crash',
+          stripe_pi_id: payment.stripe_pi_id,
+          amount: Number(payment.amount),
+          seller_id: payment.seller_id,
+          auction_id: auctionId,
+        },
+        actorId: null,
+      });
+      await emitToAdmin('payment:emergency-capture', {
+        paymentId: payment.id,
+        auctionId,
+        amount: Number(payment.amount),
+        reconciled: true,
+      });
+      console.log(`[PaymentWorker] Reconciled payment ${payment.id}: Capture retried successfully.`);
+
+    } else {
+      // Unexpected PI state (canceled, requires_payment_method, etc.)
+      // Map terminal states appropriately
+      const isTerminal = ['canceled', 'requires_payment_method', 'requires_action'].includes(pi.status);
+      const newStatus = isTerminal ? 'hold_failed' : 'frozen';
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const updateResult = await client.query(
+          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
+          [newStatus, payment.id, payment.status]
+        );
+        if (updateResult.rowCount === 0) {
+          await client.query('ROLLBACK');
+          return;
+        }
+        await writeAuditLog({
+          referenceId: payment.id,
+          referenceType: 'payment',
+          action: 'emergency_capture_failed',
+          deltaState: {
+            stripe_pi_status: pi.status,
+            stripe_pi_id: payment.stripe_pi_id,
+            auction_id: auctionId,
+            mapped_to: newStatus,
+          },
+          actorId: null,
+        }, client);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+
+      await emitToAdmin('payment:emergency-capture-failed', {
+        paymentId: payment.id,
+        auctionId,
+        stripePiStatus: pi.status,
+        message: `Unexpected Stripe PI state: ${pi.status}. Payment mapped to ${newStatus}.`,
+      });
+      console.warn(`[PaymentWorker] Payment ${payment.id} has unexpected PI state '${pi.status}'. Mapped to ${newStatus}.`);
+    }
+
+  } catch (err) {
+    console.error(`[PaymentWorker] Reconciliation failed for payment ${payment.id}:`, err.message);
+    // Don't revert status — leave as capture_pending for sweeper to pick up
+    throw err; // BullMQ will retry
   }
 }
 
@@ -409,6 +586,341 @@ async function processSecondChanceExpiry({ paymentId, auctionId }) {
     throw err;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Payment Sweeper — Periodic reconciliation for stuck transitional states.
+ *
+ * Runs every 10 minutes via BullMQ repeatable job.
+ * Catches payments stuck in capture_pending or hold_pending for > 10 minutes,
+ * which indicates a crash between the Stripe API call and the DB update.
+ *
+ * For each stuck payment:
+ *   - If stripe_pi_id exists → retrieve PI from Stripe and reconcile
+ *   - If stripe_pi_id is NULL → alert Admin (cannot auto-reconcile)
+ */
+async function processPaymentSweeper() {
+  console.log('[PaymentWorker] Running payment sweeper...');
+
+  const stuckResult = await pool.query(
+    `SELECT id, status, stripe_pi_id, auction_id, buyer_id, seller_id, amount, updated_at
+     FROM payments
+     WHERE status IN ('capture_pending', 'hold_pending')
+       AND updated_at < NOW() - INTERVAL '10 minutes'`
+  );
+
+  if (stuckResult.rows.length > 0) {
+    console.log(`[PaymentWorker] Sweeper: Found ${stuckResult.rows.length} stuck payment(s).`);
+    for (const payment of stuckResult.rows) {
+      try {
+        await sweepSinglePayment(payment);
+      } catch (err) {
+        console.error(`[PaymentWorker] Sweeper: Failed to reconcile payment ${payment.id}:`, err.message);
+      }
+    }
+  } else {
+    console.log('[PaymentWorker] Sweeper: No stuck payments found.');
+  }
+
+  // 2. Fallback for stuck grace_period payments
+  const stuckGraceResult = await pool.query(
+    `SELECT id, auction_id FROM payments
+     WHERE status = 'grace_period' AND grace_expires_at < NOW()`
+  );
+  if (stuckGraceResult.rows.length > 0) {
+    for (const payment of stuckGraceResult.rows) {
+      try {
+        const claim = await pool.query(
+          `UPDATE payments SET updated_at = NOW() WHERE id = $1 AND status = 'grace_period' AND grace_expires_at < NOW() RETURNING id`,
+          [payment.id]
+        );
+        if (claim.rowCount > 0) {
+          try {
+            await scheduleGracePeriodExpiry(payment.id, payment.auction_id);
+            console.log(`[PaymentWorker] Sweeper: Rescheduled stuck grace-period-expiry for ${payment.id}`);
+          } catch (enqueueErr) {
+            console.error(`[PaymentWorker] Sweeper: Failed to reschedule grace_period for ${payment.id}:`, enqueueErr.message);
+          }
+        }
+      } catch (err) {
+        console.error(`[PaymentWorker] Sweeper: Failed to sweep grace_period for ${payment.id}:`, err.message);
+      }
+    }
+  }
+}
+
+/**
+ * Reconcile a single stuck payment with Stripe.
+ */
+async function sweepSinglePayment(payment) {
+  // Atomic DB claim to prevent concurrent worker races
+  const claimResult = await pool.query(
+    `UPDATE payments SET updated_at = NOW()
+     WHERE id = $1 AND status = $2 AND updated_at < NOW() - INTERVAL '10 minutes'
+     RETURNING id`,
+    [payment.id, payment.status]
+  );
+  if (claimResult.rowCount === 0) {
+    console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} already claimed. Skipping.`);
+    return;
+  }
+  // No stripe_pi_id → cannot auto-reconcile, alert Admin
+  if (!payment.stripe_pi_id) {
+    console.warn(`[PaymentWorker] Sweeper: Payment ${payment.id} (${payment.status}) has no stripe_pi_id. Alerting admin.`);
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'sweeper_admin_alert',
+      deltaState: {
+        stuck_status: payment.status,
+        reason: 'no_stripe_pi_id',
+        auction_id: payment.auction_id,
+        age_minutes: '> 10',
+      },
+      actorId: null,
+    });
+    await emitToAdmin('payment:reconciliation-alert', {
+      paymentId: payment.id,
+      auctionId: payment.auction_id,
+      status: payment.status,
+      reason: `Payment stuck in ${payment.status} without Stripe PI ID for > 10 minutes`,
+    });
+    return;
+  }
+
+  // Retrieve actual state from Stripe
+  const pi = await stripe.paymentIntents.retrieve(payment.stripe_pi_id);
+
+  if (payment.status === 'capture_pending') {
+    await sweepCapturePending(payment, pi);
+  } else if (payment.status === 'hold_pending') {
+    await sweepHoldPending(payment, pi);
+  }
+}
+
+/**
+ * Reconcile a payment stuck in capture_pending.
+ */
+async function sweepCapturePending(payment, pi) {
+  if (pi.status === 'succeeded') {
+    // Already captured on Stripe — sync DB
+    const updateResult = await pool.query(
+      `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending' RETURNING id`,
+      [payment.id]
+    );
+    if (updateResult.rowCount === 0) return;
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'sweeper_capture_synced',
+      deltaState: {
+        stripe_pi_id: payment.stripe_pi_id,
+        stripe_pi_status: 'succeeded',
+        amount: Number(payment.amount),
+        auction_id: payment.auction_id,
+      },
+      actorId: null,
+    });
+    console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} capture synced from Stripe.`);
+
+  } else if (pi.status === 'requires_capture') {
+    // Stripe hasn't captured — try again
+    try {
+      await stripe.paymentIntents.capture(payment.stripe_pi_id);
+      const updateResult = await pool.query(
+        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending' RETURNING id`,
+        [payment.id]
+      );
+      if (updateResult.rowCount === 0) return;
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'sweeper_capture_synced',
+        deltaState: {
+          stripe_pi_id: payment.stripe_pi_id,
+          stripe_pi_status: 'requires_capture',
+          synced_to: 'captured',
+          auction_id: payment.auction_id,
+        },
+        actorId: null,
+      });
+      console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} capture retried successfully.`);
+    } catch (captureErr) {
+      console.error(`[PaymentWorker] Sweeper: Payment ${payment.id} capture attempt failed:`, captureErr.message);
+      
+      const isPermanent = captureErr.type === 'StripeCardError' ||
+        (captureErr.type === 'StripeInvalidRequestError' && captureErr.code === 'payment_intent_unexpected_state');
+
+      if (isPermanent) {
+        console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} encountered permanent capture failure. Reconciling with Stripe PI state.`);
+        // Re-retrieve actual PI state from Stripe
+        const updatedPi = await stripe.paymentIntents.retrieve(payment.stripe_pi_id);
+        
+        // Log the error and actual status
+        await writeAuditLog({
+          referenceId: payment.id,
+          referenceType: 'payment',
+          action: 'sweeper_capture_failed',
+          deltaState: {
+            stripe_pi_id: payment.stripe_pi_id,
+            error: captureErr.message,
+            stripe_pi_status: updatedPi.status,
+            auction_id: payment.auction_id,
+          },
+          actorId: null,
+        });
+
+        // Reconcile DB with actual PI status
+        await reconcileCaptureState(payment, payment.auction_id);
+      } else {
+        // Rethrow transient errors so the sweeper job can try again later
+        throw captureErr;
+      }
+    }
+
+  } else {
+    // Unexpected state — alert Admin
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'sweeper_admin_alert',
+      deltaState: {
+        stuck_status: 'capture_pending',
+        stripe_pi_id: payment.stripe_pi_id,
+        stripe_pi_status: pi.status,
+        auction_id: payment.auction_id,
+      },
+      actorId: null,
+    });
+    await emitToAdmin('payment:reconciliation-alert', {
+      paymentId: payment.id,
+      auctionId: payment.auction_id,
+      stripePiStatus: pi.status,
+      reason: `Unexpected Stripe PI state '${pi.status}' for capture_pending payment`,
+    });
+    console.warn(`[PaymentWorker] Sweeper: Payment ${payment.id} has unexpected PI state '${pi.status}'. Admin alerted.`);
+  }
+}
+
+/**
+ * Reconcile a payment stuck in hold_pending.
+ */
+async function sweepHoldPending(payment, pi) {
+  if (pi.status === 'requires_capture') {
+    // Hold succeeded on Stripe but DB wasn't updated — sync to authorized
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const updateResult = await client.query(
+        `UPDATE payments SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
+         WHERE id = $2 AND status = 'hold_pending' RETURNING id`,
+        [payment.stripe_pi_id, payment.id]
+      );
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      await client.query(
+        `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW() WHERE id = $1`,
+        [payment.auction_id]
+      );
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'sweeper_capture_synced',
+        deltaState: {
+          stripe_pi_id: payment.stripe_pi_id,
+          stripe_pi_status: 'requires_capture',
+          synced_to: 'authorized',
+          auction_id: payment.auction_id,
+        },
+        actorId: null,
+      }, client);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} hold synced → authorized.`);
+
+  } else if (pi.status === 'canceled' || pi.status === 'requires_payment_method') {
+    // Hold failed on Stripe — transition to grace_period
+    const graceExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const updateResult = await client.query(
+        `UPDATE payments SET status = 'grace_period', grace_expires_at = $1,
+                capture_attempts = capture_attempts + 1, updated_at = NOW()
+         WHERE id = $2 AND status = 'hold_pending' RETURNING id`,
+        [graceExpiresAt, payment.id]
+      );
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      await client.query(
+        `UPDATE auctions SET status = 'pending_payment', updated_at = NOW() WHERE id = $1`,
+        [payment.auction_id]
+      );
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'sweeper_hold_reverted',
+        deltaState: {
+          stripe_pi_id: payment.stripe_pi_id,
+          stripe_pi_status: pi.status,
+          reverted_to: 'grace_period',
+          grace_expires_at: graceExpiresAt.toISOString(),
+          auction_id: payment.auction_id,
+        },
+        actorId: null,
+      }, client);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+    // Schedule grace-period-expiry follow-up job
+    try {
+      await scheduleGracePeriodExpiry(payment.id, payment.auction_id);
+    } catch (enqueueErr) {
+      console.error(`[PaymentWorker] Sweeper: Failed to enqueue grace-period-expiry for ${payment.id}:`, enqueueErr.message);
+      await emitToAdmin('payment:reconciliation-alert', {
+        paymentId: payment.id,
+        auctionId: payment.auction_id,
+        reason: `Payment recovered to grace_period but failed to enqueue expiry job.`,
+      });
+    }
+    console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} hold failed on Stripe → grace_period.`);
+
+  } else {
+    // Unexpected state — alert Admin
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'sweeper_admin_alert',
+      deltaState: {
+        stuck_status: 'hold_pending',
+        stripe_pi_id: payment.stripe_pi_id,
+        stripe_pi_status: pi.status,
+        auction_id: payment.auction_id,
+      },
+      actorId: null,
+    });
+    await emitToAdmin('payment:reconciliation-alert', {
+      paymentId: payment.id,
+      auctionId: payment.auction_id,
+      stripePiStatus: pi.status,
+      reason: `Unexpected Stripe PI state '${pi.status}' for hold_pending payment`,
+    });
+    console.warn(`[PaymentWorker] Sweeper: Payment ${payment.id} has unexpected PI state '${pi.status}'. Admin alerted.`);
   }
 }
 
