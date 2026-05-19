@@ -213,10 +213,11 @@ async function reconcileCaptureState(payment, auctionId) {
 
     if (pi.status === 'succeeded') {
       // Stripe already captured — sync DB
-      await pool.query(
-        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1`,
-        [payment.id]
+      const updateResult = await pool.query(
+        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = $2 RETURNING id`,
+        [payment.id, payment.status]
       );
+      if (updateResult.rowCount === 0) return;
       await writeAuditLog({
         referenceId: payment.id,
         referenceType: 'payment',
@@ -242,10 +243,11 @@ async function reconcileCaptureState(payment, auctionId) {
     } else if (pi.status === 'requires_capture') {
       // Stripe hasn't captured — try again
       await stripe.paymentIntents.capture(payment.stripe_pi_id);
-      await pool.query(
-        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1`,
-        [payment.id]
+      const updateResult = await pool.query(
+        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = $2 RETURNING id`,
+        [payment.id, payment.status]
       );
+      if (updateResult.rowCount === 0) return;
       await writeAuditLog({
         referenceId: payment.id,
         referenceType: 'payment',
@@ -747,24 +749,26 @@ async function sweepCapturePending(payment, pi) {
         (captureErr.type === 'StripeInvalidRequestError' && captureErr.code === 'payment_intent_unexpected_state');
 
       if (isPermanent) {
-        const revertResult = await pool.query(
-          `UPDATE payments SET status = 'authorized', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending' RETURNING id`,
-          [payment.id]
-        );
-        if (revertResult.rowCount === 0) return;
+        console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} encountered permanent capture failure. Reconciling with Stripe PI state.`);
+        // Re-retrieve actual PI state from Stripe
+        const updatedPi = await stripe.paymentIntents.retrieve(payment.stripe_pi_id);
+        
+        // Log the error and actual status
         await writeAuditLog({
           referenceId: payment.id,
           referenceType: 'payment',
-          action: 'sweeper_hold_reverted',
+          action: 'sweeper_capture_failed',
           deltaState: {
             stripe_pi_id: payment.stripe_pi_id,
             error: captureErr.message,
-            reverted_to: 'authorized',
+            stripe_pi_status: updatedPi.status,
             auction_id: payment.auction_id,
           },
           actorId: null,
         });
-        console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} reverted to authorized (permanent capture failure).`);
+
+        // Reconcile DB with actual PI status
+        await reconcileCaptureState(payment, payment.auction_id);
       } else {
         // Rethrow transient errors so the sweeper job can try again later
         throw captureErr;
@@ -811,7 +815,6 @@ async function sweepHoldPending(payment, pi) {
       );
       if (updateResult.rowCount === 0) {
         await client.query('ROLLBACK');
-        client.release();
         return;
       }
       await client.query(
@@ -853,7 +856,6 @@ async function sweepHoldPending(payment, pi) {
       );
       if (updateResult.rowCount === 0) {
         await client.query('ROLLBACK');
-        client.release();
         return;
       }
       await client.query(
