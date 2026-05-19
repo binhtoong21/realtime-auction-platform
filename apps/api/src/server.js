@@ -61,11 +61,23 @@ const shutdown = async (signal) => {
 server.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
 
-  // Register repeatable background jobs
-  try {
-    await startPaymentSweeper();
-  } catch (err) {
-    console.error('Failed to register payment sweeper:', err.message);
+  // Register repeatable background jobs with exponential backoff retry
+  let retries = 5;
+  let delay = 1000;
+  while (retries > 0) {
+    try {
+      await startPaymentSweeper();
+      break; // Success
+    } catch (err) {
+      console.error(`Failed to register payment sweeper. Retries left: ${retries - 1}`, err);
+      retries--;
+      if (retries === 0) {
+        console.error('CRITICAL: Exhausted all retries for startPaymentSweeper. Shutting down process.');
+        process.exit(1);
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 2; // Exponential backoff
+    }
   }
 });
 

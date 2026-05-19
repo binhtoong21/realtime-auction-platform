@@ -7,28 +7,44 @@ export const shorthands = undefined;
  * @param pgm {import('node-pg-migrate').MigrationBuilder}
  * @returns {Promise<void> | void}
  */
-export const up = (pgm) => {
-  // Drop existing partial index and recreate with capture_pending included.
-  // The payment sweeper and emergency capture jobs use capture_pending as
-  // a transitional state that needs to be queryable efficiently.
-  pgm.sql('DROP INDEX IF EXISTS idx_payments_active_status;');
-  pgm.sql(`
-    CREATE INDEX idx_payments_active_status
-    ON payments (status)
-    WHERE status IN ('authorized', 'grace_period', 'second_chance', 'frozen',
-                     'hold_pending', 'capture_pending');
-  `);
+export const up = async (pgm) => {
+  pgm.noTransaction();
+
+  try {
+    pgm.sql(`
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_payments_active_status_v2
+      ON payments (status)
+      WHERE status IN ('authorized', 'grace_period', 'second_chance', 'frozen',
+                       'hold_pending', 'capture_pending');
+    `);
+
+    pgm.sql('DROP INDEX CONCURRENTLY IF EXISTS idx_payments_active_status;');
+    pgm.sql('ALTER INDEX idx_payments_active_status_v2 RENAME TO idx_payments_active_status;');
+  } catch (err) {
+    // Basic rollback effort if the non-transactional step fails halfway
+    pgm.sql('DROP INDEX CONCURRENTLY IF EXISTS idx_payments_active_status_v2;');
+    throw err;
+  }
 };
 
 /**
  * @param pgm {import('node-pg-migrate').MigrationBuilder}
  * @returns {Promise<void> | void}
  */
-export const down = (pgm) => {
-  pgm.sql('DROP INDEX IF EXISTS idx_payments_active_status;');
-  pgm.sql(`
-    CREATE INDEX idx_payments_active_status
-    ON payments (status)
-    WHERE status IN ('authorized', 'grace_period', 'second_chance', 'frozen', 'hold_pending');
-  `);
+export const down = async (pgm) => {
+  pgm.noTransaction();
+
+  try {
+    pgm.sql(`
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_payments_active_status_v2
+      ON payments (status)
+      WHERE status IN ('authorized', 'grace_period', 'second_chance', 'frozen', 'hold_pending');
+    `);
+
+    pgm.sql('DROP INDEX CONCURRENTLY IF EXISTS idx_payments_active_status;');
+    pgm.sql('ALTER INDEX idx_payments_active_status_v2 RENAME TO idx_payments_active_status;');
+  } catch (err) {
+    pgm.sql('DROP INDEX CONCURRENTLY IF EXISTS idx_payments_active_status_v2;');
+    throw err;
+  }
 };

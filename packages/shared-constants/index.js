@@ -49,11 +49,11 @@ export const UserRole = {
 
 export const PaymentStatus = {
     HOLD_PENDING: 'hold_pending',
-    CAPTURE_PENDING: 'capture_pending',
     AUTHORIZED: 'authorized',
     HOLD_FAILED: 'hold_failed',
     GRACE_PERIOD: 'grace_period',
     SECOND_CHANCE: 'second_chance',
+    CAPTURE_PENDING: 'capture_pending',
     CAPTURED: 'captured',
     FROZEN: 'frozen',
     TRANSFERRED: 'transferred',

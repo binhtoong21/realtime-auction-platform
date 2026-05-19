@@ -670,24 +670,55 @@ async function sweepCapturePending(payment, pi) {
     console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} capture synced from Stripe.`);
 
   } else if (pi.status === 'requires_capture') {
-    // Stripe hasn't captured — revert to authorized so emergency-capture job can retry
-    await pool.query(
-      `UPDATE payments SET status = 'authorized', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending'`,
-      [payment.id]
-    );
-    await writeAuditLog({
-      referenceId: payment.id,
-      referenceType: 'payment',
-      action: 'sweeper_hold_reverted',
-      deltaState: {
-        stripe_pi_id: payment.stripe_pi_id,
-        stripe_pi_status: 'requires_capture',
-        reverted_to: 'authorized',
-        auction_id: payment.auction_id,
-      },
-      actorId: null,
-    });
-    console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} reverted to authorized (PI still requires_capture).`);
+    // Stripe hasn't captured — try again
+    try {
+      await stripe.paymentIntents.capture(payment.stripe_pi_id);
+      await pool.query(
+        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending'`,
+        [payment.id]
+      );
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'sweeper_capture_synced',
+        deltaState: {
+          stripe_pi_id: payment.stripe_pi_id,
+          stripe_pi_status: 'requires_capture',
+          synced_to: 'captured',
+          auction_id: payment.auction_id,
+        },
+        actorId: null,
+      });
+      console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} capture retried successfully.`);
+    } catch (captureErr) {
+      console.error(`[PaymentWorker] Sweeper: Payment ${payment.id} capture attempt failed:`, captureErr.message);
+      
+      const isPermanent = captureErr.type === 'StripeCardError' ||
+        (captureErr.type === 'StripeInvalidRequestError' && captureErr.code === 'payment_intent_unexpected_state');
+
+      if (isPermanent) {
+        await pool.query(
+          `UPDATE payments SET status = 'authorized', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending'`,
+          [payment.id]
+        );
+        await writeAuditLog({
+          referenceId: payment.id,
+          referenceType: 'payment',
+          action: 'sweeper_hold_reverted',
+          deltaState: {
+            stripe_pi_id: payment.stripe_pi_id,
+            error: captureErr.message,
+            reverted_to: 'authorized',
+            auction_id: payment.auction_id,
+          },
+          actorId: null,
+        });
+        console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} reverted to authorized (permanent capture failure).`);
+      } else {
+        // Rethrow transient errors so the sweeper job can try again later
+        throw captureErr;
+      }
+    }
 
   } else {
     // Unexpected state — alert Admin
