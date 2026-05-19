@@ -604,19 +604,42 @@ async function processPaymentSweeper() {
        AND updated_at < NOW() - INTERVAL '10 minutes'`
   );
 
-  if (stuckResult.rows.length === 0) {
+  if (stuckResult.rows.length > 0) {
+    console.log(`[PaymentWorker] Sweeper: Found ${stuckResult.rows.length} stuck payment(s).`);
+    for (const payment of stuckResult.rows) {
+      try {
+        await sweepSinglePayment(payment);
+      } catch (err) {
+        console.error(`[PaymentWorker] Sweeper: Failed to reconcile payment ${payment.id}:`, err.message);
+      }
+    }
+  } else {
     console.log('[PaymentWorker] Sweeper: No stuck payments found.');
-    return;
   }
 
-  console.log(`[PaymentWorker] Sweeper: Found ${stuckResult.rows.length} stuck payment(s).`);
-
-  for (const payment of stuckResult.rows) {
-    try {
-      await sweepSinglePayment(payment);
-    } catch (err) {
-      // Log but continue to next payment — don't let one failure block others
-      console.error(`[PaymentWorker] Sweeper: Failed to reconcile payment ${payment.id}:`, err.message);
+  // 2. Fallback for stuck grace_period payments
+  const stuckGraceResult = await pool.query(
+    `SELECT id, auction_id FROM payments
+     WHERE status = 'grace_period' AND grace_expires_at < NOW()`
+  );
+  if (stuckGraceResult.rows.length > 0) {
+    for (const payment of stuckGraceResult.rows) {
+      try {
+        const claim = await pool.query(
+          `UPDATE payments SET updated_at = NOW() WHERE id = $1 AND status = 'grace_period' AND grace_expires_at < NOW() RETURNING id`,
+          [payment.id]
+        );
+        if (claim.rowCount > 0) {
+          try {
+            await scheduleGracePeriodExpiry(payment.id, payment.auction_id);
+            console.log(`[PaymentWorker] Sweeper: Rescheduled stuck grace-period-expiry for ${payment.id}`);
+          } catch (enqueueErr) {
+            console.error(`[PaymentWorker] Sweeper: Failed to reschedule grace_period for ${payment.id}:`, enqueueErr.message);
+          }
+        }
+      } catch (err) {
+        console.error(`[PaymentWorker] Sweeper: Failed to sweep grace_period for ${payment.id}:`, err.message);
+      }
     }
   }
 }
@@ -628,9 +651,9 @@ async function sweepSinglePayment(payment) {
   // Atomic DB claim to prevent concurrent worker races
   const claimResult = await pool.query(
     `UPDATE payments SET updated_at = NOW()
-     WHERE id = $1 AND status = $2 AND updated_at = $3
+     WHERE id = $1 AND status = $2 AND updated_at < NOW() - INTERVAL '10 minutes'
      RETURNING id`,
-    [payment.id, payment.status, payment.updated_at]
+    [payment.id, payment.status]
   );
   if (claimResult.rowCount === 0) {
     console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} already claimed. Skipping.`);
@@ -676,10 +699,11 @@ async function sweepSinglePayment(payment) {
 async function sweepCapturePending(payment, pi) {
   if (pi.status === 'succeeded') {
     // Already captured on Stripe — sync DB
-    await pool.query(
-      `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending'`,
+    const updateResult = await pool.query(
+      `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending' RETURNING id`,
       [payment.id]
     );
+    if (updateResult.rowCount === 0) return;
     await writeAuditLog({
       referenceId: payment.id,
       referenceType: 'payment',
@@ -698,10 +722,11 @@ async function sweepCapturePending(payment, pi) {
     // Stripe hasn't captured — try again
     try {
       await stripe.paymentIntents.capture(payment.stripe_pi_id);
-      await pool.query(
-        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending'`,
+      const updateResult = await pool.query(
+        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending' RETURNING id`,
         [payment.id]
       );
+      if (updateResult.rowCount === 0) return;
       await writeAuditLog({
         referenceId: payment.id,
         referenceType: 'payment',
@@ -722,10 +747,11 @@ async function sweepCapturePending(payment, pi) {
         (captureErr.type === 'StripeInvalidRequestError' && captureErr.code === 'payment_intent_unexpected_state');
 
       if (isPermanent) {
-        await pool.query(
-          `UPDATE payments SET status = 'authorized', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending'`,
+        const revertResult = await pool.query(
+          `UPDATE payments SET status = 'authorized', updated_at = NOW() WHERE id = $1 AND status = 'capture_pending' RETURNING id`,
           [payment.id]
         );
+        if (revertResult.rowCount === 0) return;
         await writeAuditLog({
           referenceId: payment.id,
           referenceType: 'payment',
@@ -778,11 +804,16 @@ async function sweepHoldPending(payment, pi) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(
+      const updateResult = await client.query(
         `UPDATE payments SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
-         WHERE id = $2 AND status = 'hold_pending'`,
+         WHERE id = $2 AND status = 'hold_pending' RETURNING id`,
         [payment.stripe_pi_id, payment.id]
       );
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return;
+      }
       await client.query(
         `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW() WHERE id = $1`,
         [payment.auction_id]
@@ -814,12 +845,17 @@ async function sweepHoldPending(payment, pi) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(
+      const updateResult = await client.query(
         `UPDATE payments SET status = 'grace_period', grace_expires_at = $1,
                 capture_attempts = capture_attempts + 1, updated_at = NOW()
-         WHERE id = $2 AND status = 'hold_pending'`,
+         WHERE id = $2 AND status = 'hold_pending' RETURNING id`,
         [graceExpiresAt, payment.id]
       );
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return;
+      }
       await client.query(
         `UPDATE auctions SET status = 'pending_payment', updated_at = NOW() WHERE id = $1`,
         [payment.auction_id]
@@ -846,7 +882,16 @@ async function sweepHoldPending(payment, pi) {
     }
     
     // Schedule grace-period-expiry follow-up job
-    await scheduleGracePeriodExpiry(payment.id, payment.auction_id);
+    try {
+      await scheduleGracePeriodExpiry(payment.id, payment.auction_id);
+    } catch (enqueueErr) {
+      console.error(`[PaymentWorker] Sweeper: Failed to enqueue grace-period-expiry for ${payment.id}:`, enqueueErr.message);
+      await emitToAdmin('payment:reconciliation-alert', {
+        paymentId: payment.id,
+        auctionId: payment.auction_id,
+        reason: `Payment recovered to grace_period but failed to enqueue expiry job.`,
+      });
+    }
     console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} hold failed on Stripe → grace_period.`);
 
   } else {
