@@ -52,15 +52,21 @@ const webhookReaperWorker = new Worker('webhook', async (job) => {
 
   for (const event of result.rows) {
     if (event.retry_count >= MAX_RETRIES) {
-      // Max retries exceeded — mark as permanently failed
-      await pool.query(
+      // Max retries exceeded — mark as permanently failed (with state guard)
+      const exhaustResult = await pool.query(
         `UPDATE webhook_events
          SET status = 'failed',
              error_message = 'Max retries exceeded (' || retry_count || '/' || $1 || ')',
              updated_at = NOW()
-         WHERE id = $2`,
+         WHERE id = $2 AND status IN ('processing', 'pending_retry')
+         RETURNING id`,
         [MAX_RETRIES, event.id]
       );
+
+      if (exhaustResult.rowCount === 0) {
+        // Already transitioned by another process (e.g., route completed it)
+        continue;
+      }
 
       try {
         await emitToAdmin('webhook:max-retries', {

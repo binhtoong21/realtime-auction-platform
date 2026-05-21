@@ -56,11 +56,15 @@ router.post(
 
       const status = err.code === 'STATE_GUARD_FAILED' ? 'pending_retry' : 'failed';
 
-      await pool.query(
-        `UPDATE webhook_events SET status = $1, error_message = $2, updated_at = NOW()
-         WHERE stripe_event_id = $3`,
-        [status, err.message, event.id]
-      );
+      try {
+        await pool.query(
+          `UPDATE webhook_events SET status = $1, error_message = $2, updated_at = NOW()
+           WHERE stripe_event_id = $3`,
+          [status, err.message, event.id]
+        );
+      } catch (dbErr) {
+        console.error(`[Webhook] Failed to update event ${event.id} status to '${status}':`, dbErr.message);
+      }
 
       return res.status(200).json({ received: true });
     }
