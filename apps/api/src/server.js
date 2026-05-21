@@ -8,8 +8,7 @@ import auctionEndWorker from './jobs/auctionEnd.worker.js';
 import auctionStartWorker from './jobs/auctionStart.worker.js';
 import paymentWorker from './jobs/payment.worker.js';
 import webhookReaperWorker from './jobs/webhook-reaper.worker.js';
-import { startWebhookReaper } from './jobs/queue.js';
-
+import { startWebhookReaper, startPaymentSweeper } from './jobs/queue.js';
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
@@ -63,11 +62,24 @@ const shutdown = async (signal) => {
 server.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
 
-  // Start repeatable jobs
-  try {
-    await startWebhookReaper();
-  } catch (err) {
-    console.error('Failed to start webhook reaper:', err.message);
+  // Register repeatable background jobs with exponential backoff retry
+  let retries = 5;
+  let delay = 1000;
+  while (retries > 0) {
+    try {
+      await startPaymentSweeper();
+      await startWebhookReaper();
+      break; // Success
+    } catch (err) {
+      console.error(`Failed to register repeatable jobs (sweeper/reaper). Retries left: ${retries - 1}`, err);
+      retries--;
+      if (retries === 0) {
+        console.error('CRITICAL: Exhausted all retries for repeatable jobs. Shutting down process.');
+        process.exit(1);
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 2; // Exponential backoff
+    }
   }
 });
 
