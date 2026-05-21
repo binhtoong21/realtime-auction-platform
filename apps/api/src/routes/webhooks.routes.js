@@ -3,14 +3,7 @@ import express from 'express';
 import { v7 as uuidv7 } from 'uuid';
 import stripe from '../config/stripe.js';
 import { pool } from '../config/database.js';
-import {
-  handleIdentityVerified,
-  handleIdentityFailed,
-  handleIdentityProcessing,
-  handleIdentityCanceled,
-  handleConnectAccountUpdated,
-  handleSetupIntentSucceeded,
-} from '../services/kyc.service.js';
+import { processWebhookEvent } from '../services/webhook.service.js';
 
 const router = Router();
 
@@ -55,30 +48,7 @@ router.post(
     }
 
     try {
-      const obj = event.data.object;
-
-      switch (event.type) {
-        case 'identity.verification_session.verified':
-          await handleIdentityVerified(obj);
-          break;
-        case 'identity.verification_session.requires_input':
-          await handleIdentityFailed(obj);
-          break;
-        case 'identity.verification_session.processing':
-          await handleIdentityProcessing(obj);
-          break;
-        case 'identity.verification_session.canceled':
-          await handleIdentityCanceled(obj);
-          break;
-        case 'account.updated':
-          await handleConnectAccountUpdated(obj);
-          break;
-        case 'setup_intent.succeeded':
-          await handleSetupIntentSucceeded(obj);
-          break;
-        default:
-          break;
-      }
+      await processWebhookEvent(event);
 
       await pool.query(
         `UPDATE webhook_events SET status = 'completed', processed_at = NOW(), updated_at = NOW()
@@ -88,7 +58,6 @@ router.post(
     } catch (err) {
       console.error(`[Webhook] Error processing ${event.type}:`, err.message);
 
-      // Phân biệt out-of-order (state guard fail) vs lỗi thật
       const status = err.code === 'STATE_GUARD_FAILED' ? 'pending_retry' : 'failed';
 
       await pool.query(

@@ -7,6 +7,8 @@ import { initSocket } from './config/socket.js';
 import auctionEndWorker from './jobs/auctionEnd.worker.js';
 import auctionStartWorker from './jobs/auctionStart.worker.js';
 import paymentWorker from './jobs/payment.worker.js';
+import webhookReaperWorker from './jobs/webhook-reaper.worker.js';
+import { startWebhookReaper } from './jobs/queue.js';
 
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
@@ -32,6 +34,7 @@ const shutdown = async (signal) => {
       await auctionStartWorker.close();
       await auctionEndWorker.close();
       await paymentWorker.close();
+      await webhookReaperWorker.close();
       console.log('BullMQ workers closed.');
       
       // 4. Close Redis
@@ -57,8 +60,15 @@ const shutdown = async (signal) => {
 };
 
 // Start server
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
+
+  // Start repeatable jobs
+  try {
+    await startWebhookReaper();
+  } catch (err) {
+    console.error('Failed to start webhook reaper:', err.message);
+  }
 });
 
 // Listen for termination signals

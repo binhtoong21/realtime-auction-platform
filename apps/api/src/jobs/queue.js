@@ -144,3 +144,31 @@ export const scheduleSecondChanceExpiry = async (paymentId, auctionId) => {
 
   console.log(`[Queue] Scheduled second-chance-expiry for payment ${paymentId} in 48h`);
 };
+
+// ============================================================
+// Webhook Reaper Queue
+// ============================================================
+
+export const webhookQueue = new Queue('webhook', {
+  connection,
+  defaultJobOptions: {
+    removeOnComplete: 10,
+    removeOnFail: 50,
+  },
+});
+
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+/**
+ * Register the repeatable webhook reaper job.
+ * Call once at server startup.
+ */
+export const startWebhookReaper = async () => {
+  await webhookQueue.add('webhook-reaper', {}, {
+    repeat: { every: FIVE_MINUTES_MS },
+    jobId: 'webhook-reaper-singleton',
+  });
+
+  console.log('[Queue] Webhook reaper registered (every 5 minutes)');
+};
+
