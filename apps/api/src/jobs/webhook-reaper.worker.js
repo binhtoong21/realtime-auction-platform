@@ -120,7 +120,7 @@ const webhookReaperWorker = new Worker('webhook', async (job) => {
         await pool.query(
           `UPDATE webhook_events
            SET status = $1, error_message = $2, updated_at = NOW()
-           WHERE id = $3`,
+           WHERE id = $3 AND status = 'processing'`,
           [status, err.message, event.id]
         );
       } catch (dbErr) {
