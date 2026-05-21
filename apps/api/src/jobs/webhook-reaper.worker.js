@@ -104,18 +104,41 @@ const webhookReaperWorker = new Worker('webhook', async (job) => {
       continue;
     }
 
+    // Process event
     try {
-      // Reconstruct Stripe event object from stored payload
-      // Route stores: JSON.stringify(event.data) → { object: {...} }
       const stripeEvent = {
         id: event.stripe_event_id,
         type: event.event_type,
-        data: event.payload, // jsonb column — already parsed by pg driver
+        data: event.payload,
       };
 
       await processWebhookEvent(stripeEvent);
+    } catch (err) {
+      const status = err.code === 'STATE_GUARD_FAILED' ? 'pending_retry' : 'failed';
 
-      // Success — guard against concurrent transition
+      try {
+        await pool.query(
+          `UPDATE webhook_events
+           SET status = $1, error_message = $2, updated_at = NOW()
+           WHERE id = $3`,
+          [status, err.message, event.id]
+        );
+      } catch (dbErr) {
+        console.error(`[WebhookReaper] Failed to update event ${event.stripe_event_id} status:`, dbErr.message);
+      }
+
+      if (status === 'failed') {
+        failed++;
+      }
+
+      console.error(
+        `[WebhookReaper] Retry failed for ${event.stripe_event_id}: ${err.message} → ${status}`
+      );
+      continue;
+    }
+
+    // Business logic succeeded — mark as completed
+    try {
       const completeResult = await pool.query(
         `UPDATE webhook_events
          SET status = 'completed', processed_at = NOW(), updated_at = NOW()
@@ -129,24 +152,10 @@ const webhookReaperWorker = new Worker('webhook', async (job) => {
       } else {
         recovered++;
       }
-
-    } catch (err) {
-      const status = err.code === 'STATE_GUARD_FAILED' ? 'pending_retry' : 'failed';
-
-      await pool.query(
-        `UPDATE webhook_events
-         SET status = $1, error_message = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [status, err.message, event.id]
-      );
-
-      if (status === 'failed') {
-        failed++;
-      }
-
-      console.error(
-        `[WebhookReaper] Retry failed for ${event.stripe_event_id}: ${err.message} → ${status}`
-      );
+    } catch (dbErr) {
+      // Processing succeeded but DB update failed — reaper will re-pick this
+      // event next scan, and State Guards ensure idempotent re-processing.
+      console.error(`[WebhookReaper] Failed to mark event ${event.stripe_event_id} completed:`, dbErr.message);
     }
   }
 
