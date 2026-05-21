@@ -47,14 +47,10 @@ router.post(
       return res.status(500).json({ error: 'Internal server error' });
     }
 
+    // Process event — separate try/catch so DB status update failures
+    // don't incorrectly mark successfully-processed events as 'failed'
     try {
       await processWebhookEvent(event);
-
-      await pool.query(
-        `UPDATE webhook_events SET status = 'completed', processed_at = NOW(), updated_at = NOW()
-         WHERE stripe_event_id = $1`,
-        [event.id]
-      );
     } catch (err) {
       console.error(`[Webhook] Error processing ${event.type}:`, err.message);
 
@@ -65,6 +61,22 @@ router.post(
          WHERE stripe_event_id = $3`,
         [status, err.message, event.id]
       );
+
+      return res.status(200).json({ received: true });
+    }
+
+    // Business logic succeeded — mark event as completed
+    try {
+      await pool.query(
+        `UPDATE webhook_events SET status = 'completed', processed_at = NOW(), updated_at = NOW()
+         WHERE stripe_event_id = $1`,
+        [event.id]
+      );
+    } catch (dbErr) {
+      // Event was processed successfully but status update failed.
+      // Reaper will eventually find this event stuck in 'processing' and retry,
+      // but handlers are idempotent via State Guards so re-processing is safe.
+      console.error(`[Webhook] Failed to mark event ${event.id} as completed:`, dbErr.message);
     }
 
     res.status(200).json({ received: true });

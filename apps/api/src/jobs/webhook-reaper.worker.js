@@ -81,15 +81,22 @@ const webhookReaperWorker = new Worker('webhook', async (job) => {
       continue;
     }
 
-    // Increment retry count and mark as processing
-    await pool.query(
+    // Atomic claim: only transition if still in expected state
+    const claimResult = await pool.query(
       `UPDATE webhook_events
        SET status = 'processing',
            retry_count = retry_count + 1,
            updated_at = NOW()
-       WHERE id = $1`,
+       WHERE id = $1 AND status IN ('processing', 'pending_retry')
+       RETURNING id`,
       [event.id]
     );
+
+    if (claimResult.rowCount === 0) {
+      // Another reaper instance or route already handled this event
+      console.log(`[WebhookReaper] Event ${event.stripe_event_id} already claimed, skipping.`);
+      continue;
+    }
 
     try {
       // Reconstruct Stripe event object from stored payload
@@ -102,14 +109,20 @@ const webhookReaperWorker = new Worker('webhook', async (job) => {
 
       await processWebhookEvent(stripeEvent);
 
-      // Success
-      await pool.query(
+      // Success — guard against concurrent transition
+      const completeResult = await pool.query(
         `UPDATE webhook_events
          SET status = 'completed', processed_at = NOW(), updated_at = NOW()
-         WHERE id = $1`,
+         WHERE id = $1 AND status = 'processing'
+         RETURNING id`,
         [event.id]
       );
-      recovered++;
+
+      if (completeResult.rowCount === 0) {
+        console.warn(`[WebhookReaper] Event ${event.stripe_event_id} status changed during processing, skip marking completed.`);
+      } else {
+        recovered++;
+      }
 
     } catch (err) {
       const status = err.code === 'STATE_GUARD_FAILED' ? 'pending_retry' : 'failed';

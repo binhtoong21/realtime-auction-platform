@@ -235,28 +235,42 @@ async function handlePaymentIntentCanceled(paymentIntent) {
     return;
   }
 
-  // State Guard: only transition from authorized or capture_pending
-  const guardResult = await pool.query(
-    `UPDATE payments SET status = 'released', updated_at = NOW()
-     WHERE stripe_pi_id = $1 AND status IN ('authorized', 'capture_pending')
-     RETURNING id, auction_id, buyer_id, seller_id`,
-    [stripepiId]
-  );
+  // Use a transaction so payments + auctions updates are atomic
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (guardResult.rowCount === 0) {
-    const error = new Error(
-      `State guard blocked: payment ${payment.id} is '${payment.status}', expected authorized/capture_pending`
+    // State Guard: only transition from authorized or capture_pending
+    const guardResult = await client.query(
+      `UPDATE payments SET status = 'released', updated_at = NOW()
+       WHERE stripe_pi_id = $1 AND status IN ('authorized', 'capture_pending')
+       RETURNING id, auction_id, buyer_id, seller_id`,
+      [stripepiId]
     );
-    error.code = 'STATE_GUARD_FAILED';
-    throw error;
-  }
 
-  // Auction State Guard (defense-in-depth): don't overwrite second_chance
-  await pool.query(
-    `UPDATE auctions SET status = 'no_sale', updated_at = NOW()
-     WHERE id = $1 AND status IN ('awaiting_ship', 'pending_payment')`,
-    [payment.auction_id]
-  );
+    if (guardResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      const error = new Error(
+        `State guard blocked: payment ${payment.id} is '${payment.status}', expected authorized/capture_pending`
+      );
+      error.code = 'STATE_GUARD_FAILED';
+      throw error;
+    }
+
+    // Auction State Guard (defense-in-depth): don't overwrite second_chance
+    await client.query(
+      `UPDATE auctions SET status = 'no_sale', updated_at = NOW()
+       WHERE id = $1 AND status IN ('awaiting_ship', 'pending_payment')`,
+      [payment.auction_id]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 
   await writeAuditLog({
     referenceId: payment.id,
