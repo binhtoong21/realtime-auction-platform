@@ -7,8 +7,8 @@ import { initSocket } from './config/socket.js';
 import auctionEndWorker from './jobs/auctionEnd.worker.js';
 import auctionStartWorker from './jobs/auctionStart.worker.js';
 import paymentWorker from './jobs/payment.worker.js';
-import { startPaymentSweeper } from './jobs/queue.js';
-
+import webhookReaperWorker from './jobs/webhook-reaper.worker.js';
+import { startWebhookReaper, startPaymentSweeper } from './jobs/queue.js';
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
@@ -33,6 +33,7 @@ const shutdown = async (signal) => {
       await auctionStartWorker.close();
       await auctionEndWorker.close();
       await paymentWorker.close();
+      await webhookReaperWorker.close();
       console.log('BullMQ workers closed.');
       
       // 4. Close Redis
@@ -67,12 +68,13 @@ server.listen(PORT, async () => {
   while (retries > 0) {
     try {
       await startPaymentSweeper();
+      await startWebhookReaper();
       break; // Success
     } catch (err) {
-      console.error(`Failed to register payment sweeper. Retries left: ${retries - 1}`, err);
+      console.error(`Failed to register repeatable jobs (sweeper/reaper). Retries left: ${retries - 1}`, err);
       retries--;
       if (retries === 0) {
-        console.error('CRITICAL: Exhausted all retries for startPaymentSweeper. Shutting down process.');
+        console.error('CRITICAL: Exhausted all retries for repeatable jobs. Shutting down process.');
         process.exit(1);
       }
       await new Promise(resolve => setTimeout(resolve, delay));

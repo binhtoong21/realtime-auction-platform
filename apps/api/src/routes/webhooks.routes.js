@@ -3,14 +3,7 @@ import express from 'express';
 import { v7 as uuidv7 } from 'uuid';
 import stripe from '../config/stripe.js';
 import { pool } from '../config/database.js';
-import {
-  handleIdentityVerified,
-  handleIdentityFailed,
-  handleIdentityProcessing,
-  handleIdentityCanceled,
-  handleConnectAccountUpdated,
-  handleSetupIntentSucceeded,
-} from '../services/kyc.service.js';
+import { processWebhookEvent } from '../services/webhook.service.js';
 
 const router = Router();
 
@@ -54,48 +47,40 @@ router.post(
       return res.status(500).json({ error: 'Internal server error' });
     }
 
+    // Process event — separate try/catch so DB status update failures
+    // don't incorrectly mark successfully-processed events as 'failed'
     try {
-      const obj = event.data.object;
+      await processWebhookEvent(event);
+    } catch (err) {
+      console.error(`[Webhook] Error processing ${event.type}:`, err.message);
 
-      switch (event.type) {
-        case 'identity.verification_session.verified':
-          await handleIdentityVerified(obj);
-          break;
-        case 'identity.verification_session.requires_input':
-          await handleIdentityFailed(obj);
-          break;
-        case 'identity.verification_session.processing':
-          await handleIdentityProcessing(obj);
-          break;
-        case 'identity.verification_session.canceled':
-          await handleIdentityCanceled(obj);
-          break;
-        case 'account.updated':
-          await handleConnectAccountUpdated(obj);
-          break;
-        case 'setup_intent.succeeded':
-          await handleSetupIntentSucceeded(obj);
-          break;
-        default:
-          break;
+      const status = err.code === 'STATE_GUARD_FAILED' ? 'pending_retry' : 'failed';
+
+      try {
+        await pool.query(
+          `UPDATE webhook_events SET status = $1, error_message = $2, updated_at = NOW()
+           WHERE stripe_event_id = $3`,
+          [status, err.message, event.id]
+        );
+      } catch (dbErr) {
+        console.error(`[Webhook] Failed to update event ${event.id} status to '${status}':`, dbErr.message);
       }
 
+      return res.status(200).json({ received: true });
+    }
+
+    // Business logic succeeded — mark event as completed
+    try {
       await pool.query(
         `UPDATE webhook_events SET status = 'completed', processed_at = NOW(), updated_at = NOW()
          WHERE stripe_event_id = $1`,
         [event.id]
       );
-    } catch (err) {
-      console.error(`[Webhook] Error processing ${event.type}:`, err.message);
-
-      // Phân biệt out-of-order (state guard fail) vs lỗi thật
-      const status = err.code === 'STATE_GUARD_FAILED' ? 'pending_retry' : 'failed';
-
-      await pool.query(
-        `UPDATE webhook_events SET status = $1, error_message = $2, updated_at = NOW()
-         WHERE stripe_event_id = $3`,
-        [status, err.message, event.id]
-      );
+    } catch (dbErr) {
+      // Event was processed successfully but status update failed.
+      // Reaper will eventually find this event stuck in 'processing' and retry,
+      // but handlers are idempotent via State Guards so re-processing is safe.
+      console.error(`[Webhook] Failed to mark event ${event.id} as completed:`, dbErr.message);
     }
 
     res.status(200).json({ received: true });
