@@ -3,6 +3,7 @@ import IORedis from 'ioredis';
 import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { writeAuditLog } from '../services/payment.service.js';
+import { createPayout } from '../services/payout.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
 import { scheduleSecondChanceExpiry, scheduleGracePeriodExpiry } from './queue.js';
 
@@ -17,6 +18,7 @@ const connection = new IORedis(process.env.REDIS_URL, {
  *   - emergency-capture: Day 6 after Auth Hold, force capture if dispute open
  *   - grace-period-expiry: 24h after Hold fail, transition to Second Chance
  *   - second-chance-expiry: 48h after Second Chance offer, timeout to NO_SALE
+ *   - payout: Transfer captured funds to seller's Connected Account
  *   - payment-sweeper: Every 10 min, reconcile stuck transitional states
  */
 const paymentWorker = new Worker('payment', async (job) => {
@@ -32,6 +34,9 @@ const paymentWorker = new Worker('payment', async (job) => {
       break;
     case 'payment-sweeper':
       await processPaymentSweeper();
+      break;
+    case 'payout':
+      await processPayout(job.data);
       break;
     default:
       console.warn(`[PaymentWorker] Unknown job type: ${job.name}`);
@@ -648,6 +653,13 @@ async function processPaymentSweeper() {
       }
     }
   }
+
+  // 3. Payout sweep: captured payments that should have been transferred
+  try {
+    await sweepPendingPayouts();
+  } catch (err) {
+    console.error('[PaymentWorker] Sweeper: Payout sweep failed:', err.message);
+  }
 }
 
 /**
@@ -921,6 +933,87 @@ async function sweepHoldPending(payment, pi) {
       reason: `Unexpected Stripe PI state '${pi.status}' for hold_pending payment`,
     });
     console.warn(`[PaymentWorker] Sweeper: Payment ${payment.id} has unexpected PI state '${pi.status}'. Admin alerted.`);
+  }
+}
+
+/**
+ * Process a payout job — transfer funds to seller's Connected Account.
+ */
+async function processPayout({ paymentId }) {
+  console.log(`[PaymentWorker] Processing payout for payment: ${paymentId}`);
+
+  const result = await createPayout(paymentId);
+
+  if (result.transferred) {
+    console.log(`[PaymentWorker] Payout completed for payment ${paymentId}`);
+  } else {
+    const level = result.retry ? 'warn' : 'log';
+    console[level](`[PaymentWorker] Payout skipped for payment ${paymentId}: ${result.reason}`);
+  }
+}
+
+/**
+ * Sweep captured payments that should have been transferred.
+ *
+ * Unified query covers:
+ *   - Payout job dispatch failed (Redis down during webhook)
+ *   - Phase 11 forgot to dispatch payout after dispute resolved
+ *   - Seller was not onboarded at payout time, now onboarded
+ *   - Crash recovery via idempotency key
+ *
+ * Filters:
+ *   - Only seller with payouts_enabled (skip unboarded sellers)
+ *   - No active disputes (LEFT JOIN filter)
+ *   - Older than 10 minutes (avoid race with normal payout job)
+ */
+async function sweepPendingPayouts() {
+  let pendingResult;
+  try {
+    pendingResult = await pool.query(
+      `SELECT p.id, p.auction_id, p.seller_id
+       FROM payments p
+       JOIN users u ON u.id = p.seller_id
+       LEFT JOIN disputes d ON d.payment_id = p.id AND d.status IN ('open', 'under_review')
+       WHERE p.status = 'captured'
+         AND p.stripe_transfer_id IS NULL
+         AND p.updated_at < NOW() - INTERVAL '10 minutes'
+         AND u.connect_status = 'payouts_enabled'
+         AND d.id IS NULL`
+    );
+  } catch (err) {
+    if (err.code === '42P01') {
+      // disputes table not yet created — run without dispute filter
+      pendingResult = await pool.query(
+        `SELECT p.id, p.auction_id, p.seller_id
+         FROM payments p
+         JOIN users u ON u.id = p.seller_id
+         WHERE p.status = 'captured'
+           AND p.stripe_transfer_id IS NULL
+           AND p.updated_at < NOW() - INTERVAL '10 minutes'
+           AND u.connect_status = 'payouts_enabled'`
+      );
+    } else {
+      throw err;
+    }
+  }
+
+  if (pendingResult.rows.length === 0) {
+    return;
+  }
+
+  console.log(`[PaymentWorker] Sweeper: Found ${pendingResult.rows.length} payment(s) pending payout.`);
+
+  for (const payment of pendingResult.rows) {
+    try {
+      const result = await createPayout(payment.id);
+      if (result.transferred) {
+        console.log(`[PaymentWorker] Sweeper: Payout completed for payment ${payment.id}`);
+      } else {
+        console.log(`[PaymentWorker] Sweeper: Payout skipped for payment ${payment.id}: ${result.reason}`);
+      }
+    } catch (err) {
+      console.error(`[PaymentWorker] Sweeper: Payout failed for payment ${payment.id}:`, err.message);
+    }
   }
 }
 

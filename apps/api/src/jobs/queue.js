@@ -145,6 +145,20 @@ export const scheduleSecondChanceExpiry = async (paymentId, auctionId) => {
   console.log(`[Queue] Scheduled second-chance-expiry for payment ${paymentId} in 48h`);
 };
 
+/**
+ * Dispatch a payout job to transfer funds to the seller.
+ * Called immediately after payment_intent.succeeded webhook confirms capture.
+ * Uses jobId for deduplication when job is still in waiting/delayed state.
+ */
+export const schedulePayoutJob = async (paymentId, auctionId) => {
+  await paymentQueue.add('payout', { paymentId, auctionId }, {
+    jobId: `payout_${paymentId}`,
+    delay: 0,
+  });
+
+  console.log(`[Queue] Dispatched payout job for payment ${paymentId}`);
+};
+
 // ============================================================
 // Webhook Reaper Queue
 // ============================================================
