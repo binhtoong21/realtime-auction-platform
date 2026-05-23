@@ -178,10 +178,32 @@ export const createPayout = async (paymentId) => {
   );
 
   if (updateResult.rowCount === 0) {
-    // Another process already handled this payment — Stripe idempotency key
-    // ensures no double transfer, so this is safe
-    console.log(`[Payout] Payment ${paymentId} status changed during transfer. Stripe idempotency covers this.`);
-    return { transferred: false, reason: 'already_transferred', retry: false };
+    console.warn(`[Payout] Payment ${paymentId} status changed during transfer! Ensuring transfer ID ${transfer.id} is persisted.`);
+    
+    // Best-effort persist of transfer.id to avoid losing record of funds moved
+    try {
+      await pool.query(
+        `UPDATE payments SET stripe_transfer_id = $1 WHERE id = $2 AND stripe_transfer_id IS NULL`,
+        [transfer.id, paymentId]
+      );
+    } catch (persistErr) {
+      console.error(`[Payout] Critical: Failed to persist transfer ID ${transfer.id} for payment ${paymentId}`, persistErr.message);
+    }
+
+    // Write a durable reconciliation log
+    await writeAuditLog({
+      referenceId: paymentId,
+      referenceType: 'payment',
+      action: 'payout_race_condition',
+      deltaState: {
+        stripe_transfer_id: transfer.id,
+        transfer_amount: netAmount,
+        message: 'Status changed while Stripe Transfer was processing. Transfer was created but payment status update failed.'
+      },
+      actorId: null,
+    });
+
+    return { transferred: false, reason: 'status_changed_during_transfer', retry: false };
   }
 
   // 8. Audit log

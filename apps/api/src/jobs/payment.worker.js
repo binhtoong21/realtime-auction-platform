@@ -949,6 +949,10 @@ async function processPayout({ paymentId }) {
   } else {
     const level = result.retry ? 'warn' : 'log';
     console[level](`[PaymentWorker] Payout skipped for payment ${paymentId}: ${result.reason}`);
+    
+    if (result.retry) {
+      throw new Error(`Payout skipped for payment ${paymentId}, reason: ${result.reason}`);
+    }
   }
 }
 
