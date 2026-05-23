@@ -823,4 +823,47 @@ const transitionToNoSale = async ({ paymentId, auctionId, payment, reason, userI
   }
 };
 
+/**
+ * Get payment details by ID.
+ * Buyer sees their own payment, Seller sees payment for their auction.
+ */
+export const getPaymentById = async ({ paymentId, userId }) => {
+  const result = await pool.query(
+    `SELECT p.id, p.auction_id, p.buyer_id, p.seller_id, p.amount,
+            p.platform_fee_amount, p.status, p.stripe_pi_id,
+            p.grace_expires_at, p.capture_attempts, p.created_at, p.updated_at,
+            a.title AS auction_title
+     FROM payments p
+     JOIN auctions a ON a.id = p.auction_id
+     WHERE p.id = $1`,
+    [paymentId]
+  );
+
+  if (result.rows.length === 0) {
+    throw { status: 404, message: 'Payment not found' };
+  }
+
+  const payment = result.rows[0];
+
+  if (payment.buyer_id !== userId && payment.seller_id !== userId) {
+    throw { status: 403, message: 'Forbidden' };
+  }
+
+  const sellerReceives = Number(payment.amount) - Number(payment.platform_fee_amount);
+
+  return {
+    id: payment.id,
+    auctionId: payment.auction_id,
+    auctionTitle: payment.auction_title,
+    amount: Number(payment.amount),
+    platformFeeAmount: Number(payment.platform_fee_amount),
+    sellerReceives,
+    status: payment.status,
+    stripePaymentIntentId: payment.stripe_pi_id,
+    graceExpiresAt: payment.grace_expires_at,
+    captureAttempts: payment.capture_attempts,
+    createdAt: payment.created_at,
+  };
+};
+
 export { writeAuditLog };
