@@ -182,9 +182,13 @@ export const createPayout = async (paymentId) => {
     
     // Best-effort persist of transfer.id to avoid losing record of funds moved
     try {
+      const transferDate = transfer.created ? new Date(transfer.created * 1000) : new Date();
       await pool.query(
-        `UPDATE payments SET stripe_transfer_id = $1 WHERE id = $2 AND stripe_transfer_id IS NULL`,
-        [transfer.id, paymentId]
+        `UPDATE payments 
+         SET stripe_transfer_id = COALESCE(stripe_transfer_id, $1),
+             transferred_at = COALESCE(transferred_at, $3)
+         WHERE id = $2 AND stripe_transfer_id IS NULL`,
+        [transfer.id, paymentId, transferDate]
       );
     } catch (persistErr) {
       console.error(`[Payout] Critical: Failed to persist transfer ID ${transfer.id} for payment ${paymentId}`, persistErr.message);
