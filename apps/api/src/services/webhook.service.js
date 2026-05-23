@@ -2,7 +2,7 @@ import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './payment.service.js';
 import { emitToUser, emitToAdmin } from './socket.service.js';
-import { paymentQueue } from '../jobs/queue.js';
+import { paymentQueue, schedulePayoutJob } from '../jobs/queue.js';
 import {
   handleIdentityVerified,
   handleIdentityFailed,
@@ -103,9 +103,9 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
 
   const payment = lookupResult.rows[0];
 
-  // Skip if already captured (idempotent)
-  if (payment.status === 'captured') {
-    console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} already captured. Skipping.`);
+  // Skip if already captured or transferred (idempotent)
+  if (payment.status === 'captured' || payment.status === 'transferred') {
+    console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} already '${payment.status}'. Skipping.`);
     return;
   }
 
@@ -113,7 +113,7 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
   const guardResult = await pool.query(
     `UPDATE payments SET status = 'captured', updated_at = NOW()
      WHERE stripe_pi_id = $1 AND status IN ('authorized', 'capture_pending')
-     RETURNING id`,
+     RETURNING id, auction_id`,
     [stripepiId]
   );
 
@@ -138,6 +138,14 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
   });
 
   console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} captured via webhook.`);
+
+  // Dispatch payout job (async, isolated side effect)
+  try {
+    await schedulePayoutJob(payment.id, payment.auction_id);
+  } catch (scheduleErr) {
+    // Payout sweeper will pick up — don't fail the webhook
+    console.error(`[Webhook] Failed to schedule payout for ${payment.id}:`, scheduleErr.message);
+  }
 }
 
 /**
