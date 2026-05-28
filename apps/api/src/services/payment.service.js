@@ -102,7 +102,7 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
 
     // Update auction status to awaiting_ship (Hold is successful, waiting for shipment)
     await pool.query(
-      `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW()
+      `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '5 days', updated_at = NOW()
        WHERE id = $1`,
       [auctionId]
     );
@@ -323,7 +323,7 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     );
 
     await pool.query(
-      `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW()
+      `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '5 days', updated_at = NOW()
        WHERE id = $1`,
       [payment.auction_id]
     );
@@ -554,6 +554,7 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
       await client.query(
         `UPDATE auctions
          SET status = 'awaiting_ship',
+             shipping_deadline_at = NOW() + INTERVAL '5 days',
              winner_id = $1,
              current_price = $2,
              updated_at = NOW()
