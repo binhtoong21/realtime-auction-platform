@@ -834,7 +834,7 @@ async function sweepHoldPending(payment, pi) {
         return;
       }
       await client.query(
-        `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW() WHERE id = $1`,
+        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '5 days', updated_at = NOW() WHERE id = $1`,
         [payment.auction_id]
       );
       await writeAuditLog({

@@ -9,6 +9,7 @@ import {
 import { emitToUser } from './socket.service.js';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
+const SHIPPING_DEADLINE_DAYS = 5;
 
 /**
  * Create an Auth Hold (PaymentIntent with capture_method: manual) for the auction winner.
@@ -92,20 +93,40 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
       },
     });
 
-    // Hold succeeded
-    await pool.query(
-      `UPDATE payments
-       SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
-       WHERE id = $2`,
-      [paymentIntent.id, paymentId]
-    );
+    // Hold succeeded - DB updates must be atomic
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE payments
+         SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [paymentIntent.id, paymentId]
+      );
 
-    // Update auction status to awaiting_ship (Hold is successful, waiting for shipment)
-    await pool.query(
-      `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW()
-       WHERE id = $1`,
-      [auctionId]
-    );
+      // Update auction status to awaiting_ship (Hold is successful, waiting for shipment)
+      const auctionUpdate = await client.query(
+        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
+         WHERE id = $1 AND status IN ('ended', 'pending_payment')`,
+        [auctionId]
+      );
+
+      if (auctionUpdate.rowCount === 0) {
+        throw new Error(`Invalid state transition: Auction ${auctionId} could not be updated to awaiting_ship`);
+      }
+      await client.query('COMMIT');
+    } catch (dbErr) {
+      await client.query('ROLLBACK');
+      console.error(`[Payment] DB update failed after Stripe hold for auction ${auctionId}. Canceling hold.`, dbErr.message);
+      try {
+        await stripe.paymentIntents.cancel(paymentIntent.id);
+      } catch (cancelErr) {
+        console.error(`[Payment] CRITICAL: Failed to cancel orphaned Stripe PI ${paymentIntent.id}:`, cancelErr.message);
+      }
+      throw dbErr;
+    } finally {
+      client.release();
+    }
 
     holdSuccess = true;
 
@@ -143,7 +164,7 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
     // Update auction status to pending_payment (waiting for buyer to retry)
     await pool.query(
       `UPDATE auctions SET status = 'pending_payment', updated_at = NOW()
-       WHERE id = $1`,
+       WHERE id = $1 AND status = 'ended'`,
       [auctionId]
     );
 
@@ -314,19 +335,39 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
       },
     });
 
-    // Hold succeeded
-    await pool.query(
-      `UPDATE payments
-       SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
-       WHERE id = $2`,
-      [paymentIntent.id, paymentId]
-    );
+    // Hold succeeded - DB updates must be atomic
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE payments
+         SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [paymentIntent.id, paymentId]
+      );
 
-    await pool.query(
-      `UPDATE auctions SET status = 'awaiting_ship', updated_at = NOW()
-       WHERE id = $1`,
-      [payment.auction_id]
-    );
+      const auctionUpdate = await client.query(
+        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
+         WHERE id = $1 AND status = 'pending_payment'`,
+        [payment.auction_id]
+      );
+
+      if (auctionUpdate.rowCount === 0) {
+        throw new Error(`Invalid state transition: Auction ${payment.auction_id} could not be updated to awaiting_ship`);
+      }
+      await client.query('COMMIT');
+    } catch (dbErr) {
+      await client.query('ROLLBACK');
+      console.error(`[Payment] DB update failed after Stripe hold for auction ${payment.auction_id}. Canceling hold.`, dbErr.message);
+      try {
+        await stripe.paymentIntents.cancel(paymentIntent.id);
+      } catch (cancelErr) {
+        console.error(`[Payment] CRITICAL: Failed to cancel orphaned Stripe PI ${paymentIntent.id}:`, cancelErr.message);
+      }
+      throw dbErr;
+    } finally {
+      client.release();
+    }
 
     await writeAuditLog({
       referenceId: paymentId,
@@ -551,15 +592,20 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
       );
 
       // Update auction: swap winner, update price
-      await client.query(
+      const auctionUpdate = await client.query(
         `UPDATE auctions
          SET status = 'awaiting_ship',
+             shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days',
              winner_id = $1,
              current_price = $2,
              updated_at = NOW()
-         WHERE id = $3`,
+         WHERE id = $3 AND status = 'second_chance'`,
         [userId, payment.second_chance_amount, auctionId]
       );
+
+      if (auctionUpdate.rowCount === 0) {
+        throw new Error(`Invalid state transition: Auction ${auctionId} could not be updated to awaiting_ship`);
+      }
 
       // Clear old winner's bid (defense-in-depth, worker already does this)
       await client.query(

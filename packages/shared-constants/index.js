@@ -58,6 +58,7 @@ export const PaymentStatus = {
     FROZEN: 'frozen',
     TRANSFERRED: 'transferred',
     REFUNDED: 'refunded',
+    RELEASING: 'releasing',
     RELEASED: 'released',
     NO_SALE: 'no_sale',
     CANCELLED: 'cancelled',
@@ -69,3 +70,36 @@ export const DEFAULT_FEE_TIERS = [
     { maxAmount: 1000000, rate: 0.05 },
     { maxAmount: null, rate: 0.03 },
 ];
+
+export const CARRIERS = {
+    VNPOST: 'vnpost',
+    GHN: 'ghn',
+    GHTK: 'ghtk',
+    JT: 'jt',
+    FEDEX: 'fedex',
+    DHL: 'dhl',
+    UPS: 'ups',
+    OTHER: 'other',
+};
+
+export const CARRIER_TRACKING_REGEX = {
+    [CARRIERS.VNPOST]: /^[A-Z]{2}\d{9}VN$/i,
+    [CARRIERS.GHN]:    /^[A-Z0-9]{8,15}$/i,
+    [CARRIERS.GHTK]:   /^(\d{9}|(?=.{5,50}$)[A-Z0-9]+(?:\.[A-Z0-9]+)+)$/i,
+    [CARRIERS.JT]:     /^\d{12,15}$/,
+    [CARRIERS.FEDEX]:  /^\d{12}(\d{2})?$/,
+    [CARRIERS.DHL]:    /^[0-9]{10,11}$/,
+    [CARRIERS.UPS]:    /^1Z[A-Z0-9]{16}$/i,
+    [CARRIERS.OTHER]:  /^.{6,50}$/,
+};
+
+export const CARRIER_TRACKING_URLS = {
+    [CARRIERS.VNPOST]: 'https://www.vnpost.vn/en-us/tra-cuu/buu-pham?key=',
+    [CARRIERS.GHN]:    'https://ghn.vn/pages/quan-ly-don-hang?code=',
+    [CARRIERS.GHTK]:   'https://i.ghtk.vn/',
+    [CARRIERS.JT]:     'https://jtexpress.vn/tracking?bill=',
+    [CARRIERS.FEDEX]:  'https://www.fedex.com/wtrk/track/?trknbr=',
+    [CARRIERS.DHL]:    'https://www.dhl.com/en/express/tracking.html?AWB=',
+    [CARRIERS.UPS]:    'https://www.ups.com/track?tracknum=',
+    [CARRIERS.OTHER]:  null,
+};
