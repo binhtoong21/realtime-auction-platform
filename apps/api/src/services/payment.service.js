@@ -9,6 +9,7 @@ import {
 import { emitToUser } from './socket.service.js';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
+const SHIPPING_DEADLINE_DAYS = 5;
 
 /**
  * Create an Auth Hold (PaymentIntent with capture_method: manual) for the auction winner.
@@ -104,11 +105,15 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
       );
 
       // Update auction status to awaiting_ship (Hold is successful, waiting for shipment)
-      await client.query(
-        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '5 days', updated_at = NOW()
-         WHERE id = $1`,
+      const auctionUpdate = await client.query(
+        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
+         WHERE id = $1 AND status IN ('ended', 'pending_payment')`,
         [auctionId]
       );
+
+      if (auctionUpdate.rowCount === 0) {
+        throw new Error(`Invalid state transition: Auction ${auctionId} could not be updated to awaiting_ship`);
+      }
       await client.query('COMMIT');
     } catch (dbErr) {
       await client.query('ROLLBACK');
@@ -341,11 +346,15 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
         [paymentIntent.id, paymentId]
       );
 
-      await client.query(
-        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '5 days', updated_at = NOW()
-         WHERE id = $1`,
+      const auctionUpdate = await client.query(
+        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
+         WHERE id = $1 AND status = 'pending_payment'`,
         [payment.auction_id]
       );
+
+      if (auctionUpdate.rowCount === 0) {
+        throw new Error(`Invalid state transition: Auction ${payment.auction_id} could not be updated to awaiting_ship`);
+      }
       await client.query('COMMIT');
     } catch (dbErr) {
       await client.query('ROLLBACK');
@@ -583,16 +592,20 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
       );
 
       // Update auction: swap winner, update price
-      await client.query(
+      const auctionUpdate = await client.query(
         `UPDATE auctions
          SET status = 'awaiting_ship',
-             shipping_deadline_at = NOW() + INTERVAL '5 days',
+             shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days',
              winner_id = $1,
              current_price = $2,
              updated_at = NOW()
-         WHERE id = $3`,
+         WHERE id = $3 AND status = 'second_chance'`,
         [userId, payment.second_chance_amount, auctionId]
       );
+
+      if (auctionUpdate.rowCount === 0) {
+        throw new Error(`Invalid state transition: Auction ${auctionId} could not be updated to awaiting_ship`);
+      }
 
       // Clear old winner's bid (defense-in-depth, worker already does this)
       await client.query(
