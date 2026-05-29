@@ -164,7 +164,7 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
     // Update auction status to pending_payment (waiting for buyer to retry)
     await pool.query(
       `UPDATE auctions SET status = 'pending_payment', updated_at = NOW()
-       WHERE id = $1`,
+       WHERE id = $1 AND status = 'ended'`,
       [auctionId]
     );
 
