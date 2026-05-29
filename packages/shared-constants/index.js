@@ -85,7 +85,7 @@ export const CARRIERS = {
 export const CARRIER_TRACKING_REGEX = {
     [CARRIERS.VNPOST]: /^[A-Z]{2}\d{9}VN$/i,
     [CARRIERS.GHN]:    /^[A-Z0-9]{8,15}$/i,
-    [CARRIERS.GHTK]:   /^(\d{9}|[A-Z0-9]+(?:\.[A-Z0-9]+)+)$/i,
+    [CARRIERS.GHTK]:   /^(\d{9}|(?=.{5,50}$)[A-Z0-9]+(?:\.[A-Z0-9]+)+)$/i,
     [CARRIERS.JT]:     /^\d{12,15}$/,
     [CARRIERS.FEDEX]:  /^\d{12}(\d{2})?$/,
     [CARRIERS.DHL]:    /^[0-9]{10,11}$/,
