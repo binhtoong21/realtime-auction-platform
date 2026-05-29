@@ -90,7 +90,7 @@ export const CARRIER_TRACKING_REGEX = {
     [CARRIERS.FEDEX]:  /^\d{12}(\d{2})?$/,
     [CARRIERS.DHL]:    /^[0-9]{10,11}$/,
     [CARRIERS.UPS]:    /^1Z[A-Z0-9]{16}$/i,
-    [CARRIERS.OTHER]:  /^.{6,}$/,
+    [CARRIERS.OTHER]:  /^.{6,50}$/,
 };
 
 export const CARRIER_TRACKING_URLS = {
