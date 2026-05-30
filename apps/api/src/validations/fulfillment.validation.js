@@ -14,7 +14,7 @@ const trackingValidator = (value, helpers) => {
   return value;
 };
 
-const baseTrackingSchema = Joi.object({
+export const shipAuctionSchema = Joi.object({
   carrier: Joi.string()
     .valid(...carrierValues)
     .required()
@@ -29,5 +29,17 @@ const baseTrackingSchema = Joi.object({
     }),
 }).custom(trackingValidator);
 
-export const shipAuctionSchema = baseTrackingSchema;
-export const updateTrackingSchema = baseTrackingSchema;
+export const updateTrackingSchema = Joi.object({
+  carrier: Joi.string()
+    .valid(...carrierValues)
+    .required()
+    .messages({
+      'any.only': `carrier must be one of: ${carrierValues.join(', ')}`,
+    }),
+  trackingNumber: Joi.string()
+    .trim()
+    .required()
+    .messages({
+      'string.empty': 'trackingNumber is required',
+    }),
+}).custom(trackingValidator);
