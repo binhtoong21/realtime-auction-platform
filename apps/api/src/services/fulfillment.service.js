@@ -57,7 +57,6 @@ export const shipAuction = async ({ auctionId, sellerId, carrier, trackingNumber
     );
 
     if (result.rowCount === 0) {
-      await client.query('ROLLBACK');
       const err = new Error('Auction cannot be shipped in its current state');
       err.statusCode = 409;
       err.errorCode = 'INVALID_AUCTION_STATE';
@@ -152,7 +151,6 @@ export const updateTracking = async ({ auctionId, sellerId, carrier, trackingNum
     );
 
     if (result.rowCount === 0) {
-      await client.query('ROLLBACK');
       const err = new Error('Tracking cannot be updated at this time');
       err.statusCode = 409;
       err.errorCode = 'TRACKING_UPDATE_FAILED';

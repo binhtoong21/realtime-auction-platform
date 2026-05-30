@@ -13,6 +13,9 @@ import optionalAuth from '../middleware/optionalAuth.js';
 import { getAuctionsSchema, getAuctionBidsSchema, createAuctionSchema, updateAuctionSchema } from '../validations/auction.validation.js';
 import { getAuctions, getAuctionById, getAuctionBids, createAuction, updateAuction, cancelAuction, joinAuction } from '../controllers/auction.controller.js';
 
+import { handleShipAuction, handleUpdateTracking, handleGetTracking } from '../controllers/fulfillment.controller.js';
+import { shipAuctionSchema, updateTrackingSchema } from '../validations/fulfillment.validation.js';
+
 const router = Router();
 
 // Read routes (Public or Guest allowed)
@@ -68,9 +71,6 @@ router.post('/:id/second-chance/accept', requireAuth, handleAcceptSecondChance);
 router.post('/:id/second-chance/decline', requireAuth, handleDeclineSecondChance);
 
 // Fulfillment — Seller shipment & tracking
-import { handleShipAuction, handleUpdateTracking, handleGetTracking } from '../controllers/fulfillment.controller.js';
-import { shipAuctionSchema, updateTrackingSchema } from '../validations/fulfillment.validation.js';
-
 router.post('/:id/ship', requireAuth, validate(shipAuctionSchema), handleShipAuction);
 router.patch('/:id/ship', requireAuth, validate(updateTrackingSchema), handleUpdateTracking);
 router.get('/:id/tracking', requireAuth, handleGetTracking);
