@@ -9,14 +9,12 @@ const carrierValues = Object.values(CARRIERS);
 const trackingValidator = (value, helpers) => {
   const regex = CARRIER_TRACKING_REGEX[value.carrier];
   if (regex && !regex.test(value.trackingNumber)) {
-    return helpers.error('any.custom', {
-      message: `Invalid tracking number format for carrier ${value.carrier}`,
-    });
+    return helpers.message(`Invalid tracking number format for carrier ${value.carrier}`);
   }
   return value;
 };
 
-export const shipAuctionSchema = Joi.object({
+const baseTrackingSchema = Joi.object({
   carrier: Joi.string()
     .valid(...carrierValues)
     .required()
@@ -31,17 +29,5 @@ export const shipAuctionSchema = Joi.object({
     }),
 }).custom(trackingValidator);
 
-export const updateTrackingSchema = Joi.object({
-  carrier: Joi.string()
-    .valid(...carrierValues)
-    .required()
-    .messages({
-      'any.only': `carrier must be one of: ${carrierValues.join(', ')}`,
-    }),
-  trackingNumber: Joi.string()
-    .trim()
-    .required()
-    .messages({
-      'string.empty': 'trackingNumber is required',
-    }),
-}).custom(trackingValidator);
+export const shipAuctionSchema = baseTrackingSchema;
+export const updateTrackingSchema = baseTrackingSchema;

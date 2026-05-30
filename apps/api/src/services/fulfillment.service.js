@@ -1,6 +1,6 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
-import { CARRIER_TRACKING_URLS } from '@auction/shared-constants';
+import { CARRIER_TRACKING_URLS, EventNames } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
 
 /**
@@ -94,7 +94,7 @@ export const shipAuction = async ({ auctionId, sellerId, carrier, trackingNumber
 
   try {
     if (buyerId) {
-      emitToUser(buyerId, 'auction:shipped', {
+      emitToUser(buyerId, EventNames.AUCTION_SHIPPED, {
         auctionId,
         carrier,
         trackingNumber,
@@ -104,7 +104,7 @@ export const shipAuction = async ({ auctionId, sellerId, carrier, trackingNumber
       });
     }
 
-    emitToUser(sellerId, 'auction:shipped', {
+    emitToUser(sellerId, EventNames.AUCTION_SHIPPED, {
       auctionId,
       status: 'shipped',
     });
@@ -184,7 +184,7 @@ export const updateTracking = async ({ auctionId, sellerId, carrier, trackingNum
 
   try {
     if (buyerId) {
-      emitToUser(buyerId, 'auction:tracking-updated', {
+      emitToUser(buyerId, EventNames.AUCTION_TRACKING_UPDATED, {
         auctionId,
         carrier,
         trackingNumber,
