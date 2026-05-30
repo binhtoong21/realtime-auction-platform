@@ -7,6 +7,7 @@ import {
   scheduleGracePeriodExpiry,
 } from '../jobs/queue.js';
 import { emitToUser } from './socket.service.js';
+import { EventNames } from '@auction/shared-constants';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
 const SHIPPING_DEADLINE_DAYS = 5;
@@ -380,7 +381,7 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     // Isolate side effects
     try {
       await scheduleEmergencyCapture(paymentId, payment.auction_id);
-      await emitToUser(buyerId, 'payment:status', {
+      await emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
         auctionId: payment.auction_id,
         status: 'authorized',
         amount: Number(payment.amount)

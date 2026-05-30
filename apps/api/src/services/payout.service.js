@@ -3,6 +3,7 @@ import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './payment.service.js';
 import { emitToUser } from './socket.service.js';
+import { EventNames } from '@auction/shared-constants';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
 
@@ -151,7 +152,7 @@ export const createPayout = async (paymentId) => {
     if (isPermanent) {
       // Account disabled/restricted — notify seller, don't retry
       try {
-        await emitToUser(payment.seller_id, 'payment:status', {
+        await emitToUser(payment.seller_id, EventNames.PAYMENT_STATUS, {
           auctionId: payment.auction_id,
           status: 'payout_blocked',
           message: 'Payout failed. Please check your Stripe Connect account settings.',
@@ -231,7 +232,7 @@ export const createPayout = async (paymentId) => {
   // 9. Notifications (isolated side effects)
   try {
     // WS notification (best-effort, seller may be offline)
-    await emitToUser(payment.seller_id, 'payment:status', {
+    await emitToUser(payment.seller_id, EventNames.PAYMENT_STATUS, {
       auctionId: payment.auction_id,
       status: 'transferred',
       amount: grossAmount,
