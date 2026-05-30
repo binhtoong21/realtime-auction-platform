@@ -67,4 +67,12 @@ router.post(
 router.post('/:id/second-chance/accept', requireAuth, handleAcceptSecondChance);
 router.post('/:id/second-chance/decline', requireAuth, handleDeclineSecondChance);
 
+// Fulfillment — Seller shipment & tracking
+import { handleShipAuction, handleUpdateTracking, handleGetTracking } from '../controllers/fulfillment.controller.js';
+import { shipAuctionSchema, updateTrackingSchema } from '../validations/fulfillment.validation.js';
+
+router.post('/:id/ship', requireAuth, validate(shipAuctionSchema), handleShipAuction);
+router.patch('/:id/ship', requireAuth, validate(updateTrackingSchema), handleUpdateTracking);
+router.get('/:id/tracking', requireAuth, handleGetTracking);
+
 export default router;

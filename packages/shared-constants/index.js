@@ -26,7 +26,10 @@ export const EventNames = {
     AUCTION_STARTED: 'auction:started',
     AUCTION_EXTENDED: 'auction:extended',
     AUCTION_ENDED: 'auction:ended',
-    AUCTION_CATCHUP: 'auction:catchup'
+    AUCTION_CATCHUP: 'auction:catchup',
+    AUCTION_SHIPPED: 'auction:shipped',
+    AUCTION_TRACKING_UPDATED: 'auction:tracking-updated',
+    PAYMENT_STATUS: 'payment:status',
 };
 
 export const ErrorCodes = {
