@@ -13,8 +13,8 @@ import optionalAuth from '../middleware/optionalAuth.js';
 import { getAuctionsSchema, getAuctionBidsSchema, createAuctionSchema, updateAuctionSchema } from '../validations/auction.validation.js';
 import { getAuctions, getAuctionById, getAuctionBids, createAuction, updateAuction, cancelAuction, joinAuction } from '../controllers/auction.controller.js';
 
-import { handleShipAuction, handleUpdateTracking, handleGetTracking, handleExtendShipping } from '../controllers/fulfillment.controller.js';
-import { shipAuctionSchema, updateTrackingSchema, extendShippingSchema } from '../validations/fulfillment.validation.js';
+import { handleShipAuction, handleUpdateTracking, handleGetTracking, handleExtendShipping, handleConfirmDelivery, handleExtendDelivery } from '../controllers/fulfillment.controller.js';
+import { shipAuctionSchema, updateTrackingSchema, extendShippingSchema, extendDeliverySchema } from '../validations/fulfillment.validation.js';
 
 const router = Router();
 
@@ -75,5 +75,9 @@ router.post('/:id/ship', requireAuth, validate(shipAuctionSchema), handleShipAuc
 router.patch('/:id/ship', requireAuth, validate(updateTrackingSchema), handleUpdateTracking);
 router.post('/:id/extend-shipping', requireAuth, validate(extendShippingSchema), handleExtendShipping);
 router.get('/:id/tracking', requireAuth, handleGetTracking);
+
+// Fulfillment — Buyer confirmation & extension
+router.post('/:id/confirm-delivery', requireAuth, handleConfirmDelivery);
+router.post('/:id/extend-delivery', requireAuth, validate(extendDeliverySchema), handleExtendDelivery);
 
 export default router;
