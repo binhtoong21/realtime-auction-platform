@@ -1,4 +1,4 @@
-import { shipAuction, updateTracking, getTracking } from '../services/fulfillment.service.js';
+import { shipAuction, updateTracking, getTracking, extendShipping } from '../services/fulfillment.service.js';
 
 export const handleShipAuction = async (req, res, next) => {
   try {
@@ -52,6 +52,28 @@ export const handleGetTracking = async (req, res, next) => {
     const userId = req.user.id;
 
     const result = await getTracking({ auctionId, userId });
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const handleExtendShipping = async (req, res, next) => {
+  try {
+    const { id: auctionId } = req.params;
+    const { reason } = req.body;
+    const sellerId = req.user.id;
+
+    const result = await extendShipping({
+      auctionId,
+      sellerId,
+      reason,
+      ipAddress: req.ip,
+    });
 
     res.status(200).json({
       success: true,

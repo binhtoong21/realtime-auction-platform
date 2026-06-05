@@ -2,6 +2,7 @@ import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { CARRIER_TRACKING_URLS, EventNames } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
+import { rescheduleShippingDeadline } from '../jobs/queue.js';
 
 /**
  * Write an immutable financial audit log entry.
@@ -256,5 +257,120 @@ export const getTracking = async ({ auctionId, userId }) => {
     deliveryDeadlineAt: auction.delivery_deadline_at,
     status: auction.status,
     isExtended: auction.delivery_extended,
+  };
+};
+
+/**
+ * Seller extends shipping deadline (+3 days). Allowed once.
+ */
+export const extendShipping = async ({ auctionId, sellerId, reason, ipAddress }) => {
+  const client = await pool.connect();
+  let updatedDeadline;
+  let buyerId;
+
+  try {
+    await client.query('BEGIN');
+
+    // 1. SELECT for precise error handling
+    const result = await client.query(
+      `SELECT status, seller_id, shipping_extended, shipping_deadline_at, winner_id
+       FROM auctions WHERE id = $1 FOR UPDATE`,
+      [auctionId]
+    );
+
+    if (result.rowCount === 0) {
+      const err = new Error('Auction not found');
+      err.statusCode = 404;
+      err.errorCode = 'AUCTION_NOT_FOUND';
+      throw err;
+    }
+
+    const auction = result.rows[0];
+
+    if (auction.seller_id !== sellerId) {
+      const err = new Error('Access denied');
+      err.statusCode = 403;
+      err.errorCode = 'FORBIDDEN';
+      throw err;
+    }
+
+    if (auction.status !== 'awaiting_ship') {
+      const err = new Error('Auction cannot be extended in its current state');
+      err.statusCode = 409;
+      err.errorCode = 'INVALID_AUCTION_STATE';
+      throw err;
+    }
+
+    if (auction.shipping_extended) {
+      const err = new Error('Shipping extension has already been used');
+      err.statusCode = 409;
+      err.errorCode = 'EXTENSION_ALREADY_USED';
+      throw err;
+    }
+
+    if (new Date(auction.shipping_deadline_at) <= new Date()) {
+      const err = new Error('Shipping deadline has already exceeded');
+      err.statusCode = 409;
+      err.errorCode = 'SHIPPING_DEADLINE_EXCEEDED';
+      throw err;
+    }
+
+    // 2. UPDATE DB
+    const updateResult = await client.query(
+      `UPDATE auctions SET
+         shipping_deadline_at = shipping_deadline_at + INTERVAL '3 days',
+         shipping_extended = true,
+         updated_at = NOW()
+       WHERE id = $1 AND shipping_extended = false
+       RETURNING shipping_deadline_at, winner_id`,
+      [auctionId]
+    );
+
+    if (updateResult.rowCount === 0) {
+      const err = new Error('Failed to update auction or extension already used');
+      err.statusCode = 409;
+      err.errorCode = 'EXTENSION_ALREADY_USED';
+      throw err;
+    }
+
+    updatedDeadline = updateResult.rows[0].shipping_deadline_at;
+    buyerId = updateResult.rows[0].winner_id;
+
+    // 3. Write Audit Log
+    await writeAuditLog({
+      referenceId: auctionId,
+      referenceType: 'auction',
+      action: 'shipping_extended',
+      deltaState: { reason },
+      actorId: sellerId,
+      ipAddress,
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore rollback error */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // 4. Post-transaction
+  try {
+    await rescheduleShippingDeadline(auctionId, updatedDeadline);
+
+    if (buyerId) {
+      emitToUser(buyerId, EventNames.AUCTION_SHIPPING_EXTENDED, {
+        auctionId,
+        reason,
+        newShippingDeadlineAt: updatedDeadline,
+      });
+    }
+  } catch (postErr) {
+    console.error(`[Fulfillment] Post-transaction failed for extendShipping ${auctionId}:`, postErr);
+  }
+
+  return {
+    newShippingDeadlineAt: updatedDeadline,
+    extensionUsed: true,
   };
 };

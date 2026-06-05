@@ -43,3 +43,14 @@ export const updateTrackingSchema = Joi.object({
       'string.empty': 'trackingNumber is required',
     }),
 }).custom(trackingValidator);
+
+export const extendShippingSchema = Joi.object({
+  reason: Joi.string()
+    .trim()
+    .required()
+    .min(10)
+    .messages({
+      'string.empty': 'reason is required',
+      'string.min': 'reason must be at least 10 characters',
+    }),
+});

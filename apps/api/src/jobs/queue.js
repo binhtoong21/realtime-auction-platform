@@ -202,3 +202,38 @@ export const startPaymentSweeper = async () => {
   });
   console.log('[Queue] Payment sweeper registered (every 10 min)');
 };
+
+// ============================================================
+// Fulfillment Lifecycle Queue
+// ============================================================
+
+export const fulfillmentQueue = new Queue('fulfillment', {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000
+    },
+    removeOnComplete: 100,
+    removeOnFail: 200
+  }
+});
+
+export const rescheduleShippingDeadline = async (auctionId, newDeadlineAt) => {
+  const deadlineJobId = `shipping-deadline-${auctionId}`;
+  const existingDeadline = await fulfillmentQueue.getJob(deadlineJobId);
+  if (existingDeadline) await existingDeadline.remove();
+
+  const delayDeadline = Math.max(0, new Date(newDeadlineAt) - Date.now());
+  await fulfillmentQueue.add('shipping-deadline', { auctionId }, { jobId: deadlineJobId, delay: delayDeadline });
+
+  const reminderJobId = `shipping-reminder-${auctionId}`;
+  const existingReminder = await fulfillmentQueue.getJob(reminderJobId);
+  if (existingReminder) await existingReminder.remove();
+
+  const delayReminder = Math.max(0, new Date(newDeadlineAt) - (2 * 24 * 60 * 60 * 1000) - Date.now());
+  await fulfillmentQueue.add('shipping-reminder', { auctionId }, { jobId: reminderJobId, delay: delayReminder });
+
+  console.log(`[Queue] Rescheduled shipping deadline/reminder for auction ${auctionId}`);
+};
