@@ -242,10 +242,10 @@ export const removeDeliveryJobs = async (auctionId) => {
   const autoConfirmJob = await fulfillmentQueue.getJob(`delivery-auto-confirm-${auctionId}`);
   if (autoConfirmJob) await autoConfirmJob.remove();
 
-  const reminder10Job = await fulfillmentQueue.getJob(`delivery-reminder-10-${auctionId}`);
+  const reminder10Job = await fulfillmentQueue.getJob(`delivery-reminder-day10-${auctionId}`);
   if (reminder10Job) await reminder10Job.remove();
 
-  const reminder13Job = await fulfillmentQueue.getJob(`delivery-reminder-13-${auctionId}`);
+  const reminder13Job = await fulfillmentQueue.getJob(`delivery-reminder-day13-${auctionId}`);
   if (reminder13Job) await reminder13Job.remove();
 
   console.log(`[Queue] Removed delivery jobs for auction ${auctionId}`);
@@ -261,11 +261,11 @@ export const rescheduleDeliveryJobs = async (auctionId, newDeadlineAt, originalS
 
   // Reminder Day 10 (from shipped_at + 7 days extension)
   const delay10 = Math.max(0, extendedBase + (10 * 24 * 60 * 60 * 1000) - Date.now());
-  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day10' }, { jobId: `delivery-reminder-10-${auctionId}`, delay: delay10 });
+  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day10' }, { jobId: `delivery-reminder-day10-${auctionId}`, delay: delay10 });
 
   // Reminder Day 13 (from shipped_at + 7 days extension)
   const delay13 = Math.max(0, extendedBase + (13 * 24 * 60 * 60 * 1000) - Date.now());
-  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day13' }, { jobId: `delivery-reminder-13-${auctionId}`, delay: delay13 });
+  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day13' }, { jobId: `delivery-reminder-day13-${auctionId}`, delay: delay13 });
 
   console.log(`[Queue] Rescheduled delivery jobs for auction ${auctionId}`);
 };
