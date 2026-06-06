@@ -419,14 +419,16 @@ export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
     console.error(`[Fulfillment] Stripe capture failed for payment ${paymentId}:`, stripeErr.message);
     
     // Fallback: Sweeper will retry later. Emit WS to both parties.
-    await emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
-      status: 'capture_pending',
-      message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
-    });
-    await emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
-      status: 'capture_pending',
-      message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
-    });
+    Promise.allSettled([
+      emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
+        status: 'capture_pending',
+        message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
+      }),
+      emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
+        status: 'capture_pending',
+        message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
+      })
+    ]).catch(e => console.error('[Fulfillment] WS emit fallback failed:', e));
 
     return { captured: false, message: 'Đang xử lý...' };
   }
@@ -441,10 +443,14 @@ export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
       [paymentId]
     );
 
-    await client.query(
-      `UPDATE auctions SET status = 'completed', delivered_at = NOW(), updated_at = NOW() WHERE id = $1`,
+    const auctionUpdate = await client.query(
+      `UPDATE auctions SET status = 'completed', delivered_at = NOW(), updated_at = NOW() WHERE id = $1 AND status = 'shipped'`,
       [auctionId]
     );
+
+    if (auctionUpdate.rowCount === 0) {
+      throw new Error(`Auction state changed before completion for auction ${auctionId}`);
+    }
 
     await writeAuditLog({
       referenceId: paymentId,
@@ -466,12 +472,19 @@ export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
 
   // STEP 4: Post-transaction Side Effects
   try {
-    await schedulePayoutJob(paymentId, auctionId);
-    await removeDeliveryJobs(auctionId);
-
-    await emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
-      status: 'captured',
-      message: 'Buyer đã xác nhận nhận hàng. Tiền đang được chuyển.',
+    Promise.allSettled([
+      schedulePayoutJob(paymentId, auctionId),
+      removeDeliveryJobs(auctionId),
+      emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
+        status: 'captured',
+        message: 'Buyer đã xác nhận nhận hàng. Tiền đang được chuyển.',
+      })
+    ]).then(results => {
+      results.forEach((res, index) => {
+        if (res.status === 'rejected') {
+          console.error(`[Fulfillment] confirmDelivery side-effect [${index}] failed:`, res.reason);
+        }
+      });
     });
   } catch (sideErr) {
     console.error(`[Fulfillment] Side effects failed for confirmDelivery ${auctionId}:`, sideErr);
@@ -587,12 +600,19 @@ export const extendDelivery = async ({ auctionId, buyerId, reason, ipAddress }) 
 
   // 4. Post-transaction Side Effects
   try {
-    await rescheduleDeliveryJobs(auctionId, updatedDeadline, originalShippedAt);
-
-    await emitToUser(sellerId, EventNames.AUCTION_DELIVERY_EXTENDED, {
-      auctionId,
-      reason,
-      newDeliveryDeadlineAt: updatedDeadline,
+    Promise.allSettled([
+      rescheduleDeliveryJobs(auctionId, updatedDeadline, originalShippedAt),
+      emitToUser(sellerId, EventNames.AUCTION_DELIVERY_EXTENDED, {
+        auctionId,
+        reason,
+        newDeliveryDeadlineAt: updatedDeadline,
+      })
+    ]).then(results => {
+      results.forEach((res, index) => {
+        if (res.status === 'rejected') {
+          console.error(`[Fulfillment] extendDelivery side-effect [${index}] failed:`, res.reason);
+        }
+      });
     });
   } catch (postErr) {
     console.error(`[Fulfillment] Post-transaction failed for extendDelivery ${auctionId}:`, postErr);
