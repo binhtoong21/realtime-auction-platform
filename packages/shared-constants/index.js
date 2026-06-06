@@ -30,7 +30,27 @@ export const EventNames = {
     AUCTION_SHIPPED: 'auction:shipped',
     AUCTION_TRACKING_UPDATED: 'auction:tracking-updated',
     PAYMENT_STATUS: 'payment:status',
+    AUCTION_SHIPPING_EXTENDED: 'auction:shipping-extended',
+    AUCTION_DELIVERY_EXTENDED: 'auction:delivery-extended',
+    SHIPPING_REMINDER: 'shipping:reminder',
+    DELIVERY_REMINDER: 'delivery:reminder',
+    SHIPPING_OVERDUE: 'shipping:overdue',
+    DELIVERY_AUTO_CONFIRMED: 'delivery:auto-confirmed',
 };
+
+export const DisputeReason = {
+    ITEM_NOT_RECEIVED: 'ITEM_NOT_RECEIVED',
+    ITEM_DAMAGED: 'ITEM_DAMAGED',
+    ITEM_NOT_AS_DESCRIBED: 'ITEM_NOT_AS_DESCRIBED',
+    COUNTERFEIT_ITEM: 'COUNTERFEIT_ITEM',
+};
+
+export const DISPUTE_COOLDOWN_DAYS = 7;
+
+export const COOLDOWN_REASONS = [
+    DisputeReason.ITEM_NOT_RECEIVED,
+    DisputeReason.ITEM_DAMAGED,
+];
 
 export const ErrorCodes = {
     OUTBID: 'ERR_OUTBID',

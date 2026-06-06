@@ -242,10 +242,10 @@ export const removeDeliveryJobs = async (auctionId) => {
   const autoConfirmJob = await fulfillmentQueue.getJob(`delivery-auto-confirm-${auctionId}`);
   if (autoConfirmJob) await autoConfirmJob.remove();
 
-  const reminder10Job = await fulfillmentQueue.getJob(`delivery-reminder-10-${auctionId}`);
+  const reminder10Job = await fulfillmentQueue.getJob(`delivery-reminder-day10-${auctionId}`);
   if (reminder10Job) await reminder10Job.remove();
 
-  const reminder13Job = await fulfillmentQueue.getJob(`delivery-reminder-13-${auctionId}`);
+  const reminder13Job = await fulfillmentQueue.getJob(`delivery-reminder-day13-${auctionId}`);
   if (reminder13Job) await reminder13Job.remove();
 
   console.log(`[Queue] Removed delivery jobs for auction ${auctionId}`);
@@ -261,11 +261,43 @@ export const rescheduleDeliveryJobs = async (auctionId, newDeadlineAt, originalS
 
   // Reminder Day 10 (from shipped_at + 7 days extension)
   const delay10 = Math.max(0, extendedBase + (10 * 24 * 60 * 60 * 1000) - Date.now());
-  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day10' }, { jobId: `delivery-reminder-10-${auctionId}`, delay: delay10 });
+  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day10' }, { jobId: `delivery-reminder-day10-${auctionId}`, delay: delay10 });
 
   // Reminder Day 13 (from shipped_at + 7 days extension)
   const delay13 = Math.max(0, extendedBase + (13 * 24 * 60 * 60 * 1000) - Date.now());
-  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day13' }, { jobId: `delivery-reminder-13-${auctionId}`, delay: delay13 });
+  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day13' }, { jobId: `delivery-reminder-day13-${auctionId}`, delay: delay13 });
 
   console.log(`[Queue] Rescheduled delivery jobs for auction ${auctionId}`);
 };
+
+export const startFulfillmentSweeper = async () => {
+  await fulfillmentQueue.add('fulfillment-sweeper', {}, {
+    repeat: { every: 15 * 60 * 1000 },
+  });
+  console.log('[Queue] Fulfillment sweeper registered (every 15 min)');
+};
+
+export async function ensureJobScheduled(jobName, auctionId, runAt, extraData = {}) {
+  const jobId = extraData.type ? `${jobName}-${extraData.type}-${auctionId}` : `${jobName}-${auctionId}`;
+  const existing = await fulfillmentQueue.getJob(jobId);
+  
+  if (existing) {
+    const state = await existing.getState();
+    const activeStates = ['active', 'waiting', 'delayed', 'prioritized', 'paused'];
+    if (activeStates.includes(state)) {
+      return; // Already scheduled and active
+    }
+    // If it's completed/failed/removed, we remove the old instance before re-adding
+    try { await existing.remove(); } catch (err) { /* ignore */ }
+  }
+
+  const delay = Math.max(0, new Date(runAt) - Date.now());
+  try {
+    await fulfillmentQueue.add(jobName, { auctionId, ...extraData }, { jobId, delay });
+  } catch (err) {
+    // BullMQ v5 throws on duplicate jobId — safe to ignore (race between sweeper instances)
+    if (err.message?.includes('Job already exists')) return;
+    throw err;
+  }
+}
+
