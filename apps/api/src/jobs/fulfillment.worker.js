@@ -138,7 +138,7 @@ async function processShippingDeadline(auctionId) {
         [auctionId]
       );
       if (auctionUpdate.rowCount === 0) {
-        console.warn(`[FulfillmentWorker] Auction ${auctionId} was not awaiting_ship during DB finalize.`);
+        throw new Error(`State mismatch: Auction ${auctionId} was not awaiting_ship during shipping-deadline DB finalize.`);
       }
 
       await writeAuditLog({

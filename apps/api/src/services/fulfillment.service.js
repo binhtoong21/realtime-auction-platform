@@ -588,16 +588,25 @@ export const autoConfirmDelivery = async (auctionId) => {
   try {
     await client2.query('BEGIN');
 
-    await client2.query(
-      `UPDATE payments SET status = 'captured', capture_attempts = capture_attempts + 1, updated_at = NOW() WHERE id = $1`,
+    const paymentUpdate = await client2.query(
+      `UPDATE payments SET status = 'captured', capture_attempts = capture_attempts + 1, updated_at = NOW() 
+       WHERE id = $1 AND status = 'capture_pending'`,
       [paymentId]
     );
 
-    await client2.query(
+    if (paymentUpdate.rowCount === 0) {
+      throw new Error(`State mismatch: Payment ${paymentId} was not capture_pending during DB finalize.`);
+    }
+
+    const auctionUpdate = await client2.query(
       `UPDATE auctions SET status = 'completed', delivered_at = NOW(), updated_at = NOW() 
        WHERE id = $1 AND status = 'shipped' AND delivery_deadline_at <= NOW()`,
       [auctionId]
     );
+
+    if (auctionUpdate.rowCount === 0) {
+      throw new Error(`State mismatch: Auction ${auctionId} was not shipped during DB finalize.`);
+    }
 
     await writeAuditLog({
       referenceId: paymentId,
