@@ -280,7 +280,16 @@ export const startFulfillmentSweeper = async () => {
 export async function ensureJobScheduled(jobName, auctionId, runAt, extraData = {}) {
   const jobId = extraData.type ? `${jobName}-${extraData.type}-${auctionId}` : `${jobName}-${auctionId}`;
   const existing = await fulfillmentQueue.getJob(jobId);
-  if (existing) return; // Already scheduled
+  
+  if (existing) {
+    const state = await existing.getState();
+    const activeStates = ['active', 'waiting', 'delayed', 'prioritized', 'paused'];
+    if (activeStates.includes(state)) {
+      return; // Already scheduled and active
+    }
+    // If it's completed/failed/removed, we remove the old instance before re-adding
+    try { await existing.remove(); } catch (err) { /* ignore */ }
+  }
 
   const delay = Math.max(0, new Date(runAt) - Date.now());
   try {

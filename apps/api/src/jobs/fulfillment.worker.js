@@ -71,6 +71,8 @@ async function processShippingDeadline(auctionId) {
        WHERE p.auction_id = a.id
          AND p.auction_id = $1
          AND p.status = 'authorized'
+         AND a.status = 'awaiting_ship'
+         AND a.shipping_deadline_at <= NOW()
        RETURNING p.id, p.stripe_pi_id, p.seller_id, p.buyer_id`,
       [auctionId]
     );
@@ -115,8 +117,8 @@ async function processShippingDeadline(auctionId) {
       console.warn(`[FulfillmentWorker] Stripe PI already expired/canceled, proceeding with DB cleanup for ${auctionId}`);
       stripeCanceled = true;
     } else {
-      // Transient error, leave in 'releasing' for sweeper retry
-      return;
+      // Transient error, let BullMQ retry
+      throw stripeErr;
     }
   }
 
@@ -131,10 +133,13 @@ async function processShippingDeadline(auctionId) {
         [paymentId]
       );
 
-      await client2.query(
-        `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
+      const auctionUpdate = await client2.query(
+        `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1 AND status = 'awaiting_ship'`,
         [auctionId]
       );
+      if (auctionUpdate.rowCount === 0) {
+        console.warn(`[FulfillmentWorker] Auction ${auctionId} was not awaiting_ship during DB finalize.`);
+      }
 
       await writeAuditLog({
         referenceId: paymentId,

@@ -18,7 +18,10 @@ const io = initSocket(server);
 console.log('🔌 Socket.IO initialized');
 
 // Graceful Shutdown Logic
+let isShuttingDown = false;
 const shutdown = async (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   console.log(`\n[${signal}] Received. Shutting down gracefully...`);
   
   // 1. Close Socket.IO connections

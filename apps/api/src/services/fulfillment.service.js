@@ -516,6 +516,7 @@ export const autoConfirmDelivery = async (auctionId) => {
          AND p.auction_id = $1
          AND p.status = 'authorized'
          AND a.status = 'shipped'
+         AND a.delivery_deadline_at <= NOW()
        RETURNING p.id, p.stripe_pi_id, p.seller_id, p.buyer_id, p.amount`,
       [auctionId]
     );
@@ -593,7 +594,8 @@ export const autoConfirmDelivery = async (auctionId) => {
     );
 
     await client2.query(
-      `UPDATE auctions SET status = 'completed', updated_at = NOW() WHERE id = $1`,
+      `UPDATE auctions SET status = 'completed', delivered_at = NOW(), updated_at = NOW() 
+       WHERE id = $1 AND status = 'shipped' AND delivery_deadline_at <= NOW()`,
       [auctionId]
     );
 
