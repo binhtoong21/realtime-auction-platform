@@ -202,3 +202,70 @@ export const startPaymentSweeper = async () => {
   });
   console.log('[Queue] Payment sweeper registered (every 10 min)');
 };
+
+// ============================================================
+// Fulfillment Lifecycle Queue
+// ============================================================
+
+export const fulfillmentQueue = new Queue('fulfillment', {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000
+    },
+    removeOnComplete: 100,
+    removeOnFail: 200
+  }
+});
+
+export const rescheduleShippingDeadline = async (auctionId, newDeadlineAt) => {
+  const deadlineJobId = `shipping-deadline-${auctionId}`;
+  const existingDeadline = await fulfillmentQueue.getJob(deadlineJobId);
+  if (existingDeadline) await existingDeadline.remove();
+
+  const delayDeadline = Math.max(0, new Date(newDeadlineAt) - Date.now());
+  await fulfillmentQueue.add('shipping-deadline', { auctionId }, { jobId: deadlineJobId, delay: delayDeadline });
+
+  const reminderJobId = `shipping-reminder-${auctionId}`;
+  const existingReminder = await fulfillmentQueue.getJob(reminderJobId);
+  if (existingReminder) await existingReminder.remove();
+
+  const delayReminder = Math.max(0, new Date(newDeadlineAt) - (2 * 24 * 60 * 60 * 1000) - Date.now());
+  await fulfillmentQueue.add('shipping-reminder', { auctionId }, { jobId: reminderJobId, delay: delayReminder });
+
+  console.log(`[Queue] Rescheduled shipping deadline/reminder for auction ${auctionId}`);
+};
+
+export const removeDeliveryJobs = async (auctionId) => {
+  const autoConfirmJob = await fulfillmentQueue.getJob(`delivery-auto-confirm-${auctionId}`);
+  if (autoConfirmJob) await autoConfirmJob.remove();
+
+  const reminder10Job = await fulfillmentQueue.getJob(`delivery-reminder-10-${auctionId}`);
+  if (reminder10Job) await reminder10Job.remove();
+
+  const reminder13Job = await fulfillmentQueue.getJob(`delivery-reminder-13-${auctionId}`);
+  if (reminder13Job) await reminder13Job.remove();
+
+  console.log(`[Queue] Removed delivery jobs for auction ${auctionId}`);
+};
+
+export const rescheduleDeliveryJobs = async (auctionId, newDeadlineAt, originalShippedAt) => {
+  await removeDeliveryJobs(auctionId);
+
+  const delayAutoConfirm = Math.max(0, new Date(newDeadlineAt) - Date.now());
+  await fulfillmentQueue.add('delivery-auto-confirm', { auctionId }, { jobId: `delivery-auto-confirm-${auctionId}`, delay: delayAutoConfirm });
+
+  const extendedBase = new Date(originalShippedAt).getTime() + (7 * 24 * 60 * 60 * 1000);
+
+  // Reminder Day 10 (from shipped_at + 7 days extension)
+  const delay10 = Math.max(0, extendedBase + (10 * 24 * 60 * 60 * 1000) - Date.now());
+  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day10' }, { jobId: `delivery-reminder-10-${auctionId}`, delay: delay10 });
+
+  // Reminder Day 13 (from shipped_at + 7 days extension)
+  const delay13 = Math.max(0, extendedBase + (13 * 24 * 60 * 60 * 1000) - Date.now());
+  await fulfillmentQueue.add('delivery-reminder', { auctionId, type: 'day13' }, { jobId: `delivery-reminder-13-${auctionId}`, delay: delay13 });
+
+  console.log(`[Queue] Rescheduled delivery jobs for auction ${auctionId}`);
+};

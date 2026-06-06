@@ -2,6 +2,8 @@ import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { CARRIER_TRACKING_URLS, EventNames } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
+import stripe from '../config/stripe.js';
+import { rescheduleShippingDeadline, schedulePayoutJob, removeDeliveryJobs, rescheduleDeliveryJobs } from '../jobs/queue.js';
 
 /**
  * Write an immutable financial audit log entry.
@@ -256,5 +258,368 @@ export const getTracking = async ({ auctionId, userId }) => {
     deliveryDeadlineAt: auction.delivery_deadline_at,
     status: auction.status,
     isExtended: auction.delivery_extended,
+  };
+};
+
+/**
+ * Seller extends shipping deadline (+3 days). Allowed once.
+ */
+export const extendShipping = async ({ auctionId, sellerId, reason, ipAddress }) => {
+  const client = await pool.connect();
+  let updatedDeadline;
+  let buyerId;
+
+  try {
+    await client.query('BEGIN');
+
+    // 1. SELECT for precise error handling
+    const result = await client.query(
+      `SELECT status, seller_id, shipping_extended, shipping_deadline_at, winner_id
+       FROM auctions WHERE id = $1 FOR UPDATE`,
+      [auctionId]
+    );
+
+    if (result.rowCount === 0) {
+      const err = new Error('Auction not found');
+      err.statusCode = 404;
+      err.errorCode = 'AUCTION_NOT_FOUND';
+      throw err;
+    }
+
+    const auction = result.rows[0];
+
+    if (auction.seller_id !== sellerId) {
+      const err = new Error('Access denied');
+      err.statusCode = 403;
+      err.errorCode = 'FORBIDDEN';
+      throw err;
+    }
+
+    if (auction.status !== 'awaiting_ship') {
+      const err = new Error('Auction cannot be extended in its current state');
+      err.statusCode = 409;
+      err.errorCode = 'INVALID_AUCTION_STATE';
+      throw err;
+    }
+
+    if (auction.shipping_extended) {
+      const err = new Error('Shipping extension has already been used');
+      err.statusCode = 409;
+      err.errorCode = 'EXTENSION_ALREADY_USED';
+      throw err;
+    }
+
+    if (new Date(auction.shipping_deadline_at) <= new Date()) {
+      const err = new Error('Shipping deadline has already exceeded');
+      err.statusCode = 409;
+      err.errorCode = 'SHIPPING_DEADLINE_EXCEEDED';
+      throw err;
+    }
+
+    // 2. UPDATE DB
+    const updateResult = await client.query(
+      `UPDATE auctions SET
+         shipping_deadline_at = shipping_deadline_at + INTERVAL '3 days',
+         shipping_extended = true,
+         updated_at = NOW()
+       WHERE id = $1 AND shipping_extended = false
+       RETURNING shipping_deadline_at, winner_id`,
+      [auctionId]
+    );
+
+    if (updateResult.rowCount === 0) {
+      const err = new Error('Failed to update auction or extension already used');
+      err.statusCode = 409;
+      err.errorCode = 'EXTENSION_ALREADY_USED';
+      throw err;
+    }
+
+    updatedDeadline = updateResult.rows[0].shipping_deadline_at;
+    buyerId = updateResult.rows[0].winner_id;
+
+    // 3. Write Audit Log
+    await writeAuditLog({
+      referenceId: auctionId,
+      referenceType: 'auction',
+      action: 'shipping_extended',
+      deltaState: { reason },
+      actorId: sellerId,
+      ipAddress,
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore rollback error */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // 4. Post-transaction
+  try {
+    await rescheduleShippingDeadline(auctionId, updatedDeadline);
+
+    if (buyerId) {
+      emitToUser(buyerId, EventNames.AUCTION_SHIPPING_EXTENDED, {
+        auctionId,
+        reason,
+        newShippingDeadlineAt: updatedDeadline,
+      });
+    }
+  } catch (postErr) {
+    console.error(`[Fulfillment] Post-transaction failed for extendShipping ${auctionId}:`, postErr);
+  }
+
+  return {
+    newShippingDeadlineAt: updatedDeadline,
+    extensionUsed: true,
+  };
+};
+
+/**
+ * Buyer confirms delivery of the item.
+ * Triggers Stripe capture and sets auction to completed.
+ */
+export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
+  let paymentId;
+  let stripePiId;
+  let amount;
+  let sellerId;
+
+  // STEP 1: DB Lock (outside of main transaction to avoid holding lock during I/O)
+  const lockResult = await pool.query(
+    `UPDATE payments p
+     SET status = 'capture_pending', updated_at = NOW()
+     FROM auctions a
+     WHERE p.auction_id = a.id
+       AND p.auction_id = $1
+       AND p.buyer_id = $2
+       AND p.status = 'authorized'
+       AND a.status = 'shipped'
+     RETURNING p.id, p.stripe_pi_id, p.seller_id, p.amount`,
+    [auctionId, buyerId]
+  );
+
+  if (lockResult.rowCount === 0) {
+    const err = new Error('Invalid state for confirming delivery or already processed');
+    err.statusCode = 409;
+    err.errorCode = 'INVALID_PAYMENT_STATE';
+    throw err;
+  }
+
+  paymentId = lockResult.rows[0].id;
+  stripePiId = lockResult.rows[0].stripe_pi_id;
+  sellerId = lockResult.rows[0].seller_id;
+  amount = lockResult.rows[0].amount;
+
+  // STEP 2: Stripe Capture (I/O call)
+  try {
+    await stripe.paymentIntents.capture(stripePiId);
+  } catch (stripeErr) {
+    console.error(`[Fulfillment] Stripe capture failed for payment ${paymentId}:`, stripeErr.message);
+    
+    // Fallback: Sweeper will retry later. Emit WS to both parties.
+    Promise.allSettled([
+      emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
+        status: 'capture_pending',
+        message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
+      }),
+      emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
+        status: 'capture_pending',
+        message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
+      })
+    ]).catch(e => console.error('[Fulfillment] WS emit fallback failed:', e));
+
+    return { captured: false, message: 'Đang xử lý...' };
+  }
+
+  // STEP 3: DB Transaction (Commit)
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1`,
+      [paymentId]
+    );
+
+    const auctionUpdate = await client.query(
+      `UPDATE auctions SET status = 'completed', delivered_at = NOW(), updated_at = NOW() WHERE id = $1 AND status = 'shipped'`,
+      [auctionId]
+    );
+
+    if (auctionUpdate.rowCount === 0) {
+      throw new Error(`Auction state changed before completion for auction ${auctionId}`);
+    }
+
+    await writeAuditLog({
+      referenceId: paymentId,
+      referenceType: 'payment',
+      action: 'delivery_confirmed_capture',
+      deltaState: { amount, stripe_pi_id: stripePiId },
+      actorId: buyerId,
+      ipAddress,
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (dbErr) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+    console.error(`[Fulfillment] DB update failed after capture for payment ${paymentId}`, dbErr);
+    throw dbErr;
+  } finally {
+    client.release();
+  }
+
+  // STEP 4: Post-transaction Side Effects
+  try {
+    Promise.allSettled([
+      schedulePayoutJob(paymentId, auctionId),
+      removeDeliveryJobs(auctionId),
+      emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
+        status: 'captured',
+        message: 'Buyer đã xác nhận nhận hàng. Tiền đang được chuyển.',
+      })
+    ]).then(results => {
+      results.forEach((res, index) => {
+        if (res.status === 'rejected') {
+          console.error(`[Fulfillment] confirmDelivery side-effect [${index}] failed:`, res.reason);
+        }
+      });
+    });
+  } catch (sideErr) {
+    console.error(`[Fulfillment] Side effects failed for confirmDelivery ${auctionId}:`, sideErr);
+  }
+
+  return { captured: true };
+};
+
+/**
+ * Buyer extends delivery deadline (+7 days). Allowed once.
+ */
+export const extendDelivery = async ({ auctionId, buyerId, reason, ipAddress }) => {
+  const client = await pool.connect();
+  let updatedDeadline;
+  let originalShippedAt;
+  let sellerId;
+
+  try {
+    await client.query('BEGIN');
+
+    // 1. SELECT FOR UPDATE to perform detailed guard checks
+    const checkResult = await client.query(
+      `SELECT shipped_at, delivery_deadline_at, status, winner_id, delivery_extended, seller_id
+       FROM auctions WHERE id = $1 FOR UPDATE`,
+      [auctionId]
+    );
+
+    if (checkResult.rowCount === 0) {
+      const err = new Error('Auction not found');
+      err.statusCode = 404;
+      err.errorCode = 'AUCTION_NOT_FOUND';
+      throw err;
+    }
+
+    const auction = checkResult.rows[0];
+
+    if (auction.winner_id !== buyerId) {
+      const err = new Error('Access denied');
+      err.statusCode = 403;
+      err.errorCode = 'FORBIDDEN';
+      throw err;
+    }
+
+    if (auction.status !== 'shipped') {
+      const err = new Error('Auction cannot be extended in its current state');
+      err.statusCode = 409;
+      err.errorCode = 'INVALID_AUCTION_STATE';
+      throw err;
+    }
+
+    if (auction.delivery_extended) {
+      const err = new Error('Delivery extension has already been used');
+      err.statusCode = 409;
+      err.errorCode = 'EXTENSION_ALREADY_USED';
+      throw err;
+    }
+
+    if (new Date(auction.delivery_deadline_at) <= new Date()) {
+      const err = new Error('Delivery deadline has already exceeded');
+      err.statusCode = 409;
+      err.errorCode = 'DELIVERY_DEADLINE_EXCEEDED';
+      throw err;
+    }
+
+    sellerId = auction.seller_id;
+
+    // 2. Atomic UPDATE with conditions mapped
+    const updateResult = await client.query(
+      `UPDATE auctions SET
+         delivery_deadline_at = delivery_deadline_at + INTERVAL '7 days',
+         delivery_extended = true,
+         updated_at = NOW()
+       WHERE id = $1
+         AND status = 'shipped'
+         AND winner_id = $2
+         AND delivery_extended = false
+         AND delivery_deadline_at > NOW()
+       RETURNING delivery_deadline_at, shipped_at`,
+      [auctionId, buyerId]
+    );
+
+    if (updateResult.rowCount === 0) {
+      const err = new Error('Failed to update auction or extension already used');
+      err.statusCode = 409;
+      err.errorCode = 'EXTENSION_FAILED';
+      throw err;
+    }
+
+    updatedDeadline = updateResult.rows[0].delivery_deadline_at;
+    originalShippedAt = updateResult.rows[0].shipped_at;
+
+    // 3. Write Audit Log
+    await writeAuditLog({
+      referenceId: auctionId,
+      referenceType: 'auction',
+      action: 'delivery_extended',
+      deltaState: { 
+        reason,
+        old_deadline: auction.delivery_deadline_at,
+        new_deadline: updatedDeadline
+      },
+      actorId: buyerId,
+      ipAddress,
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // 4. Post-transaction Side Effects
+  try {
+    Promise.allSettled([
+      rescheduleDeliveryJobs(auctionId, updatedDeadline, originalShippedAt),
+      emitToUser(sellerId, EventNames.AUCTION_DELIVERY_EXTENDED, {
+        auctionId,
+        reason,
+        newDeliveryDeadlineAt: updatedDeadline,
+      })
+    ]).then(results => {
+      results.forEach((res, index) => {
+        if (res.status === 'rejected') {
+          console.error(`[Fulfillment] extendDelivery side-effect [${index}] failed:`, res.reason);
+        }
+      });
+    });
+  } catch (postErr) {
+    console.error(`[Fulfillment] Post-transaction failed for extendDelivery ${auctionId}:`, postErr);
+  }
+
+  return {
+    newDeliveryDeadlineAt: updatedDeadline,
+    extensionUsed: true,
   };
 };
