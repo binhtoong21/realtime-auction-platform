@@ -8,7 +8,8 @@ import auctionEndWorker from './jobs/auctionEnd.worker.js';
 import auctionStartWorker from './jobs/auctionStart.worker.js';
 import paymentWorker from './jobs/payment.worker.js';
 import webhookReaperWorker from './jobs/webhook-reaper.worker.js';
-import { startWebhookReaper, startPaymentSweeper } from './jobs/queue.js';
+import fulfillmentWorker from './jobs/fulfillment.worker.js';
+import { startWebhookReaper, startPaymentSweeper, startFulfillmentSweeper } from './jobs/queue.js';
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
@@ -34,6 +35,7 @@ const shutdown = async (signal) => {
       await auctionEndWorker.close();
       await paymentWorker.close();
       await webhookReaperWorker.close();
+      await fulfillmentWorker.close();
       console.log('BullMQ workers closed.');
       
       // 4. Close Redis
@@ -69,6 +71,7 @@ server.listen(PORT, async () => {
     try {
       await startPaymentSweeper();
       await startWebhookReaper();
+      await startFulfillmentSweeper();
       break; // Success
     } catch (err) {
       console.error(`Failed to register repeatable jobs (sweeper/reaper). Retries left: ${retries - 1}`, err);

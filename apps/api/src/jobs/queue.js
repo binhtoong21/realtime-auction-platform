@@ -269,3 +269,26 @@ export const rescheduleDeliveryJobs = async (auctionId, newDeadlineAt, originalS
 
   console.log(`[Queue] Rescheduled delivery jobs for auction ${auctionId}`);
 };
+
+export const startFulfillmentSweeper = async () => {
+  await fulfillmentQueue.add('fulfillment-sweeper', {}, {
+    repeat: { every: 15 * 60 * 1000 },
+  });
+  console.log('[Queue] Fulfillment sweeper registered (every 15 min)');
+};
+
+export async function ensureJobScheduled(jobName, auctionId, runAt, extraData = {}) {
+  const jobId = extraData.type ? `${jobName}-${extraData.type}-${auctionId}` : `${jobName}-${auctionId}`;
+  const existing = await fulfillmentQueue.getJob(jobId);
+  if (existing) return; // Already scheduled
+
+  const delay = Math.max(0, new Date(runAt) - Date.now());
+  try {
+    await fulfillmentQueue.add(jobName, { auctionId, ...extraData }, { jobId, delay });
+  } catch (err) {
+    // BullMQ v5 throws on duplicate jobId — safe to ignore (race between sweeper instances)
+    if (err.message?.includes('Job already exists')) return;
+    throw err;
+  }
+}
+
