@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAuth } from '../middlewares/auth.middleware.js';
+import requireAuth from '../middleware/requireAuth.js';
 import * as disputeController from '../controllers/dispute.controller.js';
 
 const router = express.Router();

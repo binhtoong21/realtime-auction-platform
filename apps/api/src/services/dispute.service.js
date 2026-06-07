@@ -59,7 +59,14 @@ export const openDispute = async ({ buyerId, paymentId, reason, description, evi
     }
 
     // 3. Cooldown check
-    validateDisputeCooldown(reason, payment.shipped_at);
+    const cooldown = validateDisputeCooldown(reason, payment.shipped_at);
+    if (!cooldown.allowed) {
+      const err = new Error('Dispute cooldown period has not elapsed');
+      err.statusCode = 403;
+      err.errorCode = 'DISPUTE_COOLDOWN';
+      err.details = { canOpenAt: cooldown.canOpenAt };
+      throw err;
+    }
 
     // 4. Create dispute (relies on idx_disputes_one_per_payment to prevent duplicates)
     try {
@@ -103,10 +110,14 @@ export const openDispute = async ({ buyerId, paymentId, reason, description, evi
     client.release();
   }
 
-  // Side effects
-  await removeDeliveryJobs(auctionId);
-  emitToUser(buyerId, EventNames.DISPUTE_OPENED, { disputeId: createdDispute.id });
-  // Emit to seller/admin...
+  // Side effects (fire-and-forget, do not fail the API request)
+  try {
+    await removeDeliveryJobs(auctionId);
+    emitToUser(buyerId, EventNames.DISPUTE_OPENED, { disputeId: createdDispute.id });
+    // Emit to seller/admin...
+  } catch (sideErr) {
+    console.error('Failed to execute side effects for openDispute:', sideErr);
+  }
   
   return {
     id: createdDispute.id,
@@ -320,8 +331,12 @@ export const withdrawDispute = async ({ disputeId, buyerId }) => {
   }
 
   // Reschedule BullMQ Jobs
-  await rescheduleDeliveryJobs(auctionId, newDeadlineAt, originalShippedAt);
-  emitToUser(buyerId, EventNames.DISPUTE_WITHDRAWN, { disputeId });
+  try {
+    await rescheduleDeliveryJobs(auctionId, newDeadlineAt, originalShippedAt);
+    emitToUser(buyerId, EventNames.DISPUTE_WITHDRAWN, { disputeId });
+  } catch (sideErr) {
+    console.error('Failed to execute side effects for withdrawDispute:', sideErr);
+  }
 
   return { success: true };
 };

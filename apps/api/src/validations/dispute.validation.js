@@ -11,3 +11,7 @@ export const openDisputeSchema = Joi.object({
 export const addEvidenceSchema = Joi.object({
   evidenceUrls: Joi.array().items(Joi.string().uri()).max(10).required(),
 });
+
+export const disputeIdSchema = Joi.object({
+  id: Joi.string().uuid().required(),
+});

@@ -12,7 +12,7 @@ export const up = (pgm) => {
     id: { type: 'uuid', primaryKey: true },
     payment_id: { type: 'uuid', notNull: true, references: '"payments"', onDelete: 'RESTRICT' },
     auction_id: { type: 'uuid', notNull: true, references: '"auctions"', onDelete: 'RESTRICT' },
-    opened_by: { type: 'uuid', notNull: true, references: '"users"', onDelete: 'SET NULL' },
+    opened_by: { type: 'uuid', notNull: true, references: '"users"', onDelete: 'RESTRICT' },
     reason: { type: 'varchar(50)', notNull: true },
     description: { type: 'text' },
     evidence_urls: { type: 'text[]' },
@@ -29,7 +29,7 @@ export const up = (pgm) => {
 
   // Constraints
   pgm.addConstraint('disputes', 'chk_disputes_resolution', {
-    check: "status NOT IN ('resolved_buyer_wins', 'resolved_seller_wins') OR resolved_by IS NOT NULL",
+    check: "(status IN ('resolved_buyer_wins', 'resolved_seller_wins') AND resolved_by IS NOT NULL AND resolved_at IS NOT NULL) OR (status NOT IN ('resolved_buyer_wins', 'resolved_seller_wins') AND resolved_by IS NULL AND resolved_at IS NULL)",
   });
 
   // Prevent duplicate disputes per payment (strictly one-shot)

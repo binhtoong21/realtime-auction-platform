@@ -1,5 +1,5 @@
 import * as disputeService from '../services/dispute.service.js';
-import { openDisputeSchema, addEvidenceSchema } from '../validations/dispute.validation.js';
+import { openDisputeSchema, addEvidenceSchema, disputeIdSchema } from '../validations/dispute.validation.js';
 
 export const handleOpenDispute = async (req, res, next) => {
   try {
@@ -21,7 +21,12 @@ export const handleOpenDispute = async (req, res, next) => {
 
 export const handleGetDisputeById = async (req, res, next) => {
   try {
-    const disputeId = req.params.id;
+    const { error, value } = disputeIdSchema.validate(req.params);
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+
+    const disputeId = value.id;
     const result = await disputeService.getDisputeById({
       disputeId,
       userId: req.user.id,
@@ -41,7 +46,12 @@ export const handleAddEvidence = async (req, res, next) => {
       return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
-    const disputeId = req.params.id;
+    const paramValidation = disputeIdSchema.validate(req.params);
+    if (paramValidation.error) {
+      return res.status(400).json({ success: false, message: paramValidation.error.details[0].message });
+    }
+
+    const disputeId = paramValidation.value.id;
     const result = await disputeService.addEvidence({
       disputeId,
       userId: req.user.id,
@@ -56,7 +66,12 @@ export const handleAddEvidence = async (req, res, next) => {
 
 export const handleWithdrawDispute = async (req, res, next) => {
   try {
-    const disputeId = req.params.id;
+    const { error, value } = disputeIdSchema.validate(req.params);
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+
+    const disputeId = value.id;
     const result = await disputeService.withdrawDispute({
       disputeId,
       buyerId: req.user.id,

@@ -254,6 +254,11 @@ export const removeDeliveryJobs = async (auctionId) => {
 export const rescheduleDeliveryJobs = async (auctionId, newDeadlineAt, originalShippedAt) => {
   await removeDeliveryJobs(auctionId);
 
+  if (!originalShippedAt) {
+    // If it hasn't been shipped yet, we don't have delivery jobs to schedule.
+    return;
+  }
+
   const delayAutoConfirm = Math.max(0, new Date(newDeadlineAt) - Date.now());
   await fulfillmentQueue.add('delivery-auto-confirm', { auctionId }, { jobId: `delivery-auto-confirm-${auctionId}`, delay: delayAutoConfirm });
 
