@@ -3,7 +3,8 @@ import { v7 as uuidv7 } from 'uuid';
 import { EventNames, DisputeStatus, PaymentStatus } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
 import { validateDisputeCooldown } from '../utils/dispute-cooldown.js';
-import { removeDeliveryJobs, rescheduleDeliveryJobs } from '../jobs/queue.js';
+import { removeDeliveryJobs, rescheduleDeliveryJobs, schedulePayoutJob } from '../jobs/queue.js';
+import stripe from '../config/stripe.js';
 
 /**
  * Write an immutable financial audit log entry.
@@ -339,4 +340,299 @@ export const withdrawDispute = async ({ disputeId, buyerId }) => {
   }
 
   return { success: true };
+};
+
+/**
+ * Admin starts reviewing a dispute
+ */
+export const reviewDispute = async ({ disputeId, adminId }) => {
+  const client = await pool.connect();
+  let updatedDispute;
+
+  try {
+    await client.query('BEGIN');
+
+    const res = await client.query(
+      `SELECT d.id, d.status, p.buyer_id, p.seller_id 
+       FROM disputes d
+       JOIN payments p ON d.payment_id = p.id
+       WHERE d.id = $1 FOR UPDATE OF d`,
+      [disputeId]
+    );
+
+    if (res.rowCount === 0) {
+      const err = new Error('Dispute not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const dispute = res.rows[0];
+
+    // State guard
+    if (dispute.status !== DisputeStatus.OPEN) {
+      const err = new Error('Dispute is not in open state');
+      err.statusCode = 409;
+      err.errorCode = 'INVALID_DISPUTE_STATE';
+      throw err;
+    }
+
+    // Self-dispute guard (best effort)
+    if (adminId === dispute.buyer_id || adminId === dispute.seller_id) {
+      const err = new Error('Admin cannot resolve their own dispute');
+      err.statusCode = 403;
+      err.errorCode = 'SELF_DISPUTE_FORBIDDEN';
+      throw err;
+    }
+
+    const updateRes = await client.query(
+      `UPDATE disputes SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [DisputeStatus.UNDER_REVIEW, disputeId]
+    );
+    
+    updatedDispute = updateRes.rows[0];
+
+    await writeAuditLog({
+      referenceId: disputeId,
+      referenceType: 'dispute',
+      action: 'dispute_review_started',
+      deltaState: { status: DisputeStatus.UNDER_REVIEW },
+      actorId: adminId,
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // Side effects
+  const eventPayload = {
+    disputeId,
+    status: DisputeStatus.UNDER_REVIEW,
+  };
+  emitToUser(dispute.buyer_id, EventNames.DISPUTE_UPDATED, eventPayload);
+  emitToUser(dispute.seller_id, EventNames.DISPUTE_UPDATED, eventPayload);
+
+  return updatedDispute;
+};
+
+/**
+ * Admin resolves a dispute with Stripe integration
+ */
+export const resolveDispute = async ({ disputeId, adminId, outcome, resolutionNote, policyRule, rejectionReason, ipAddress }) => {
+  let dispute;
+  let payment;
+  let originalPaymentStatus;
+
+  const client1 = await pool.connect();
+  try {
+    await client1.query('BEGIN');
+
+    // STEP 1: SELECT + Validate
+    const res = await client1.query(
+      `SELECT d.*, p.id as p_id, p.status as p_status, p.stripe_pi_id, p.buyer_id, p.seller_id, p.amount 
+       FROM disputes d
+       JOIN payments p ON d.payment_id = p.id
+       WHERE d.id = $1 FOR UPDATE OF d`,
+      [disputeId]
+    );
+
+    if (res.rowCount === 0) {
+      const err = new Error('Dispute not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const row = res.rows[0];
+    dispute = { id: row.id, status: row.status, auction_id: row.auction_id };
+    payment = {
+      id: row.p_id,
+      status: row.p_status,
+      stripe_pi_id: row.stripe_pi_id,
+      buyer_id: row.buyer_id,
+      seller_id: row.seller_id,
+      amount: row.amount
+    };
+
+    if (dispute.status !== DisputeStatus.UNDER_REVIEW) {
+      const err = new Error('Dispute must be under review to be resolved');
+      err.statusCode = 409;
+      err.errorCode = 'INVALID_DISPUTE_STATE';
+      throw err;
+    }
+
+    if (adminId === payment.buyer_id || adminId === payment.seller_id) {
+      const err = new Error('Admin cannot resolve their own dispute');
+      err.statusCode = 403;
+      err.errorCode = 'SELF_DISPUTE_FORBIDDEN';
+      throw err;
+    }
+
+    // STEP 2: DB Lock (intermediate state)
+    originalPaymentStatus = payment.status;
+    if (outcome === 'buyer_wins') {
+      if (payment.status === PaymentStatus.FROZEN || payment.status === PaymentStatus.CAPTURED) {
+        const updateRes = await client1.query(
+          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
+          [PaymentStatus.RELEASING, payment.id, payment.status]
+        );
+        if (updateRes.rowCount === 0) {
+          const err = new Error('Payment state changed concurrently');
+          err.statusCode = 409;
+          err.errorCode = 'INVALID_PAYMENT_STATE';
+          throw err;
+        }
+      }
+    } else if (outcome === 'seller_wins') {
+      if (payment.status === PaymentStatus.FROZEN) {
+        const updateRes = await client1.query(
+          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
+          [PaymentStatus.CAPTURE_PENDING, payment.id, PaymentStatus.FROZEN]
+        );
+        if (updateRes.rowCount === 0) {
+          const err = new Error('Payment state changed concurrently');
+          err.statusCode = 409;
+          err.errorCode = 'INVALID_PAYMENT_STATE';
+          throw err;
+        }
+      }
+    }
+
+    await client1.query('COMMIT');
+  } catch (err) {
+    await client1.query('ROLLBACK');
+    throw err;
+  } finally {
+    client1.release();
+  }
+
+  // STEP 3: Stripe call (OUTSIDE transaction)
+  let stripeRefundId = null;
+  try {
+    if (outcome === 'buyer_wins') {
+      if (payment.status === PaymentStatus.FROZEN) {
+        await stripe.paymentIntents.cancel(payment.stripe_pi_id);
+      } else if (payment.status === PaymentStatus.CAPTURED) {
+        const refund = await stripe.refunds.create({ payment_intent: payment.stripe_pi_id });
+        stripeRefundId = refund.id;
+      }
+    } else if (outcome === 'seller_wins') {
+      if (payment.status === PaymentStatus.FROZEN) {
+        await stripe.paymentIntents.capture(payment.stripe_pi_id);
+      }
+    }
+  } catch (stripeErr) {
+    console.error(`[DisputeResolution] Stripe call failed for dispute ${dispute.id}:`, stripeErr.message);
+    throw stripeErr;
+  }
+
+  // STEP 4: DB Confirm (in transaction)
+  const client2 = await pool.connect();
+  let updatedDispute;
+  const newDisputeStatus = outcome === 'buyer_wins' ? DisputeStatus.RESOLVED_BUYER_WINS : DisputeStatus.RESOLVED_SELLER_WINS;
+  
+  try {
+    await client2.query('BEGIN');
+
+    const updateDisputeRes = await client2.query(
+      `UPDATE disputes SET 
+        status = $1, 
+        resolution_note = $2, 
+        policy_rule = $3, 
+        rejection_reason = $4,
+        resolved_by = $5,
+        resolved_at = NOW(),
+        updated_at = NOW()
+       WHERE id = $6 RETURNING *`,
+      [
+        newDisputeStatus, 
+        resolutionNote, 
+        outcome === 'buyer_wins' ? policyRule : null, 
+        outcome === 'seller_wins' ? rejectionReason : null,
+        adminId,
+        dispute.id
+      ]
+    );
+    updatedDispute = updateDisputeRes.rows[0];
+
+    if (outcome === 'buyer_wins') {
+      await client2.query(
+        `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
+        [PaymentStatus.REFUNDED, payment.id]
+      );
+      await client2.query(
+        `UPDATE auctions SET status = 'refunded', updated_at = NOW() WHERE id = $1`,
+        [dispute.auction_id]
+      );
+    } else if (outcome === 'seller_wins') {
+      if (originalPaymentStatus === PaymentStatus.FROZEN) {
+        await client2.query(
+          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
+          [PaymentStatus.CAPTURED, payment.id]
+        );
+      }
+      await client2.query(
+        `UPDATE auctions SET status = 'completed', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW() WHERE id = $1`,
+        [dispute.auction_id]
+      );
+    }
+
+    await writeAuditLog({
+      referenceId: dispute.id,
+      referenceType: 'dispute',
+      action: outcome === 'buyer_wins' ? 'dispute_resolved_buyer_wins' : 'dispute_resolved_seller_wins',
+      deltaState: { 
+        status: newDisputeStatus,
+        policyRule,
+        rejectionReason,
+        payment_id: payment.id,
+        stripe_refund_id: stripeRefundId
+      },
+      actorId: adminId,
+      ipAddress
+    }, client2);
+
+    await client2.query('COMMIT');
+  } catch (err) {
+    await client2.query('ROLLBACK');
+    throw err;
+  } finally {
+    client2.release();
+  }
+
+  // STEP 5: Side effects
+  try {
+    if (outcome === 'seller_wins') {
+      await schedulePayoutJob(payment.id, dispute.auction_id);
+    }
+    await removeDeliveryJobs(dispute.auction_id);
+
+    emitToUser(payment.buyer_id, EventNames.DISPUTE_RESOLVED, {
+      disputeId: dispute.id,
+      outcome,
+      resolutionNote
+    });
+    emitToUser(payment.seller_id, EventNames.DISPUTE_RESOLVED, {
+      disputeId: dispute.id,
+      outcome,
+      resolutionNote
+    });
+
+    // Send DB notification to buyer and seller
+    const payloadStr = JSON.stringify({ outcome, resolutionNote, status: newDisputeStatus });
+    await pool.query(
+      `INSERT INTO notifications (id, user_id, type, reference_id, reference_type, payload)
+       VALUES ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)`,
+      [
+        uuidv7(), payment.buyer_id, 'dispute', dispute.id, 'dispute', payloadStr,
+        uuidv7(), payment.seller_id, 'dispute', dispute.id, 'dispute', payloadStr
+      ]
+    );
+  } catch (sideErr) {
+    console.error(`[DisputeResolution] Side effects failed for dispute ${dispute.id}:`, sideErr);
+  }
+
+  return updatedDispute;
 };
