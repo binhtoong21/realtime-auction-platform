@@ -348,6 +348,7 @@ export const withdrawDispute = async ({ disputeId, buyerId }) => {
 export const reviewDispute = async ({ disputeId, adminId }) => {
   const client = await pool.connect();
   let updatedDispute;
+  let dispute;
 
   try {
     await client.query('BEGIN');
@@ -366,7 +367,7 @@ export const reviewDispute = async ({ disputeId, adminId }) => {
       throw err;
     }
 
-    const dispute = res.rows[0];
+    dispute = res.rows[0];
 
     // State guard
     if (dispute.status !== DisputeStatus.OPEN) {
@@ -545,16 +546,26 @@ export const resolveDispute = async ({ disputeId, adminId, outcome, resolutionNo
         resolved_by = $5,
         resolved_at = NOW(),
         updated_at = NOW()
-       WHERE id = $6 RETURNING *`,
+       WHERE id = $6 AND status = $7 RETURNING *`,
       [
         newDisputeStatus, 
         resolutionNote, 
         outcome === 'buyer_wins' ? policyRule : null, 
         outcome === 'seller_wins' ? rejectionReason : null,
         adminId,
-        dispute.id
+        dispute.id,
+        DisputeStatus.UNDER_REVIEW
       ]
     );
+
+    if (updateDisputeRes.rowCount === 0) {
+      await client2.query('ROLLBACK');
+      const err = new Error('Dispute is no longer under review and may have been resolved concurrently');
+      err.statusCode = 409;
+      err.errorCode = 'INVALID_DISPUTE_STATE';
+      throw err;
+    }
+
     updatedDispute = updateDisputeRes.rows[0];
 
     if (outcome === 'buyer_wins') {

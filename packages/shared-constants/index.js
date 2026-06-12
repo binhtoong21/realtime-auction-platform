@@ -148,3 +148,8 @@ export const DisputeRejectionReason = {
     DUPLICATE_CLAIM: 'DUPLICATE_CLAIM',
     OTHER: 'OTHER',
 };
+
+export const DisputeOutcome = {
+    BUYER_WINS: 'buyer_wins',
+    SELLER_WINS: 'seller_wins',
+};

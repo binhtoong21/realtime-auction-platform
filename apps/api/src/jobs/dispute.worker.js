@@ -97,6 +97,37 @@ const expireDispute = async (disputeInfo) => {
   try {
     await client2.query('BEGIN');
 
+    const lockRes = await client2.query(
+      `SELECT d.status as d_status, p.status as p_status 
+       FROM disputes d
+       JOIN payments p ON d.payment_id = p.id
+       WHERE d.id = $1 FOR UPDATE OF d, p`,
+      [disputeInfo.id]
+    );
+
+    if (lockRes.rowCount === 0) {
+      await client2.query('ROLLBACK');
+      return;
+    }
+
+    const { d_status, p_status } = lockRes.rows[0];
+
+    if (d_status !== DisputeStatus.OPEN && d_status !== DisputeStatus.UNDER_REVIEW) {
+      await client2.query('ROLLBACK');
+      return;
+    }
+
+    if (originalPaymentStatus !== PaymentStatus.FROZEN) {
+      if (p_status === PaymentStatus.CAPTURE_PENDING) {
+        await client2.query('ROLLBACK');
+        throw new Error(`Payment ${payment.id} is stuck in capture_pending. Aborting dispute expiry so sweeper can retry.`);
+      }
+      if (p_status !== PaymentStatus.CAPTURED) {
+        await client2.query('ROLLBACK');
+        throw new Error(`Payment ${payment.id} is not CAPTURED (status: ${p_status}). Aborting dispute expiry.`);
+      }
+    }
+
     await client2.query(
       `UPDATE disputes SET 
         status = $1, 
@@ -129,6 +160,16 @@ const expireDispute = async (disputeInfo) => {
       actorId: null
     }, client2);
 
+    const payloadStr = JSON.stringify({ status: DisputeStatus.EXPIRED, message: 'Dispute expired automatically' });
+    await client2.query(
+      `INSERT INTO notifications (id, user_id, type, reference_id, reference_type, payload)
+       VALUES ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)`,
+      [
+        uuidv7(), payment.buyer_id, 'dispute', disputeInfo.id, 'dispute', payloadStr,
+        uuidv7(), payment.seller_id, 'dispute', disputeInfo.id, 'dispute', payloadStr
+      ]
+    );
+
     await client2.query('COMMIT');
   } catch (err) {
     await client2.query('ROLLBACK');
@@ -157,16 +198,6 @@ const expireDispute = async (disputeInfo) => {
       status: DisputeStatus.EXPIRED,
       message: 'Dispute has expired and was automatically resolved in your favor.'
     });
-
-    const payloadStr = JSON.stringify({ status: DisputeStatus.EXPIRED, message: 'Dispute expired automatically' });
-    await pool.query(
-      `INSERT INTO notifications (id, user_id, type, reference_id, reference_type, payload)
-       VALUES ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)`,
-      [
-        uuidv7(), payment.buyer_id, 'dispute', disputeInfo.id, 'dispute', payloadStr,
-        uuidv7(), payment.seller_id, 'dispute', disputeInfo.id, 'dispute', payloadStr
-      ]
-    );
   } catch (err) {
     console.error(`[DisputeWorker] Side effects failed for expiry of dispute ${disputeInfo.id}`, err);
   }
