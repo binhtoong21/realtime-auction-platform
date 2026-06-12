@@ -1,5 +1,17 @@
 import * as authService from '../services/auth.service.js';
 
+export const getMe = async (req, res, next) => {
+  try {
+    // req.user is populated by requireAuth middleware
+    res.status(200).json({
+      success: true,
+      data: { user: req.user },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const register = async (req, res, next) => {
   try {
     const result = await authService.register(req.body);
@@ -126,6 +138,19 @@ export const changePassword = async (req, res, next) => {
       success: true,
       message: 'Password changed. Other sessions have been revoked.',
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const checkEmail = async (req, res, next) => {
+  try {
+    const { email } = req.query;
+    if (!email) {
+      return res.status(400).json({ success: false, error: { message: 'Email is required' } });
+    }
+    const result = await authService.checkEmail(email);
+    res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

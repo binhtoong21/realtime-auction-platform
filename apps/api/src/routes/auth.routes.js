@@ -17,10 +17,14 @@ import {
   forgotPassword,
   resetPassword,
   changePassword,
+  getMe,
+  checkEmail,
 } from '../controllers/auth.controller.js';
 
 const router = Router();
 
+router.get('/me', requireAuth, getMe);
+router.get('/check-email', checkEmail);
 router.post('/register', validate(registerSchema), register);
 router.get('/verify-email', verifyEmail);
 router.post('/login', validate(loginSchema), login);

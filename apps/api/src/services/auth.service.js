@@ -25,20 +25,71 @@ const generateCryptoToken = () => {
   return crypto.randomBytes(32).toString('hex');
 };
 
+// Pre-compute a dummy hash to prevent timing attacks during login
+let DUMMY_HASH = '';
+bcrypt.hash('dummy_password_for_timing_attack', SALT_ROUNDS).then(hash => {
+  DUMMY_HASH = hash;
+});
+
 /**
  * Register a new user with email/password.
  */
 const register = async ({ email, password, displayName }) => {
   const existing = await pool.query(
-    'SELECT id FROM users WHERE email = $1',
+    'SELECT id, status FROM users WHERE email = $1',
     [email.toLowerCase()]
   );
 
   if (existing.rows.length > 0) {
-    const error = new Error('Email already registered');
-    error.statusCode = 409;
-    error.errorCode = 'EMAIL_ALREADY_EXISTS';
-    throw error;
+    const user = existing.rows[0];
+    if (user.status === 'unverified') {
+      const recentToken = await pool.query(
+        `SELECT expires_at FROM email_verification_tokens WHERE user_id = $1 ORDER BY expires_at DESC LIMIT 1`,
+        [user.id]
+      );
+      
+      if (recentToken.rows.length > 0) {
+        const expiresAt = new Date(recentToken.rows[0].expires_at);
+        // We set expires_at to NOW() + 24 hours during creation
+        const createdAt = new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
+        const minutesSinceCreation = (new Date() - createdAt) / (1000 * 60);
+        
+        if (minutesSinceCreation < 5) {
+           const error = new Error('Please wait 5 minutes before requesting a new registration/verification email for this account.');
+           error.statusCode = 429;
+           error.errorCode = 'TOO_MANY_REQUESTS';
+           throw error;
+        }
+      }
+
+      const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+      const verifyToken = generateCryptoToken();
+      const verifyTokenHash = hashToken(verifyToken);
+
+      await withTransaction(async (client) => {
+        await client.query(
+          `UPDATE users SET password_hash = $1, display_name = $2 WHERE id = $3`,
+          [passwordHash, displayName, user.id]
+        );
+        await client.query(
+          `DELETE FROM email_verification_tokens WHERE user_id = $1`,
+          [user.id]
+        );
+        await client.query(
+          `INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at)
+           VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours')`,
+          [uuidv4(), user.id, verifyTokenHash]
+        );
+      });
+
+      await sendVerificationEmail(email, verifyToken);
+      return { userId: user.id };
+    } else {
+      const error = new Error('Email already registered');
+      error.statusCode = 409;
+      error.errorCode = 'EMAIL_ALREADY_EXISTS';
+      throw error;
+    }
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
@@ -142,6 +193,11 @@ const login = async ({ email, password }) => {
   );
 
   if (result.rows.length === 0) {
+    // Perform a dummy hash comparison to equalize response time 
+    // and mitigate User Enumeration via Timing Attacks
+    if (DUMMY_HASH) {
+      await bcrypt.compare(password, DUMMY_HASH);
+    }
     const error = new Error('Invalid email or password');
     error.statusCode = 401;
     error.errorCode = 'INVALID_CREDENTIALS';
@@ -441,6 +497,46 @@ const changePassword = async (userId, currentPassword, newPassword, currentRefre
   });
 };
 
+/**
+ * Check if an email is available for registration.
+ * Returns true if the email is not found, or if it is unverified and past the cooldown.
+ */
+const checkEmail = async (email) => {
+  const result = await pool.query(
+    'SELECT id, status FROM users WHERE email = $1',
+    [email.toLowerCase()]
+  );
+
+  if (result.rows.length === 0) {
+    return { available: true };
+  }
+
+  const user = result.rows[0];
+  if (user.status === 'unverified') {
+    const recentToken = await pool.query(
+      `SELECT expires_at FROM email_verification_tokens WHERE user_id = $1 ORDER BY expires_at DESC LIMIT 1`,
+      [user.id]
+    );
+
+    if (recentToken.rows.length > 0) {
+      const expiresAt = new Date(recentToken.rows[0].expires_at);
+      const createdAt = new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
+      const minutesSinceCreation = (new Date() - createdAt) / (1000 * 60);
+
+      if (minutesSinceCreation < 5) {
+        return { 
+          available: false, 
+          message: 'An unverified account exists and recently requested a token. Please wait 5 minutes.'
+        };
+      }
+    }
+    // Available to overwrite
+    return { available: true };
+  }
+
+  return { available: false, message: 'Email is already registered.' };
+};
+
 export {
   register,
   verifyEmail,
@@ -450,4 +546,5 @@ export {
   forgotPassword,
   resetPassword,
   changePassword,
+  checkEmail,
 };
