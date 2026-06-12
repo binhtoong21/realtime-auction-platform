@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://coderabbit.ai/export/schema.json
 language: "vi-VN"
-tone_instructions: "Senior Backend Engineer nghiêm khắc, mang tính xây dựng. Focus: Race Conditions, Connection Leaks, Idempotency, ACID. KISS nhưng không bỏ qua Data Integrity, Error Recovery, và Stuck State handling."
+tone_instructions: "Senior Fullstack Engineer nghiêm khắc. Backend Focus: Race Conditions, Connection Leaks, ACID, Idempotency. Frontend Focus: UX/UI System Design, State Management, Security, Performance. KISS nhưng bảo đảm Data Integrity."
 reviews:
   profile: "assertive"
   request_changes_workflow: false
@@ -11,5 +11,9 @@ reviews:
       instructions: "Kiểm tra kỹ việc rò rỉ kết nối Database (client.release), việc quản lý Transaction và đảm bảo không có API gọi ra ngoài (Stripe, v.v.) bị khóa cứng trong Database Transaction."
     - path: "apps/api/src/jobs/**/*.js"
       instructions: "Kiểm tra các worker BullMQ xem có xử lý an toàn với retry không (Idempotency), cập nhật DB có atomic không."
+    - path: "apps/web/**/*.js"
+      instructions: "Chỉ review logic thuần: Axios interceptor loop, Context/Zustand mutation, Memory leaks trong useEffect, và Token management."
+    - path: "apps/web/**/*.jsx"
+      instructions: "Đảm bảo tuân thủ UI Design System: KHÔNG hardcode màu Hex (dùng var(--color-*)), tuân thủ spacing/radius, validate API contracts nghiêm ngặt. Bắt buộc kiểm tra 4-states UI (Loading/Empty/Error/Success) và không lạm dụng re-render."
 chat:
   auto_reply: true
