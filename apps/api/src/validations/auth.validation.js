@@ -30,3 +30,7 @@ export const changePasswordSchema = Joi.object({
   newPassword: Joi.string().pattern(passwordPattern).required()
     .messages({ 'string.pattern.base': passwordMessage }),
 });
+
+export const checkEmailSchema = Joi.object({
+  email: Joi.string().email().required(),
+});

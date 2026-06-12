@@ -20,7 +20,7 @@ const requireAuth = async (req, res, next) => {
     const decoded = verifyAccessToken(token);
 
     const result = await pool.query(
-      'SELECT status, identity_status, role FROM users WHERE id = $1',
+      'SELECT email, display_name, status, identity_status, role FROM users WHERE id = $1',
       [decoded.id]
     );
 
@@ -48,9 +48,11 @@ const requireAuth = async (req, res, next) => {
     }
 
     req.user = {
-      ...decoded,
-      identity_status: userRow.identity_status,
+      id: decoded.id,
+      email: userRow.email,
+      displayName: userRow.display_name,
       role: userRow.role,
+      identity_status: userRow.identity_status,
     };
     next();
   } catch (error) {

@@ -1,5 +1,29 @@
 import * as authService from '../services/auth.service.js';
 
+/**
+ * Get current authenticated user profile
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
+export const getMe = async (req, res, next) => {
+  try {
+    // req.user is populated by requireAuth middleware
+    res.status(200).json({
+      success: true,
+      data: { user: req.user },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Register a new user
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
 export const register = async (req, res, next) => {
   try {
     const result = await authService.register(req.body);
@@ -13,6 +37,12 @@ export const register = async (req, res, next) => {
   }
 };
 
+/**
+ * Verify user email using token
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
 export const verifyEmail = async (req, res, next) => {
   try {
     const { token } = req.query;
@@ -35,6 +65,12 @@ export const verifyEmail = async (req, res, next) => {
   }
 };
 
+/**
+ * Login user and issue tokens
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
 export const login = async (req, res, next) => {
   try {
     const result = await authService.login(req.body);
@@ -47,6 +83,12 @@ export const login = async (req, res, next) => {
   }
 };
 
+/**
+ * Refresh access token
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
 export const refreshToken = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
@@ -68,6 +110,12 @@ export const refreshToken = async (req, res, next) => {
   }
 };
 
+/**
+ * Logout user and revoke tokens
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
 export const logout = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
@@ -85,6 +133,12 @@ export const logout = async (req, res, next) => {
   }
 };
 
+/**
+ * Send password reset email
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
 export const forgotPassword = async (req, res, next) => {
   try {
     await authService.forgotPassword(req.body.email);
@@ -97,6 +151,12 @@ export const forgotPassword = async (req, res, next) => {
   }
 };
 
+/**
+ * Reset password using token
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
 export const resetPassword = async (req, res, next) => {
   try {
     const { token, newPassword } = req.body;
@@ -110,6 +170,12 @@ export const resetPassword = async (req, res, next) => {
   }
 };
 
+/**
+ * Change password for authenticated user
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
 export const changePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -126,6 +192,25 @@ export const changePassword = async (req, res, next) => {
       success: true,
       message: 'Password changed. Other sessions have been revoked.',
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Check if an email is available for registration
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ */
+export const checkEmail = async (req, res, next) => {
+  try {
+    const { email } = req.query;
+    if (!email) {
+      return res.status(400).json({ success: false, error: { message: 'Email is required' } });
+    }
+    const result = await authService.checkEmail(email);
+    res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

@@ -7,6 +7,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   changePasswordSchema,
+  checkEmailSchema,
 } from '../validations/auth.validation.js';
 import {
   register,
@@ -17,10 +18,14 @@ import {
   forgotPassword,
   resetPassword,
   changePassword,
+  getMe,
+  checkEmail,
 } from '../controllers/auth.controller.js';
 
 const router = Router();
 
+router.get('/me', requireAuth, getMe);
+router.get('/check-email', validate(checkEmailSchema, 'query'), checkEmail);
 router.post('/register', validate(registerSchema), register);
 router.get('/verify-email', verifyEmail);
 router.post('/login', validate(loginSchema), login);

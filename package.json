@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "start:api": "npm start -w @auction/api",
-    "dev:api": "npm run dev -w @auction/api"
+    "dev:api": "npm run dev -w @auction/api",
+    "dev:web": "npm run dev -w @auction/web"
   },
   "devDependencies": {
     "eslint": "^8.57.1",
