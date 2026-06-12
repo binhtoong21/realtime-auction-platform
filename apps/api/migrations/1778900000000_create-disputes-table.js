@@ -19,7 +19,7 @@ export const up = (pgm) => {
     status: { type: 'varchar(50)', notNull: true, default: 'open' },
     resolution_note: { type: 'text' },
     policy_rule: { type: 'varchar(100)' },
-    resolved_by: { type: 'uuid', references: '"users"', onDelete: 'SET NULL' },
+    resolved_by: { type: 'uuid', references: '"users"', onDelete: 'RESTRICT' },
     resolved_at: { type: 'timestamptz' },
     deadline_at: { type: 'timestamptz', notNull: true },
     seller_evidence_deadline_at: { type: 'timestamptz' },

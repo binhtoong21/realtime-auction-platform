@@ -297,10 +297,17 @@ export const withdrawDispute = async ({ disputeId, buyerId }) => {
     // 2. Unfreeze payment (revert to authorized)
     // Assert: Payment was AUTHORIZED before dispute (we enforce this in openDispute).
     // Once payout (captured) happens, the escrow lifecycle ends.
-    await client.query(
-      `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
-      [PaymentStatus.AUTHORIZED, dispute.payment_id]
+    const unfreezeRes = await client.query(
+      `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
+      [PaymentStatus.AUTHORIZED, dispute.payment_id, PaymentStatus.FROZEN]
     );
+
+    if (unfreezeRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      const err = new Error('Payment is not in FROZEN state, cannot unfreeze');
+      err.statusCode = 409;
+      throw err;
+    }
 
     // 3. Reschedule auto-confirm with 24h buffer if overdue
     const now = Date.now();
