@@ -1,0 +1,246 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  /* ============================================
+     BRAND — Warm Amber
+     ============================================ */
+  --color-brand:        #B45309; /* Amber 700 */
+  --color-brand-hover:  #92400E; /* Amber 800 */
+  --color-brand-subtle: #FEF3C7; /* Amber 100 */
+
+  /* ============================================
+     ACTION — Green
+     ============================================ */
+  --color-action:       #166534; /* Green 800 */
+  --color-action-hover: #14532D; /* Green 900 */
+  --color-action-text:  #FFFFFF;
+
+  /* ============================================
+     SURFACE — Warm off-white
+     ============================================ */
+  --color-bg:             #FFFBF5;
+  --color-surface:        #FFFFFF;
+  --color-surface-raised: #FDF8F0;
+
+  /* ============================================
+     TEXT
+     ============================================ */
+  --color-text-primary:   #1C1917; /* Stone 900 */
+  --color-text-secondary: #78716C; /* Stone 500 */
+  --color-text-disabled:  #A8A29E; /* Stone 400 */
+
+  /* ============================================
+     SEMANTIC
+     ============================================ */
+  --color-bid-flash: #DC2626; /* Red 600 */
+  --color-success:   #166534; /* Green 800 */
+  --color-success-subtle: #F0FDF4; /* Green 50 */
+  --color-warning:   #D97706; /* Amber 600 */
+  --color-danger:    #DC2626; /* Red 600 */
+  --color-danger-subtle: #FEF2F2; /* Red 50 */
+
+  /* ============================================
+     BORDER
+     ============================================ */
+  --color-border:       #E7E0D8;
+  --color-border-strong: #C9BFB5;
+
+  /* ============================================
+     TYPOGRAPHY
+     ============================================ */
+  --font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  --text-xs:   0.694rem;  /* 11px */
+  --text-sm:   0.833rem;  /* 13px */
+  --text-base: 1rem;      /* 16px */
+  --text-lg:   1.333rem;  /* 21px */
+  --text-xl:   1.777rem;  /* 28px */
+  --text-2xl:  2.369rem;  /* 38px */
+  --text-3xl:  3.157rem;  /* 51px */
+
+  /* ============================================
+     SPACING & SHAPE
+     ============================================ */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08),
+               0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10),
+               0 2px 6px  rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] {
+  --color-bg:             #141210;
+  --color-surface:        #1E1B18;
+  --color-surface-raised: #27231E;
+  --color-text-primary:   #F5F0E8;
+  --color-text-secondary: #A09890;
+  --color-text-disabled:  #6B645E;
+  --color-border:         #312D28;
+  --color-border-strong:  #433D36;
+  --color-brand:          #D97706;
+  --color-brand-subtle:   #2D1E08;
+  --color-action:         #15803D;
+  --color-success-subtle: #052E16;
+  --color-danger-subtle:  #450A0A;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+h1 { font-family: var(--font-display); font-size: var(--text-xl); }
+h2, h3 { font-size: var(--text-lg); font-weight: 600; }
+
+a {
+  color: var(--color-brand);
+  text-decoration: none;
+  transition: color 0.15s, opacity 0.15s;
+}
+
+a:hover {
+  color: var(--color-brand-hover);
+}
+
+.nav-link {
+  color: var(--color-text-primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  color: var(--color-brand);
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  display: inline-block;
+  background-color: var(--color-action);
+  color: var(--color-action-text) !important;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-body);
+  font-weight: 500;
+  text-align: center;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-action-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input, textarea {
+  font-family: var(--font-body);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-base);
+  transition: border-color 0.15s;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-brand);
+}
+
+input:disabled, textarea:disabled {
+  background-color: var(--color-surface-raised);
+  opacity: 0.7;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--color-text-disabled);
+}
+
+/* Remove native password reveal icon in Edge/IE */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+/* Animations */
+@keyframes bid-flash {
+  0%   { color: var(--color-bid-flash); }
+  100% { color: var(--color-text-primary); }
+}
+
+.price-updated {
+  animation: bid-flash 1.2s ease-out forwards;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+.countdown-critical {
+  color: var(--color-warning);
+  animation: pulse-warning 1s ease-in-out infinite;
+}
+
+@keyframes slide-in-top {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.bid-entry-new {
+  animation: slide-in-top 0.2s ease-out forwards;
+}
