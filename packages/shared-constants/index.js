@@ -36,6 +36,11 @@ export const EventNames = {
     DELIVERY_REMINDER: 'delivery:reminder',
     SHIPPING_OVERDUE: 'shipping:overdue',
     DELIVERY_AUTO_CONFIRMED: 'delivery:auto-confirmed',
+    DISPUTE_OPENED: 'dispute:opened',
+    DISPUTE_REVIEWED: 'dispute:reviewed',
+    DISPUTE_RESOLVED: 'dispute:resolved',
+    DISPUTE_WITHDRAWN: 'dispute:withdrawn',
+    DISPUTE_EXPIRED: 'dispute:expired',
 };
 
 export const DisputeReason = {
@@ -46,6 +51,7 @@ export const DisputeReason = {
 };
 
 export const DISPUTE_COOLDOWN_DAYS = 7;
+export const DISPUTE_DEADLINE_DAYS = 7;
 
 export const COOLDOWN_REASONS = [
     DisputeReason.ITEM_NOT_RECEIVED,
@@ -125,4 +131,25 @@ export const CARRIER_TRACKING_URLS = {
     [CARRIERS.DHL]:    'https://www.dhl.com/en/express/tracking.html?AWB=',
     [CARRIERS.UPS]:    'https://www.ups.com/track?tracknum=',
     [CARRIERS.OTHER]:  null,
+};
+
+export const DisputePolicyRule = {
+    ITEM_NOT_AS_DESCRIBED: 'ITEM_NOT_AS_DESCRIBED',
+    ITEM_DAMAGED: 'ITEM_DAMAGED',
+    ITEM_NOT_RECEIVED: 'ITEM_NOT_RECEIVED',
+    COUNTERFEIT_ITEM: 'COUNTERFEIT_ITEM',
+    OTHER: 'OTHER',
+};
+
+export const DisputeRejectionReason = {
+    INSUFFICIENT_EVIDENCE: 'INSUFFICIENT_EVIDENCE',
+    OUTSIDE_POLICY_WINDOW: 'OUTSIDE_POLICY_WINDOW',
+    BUYER_REMORSE: 'BUYER_REMORSE',
+    DUPLICATE_CLAIM: 'DUPLICATE_CLAIM',
+    OTHER: 'OTHER',
+};
+
+export const DisputeOutcome = {
+    BUYER_WINS: 'buyer_wins',
+    SELLER_WINS: 'seller_wins',
 };

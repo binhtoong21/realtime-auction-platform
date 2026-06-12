@@ -10,7 +10,8 @@ import usersRoutes from './routes/users.routes.js';
 import webhooksRoutes from './routes/webhooks.routes.js';
 import paymentMethodRoutes from './routes/payment-method.routes.js';
 import paymentsRoutes from './routes/payments.routes.js';
-
+import disputesRoutes from './routes/disputes.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 const app = express();
 
@@ -31,7 +32,8 @@ app.use('/auctions', auctionRoutes);
 app.use('/users', usersRoutes);
 app.use('/payment-methods', paymentMethodRoutes);
 app.use('/payments', paymentsRoutes);
-
+app.use('/disputes', disputesRoutes);
+app.use('/admin', adminRoutes);
 
 // Health Check Route
 app.get('/health', async (req, res, next) => {

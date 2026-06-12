@@ -21,6 +21,19 @@ export const auctionQueue = new Queue('auction', {
   }
 });
 
+export const disputeQueue = new Queue('dispute', {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000
+    },
+    removeOnComplete: 100,
+    removeOnFail: 200
+  }
+});
+
 export const auctionStartQueue = new Queue('auction-start', {
   connection,
   defaultJobOptions: {
@@ -254,6 +267,11 @@ export const removeDeliveryJobs = async (auctionId) => {
 export const rescheduleDeliveryJobs = async (auctionId, newDeadlineAt, originalShippedAt) => {
   await removeDeliveryJobs(auctionId);
 
+  if (!originalShippedAt) {
+    // If it hasn't been shipped yet, we don't have delivery jobs to schedule.
+    return;
+  }
+
   const delayAutoConfirm = Math.max(0, new Date(newDeadlineAt) - Date.now());
   await fulfillmentQueue.add('delivery-auto-confirm', { auctionId }, { jobId: `delivery-auto-confirm-${auctionId}`, delay: delayAutoConfirm });
 
@@ -301,3 +319,10 @@ export async function ensureJobScheduled(jobName, auctionId, runAt, extraData = 
   }
 }
 
+export const startDisputeExpirySweeper = async () => {
+  await disputeQueue.add('dispute-expiry-sweeper', null, {
+    jobId: 'dispute-expiry-sweeper-job',
+    repeat: { every: 60 * 60 * 1000 }, // Every 1 hour
+  });
+  console.log('[Queue] Dispute expiry sweeper registered (every 1 hour)');
+};

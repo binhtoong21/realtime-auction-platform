@@ -611,7 +611,7 @@ async function processPaymentSweeper() {
   const stuckResult = await pool.query(
     `SELECT id, status, stripe_pi_id, auction_id, buyer_id, seller_id, amount, updated_at
      FROM payments
-     WHERE status IN ('capture_pending', 'hold_pending')
+     WHERE status IN ('capture_pending', 'hold_pending', 'releasing')
        AND updated_at < NOW() - INTERVAL '10 minutes'`
   );
 
@@ -708,6 +708,8 @@ async function sweepSinglePayment(payment) {
     await sweepCapturePending(payment, pi);
   } else if (payment.status === 'hold_pending') {
     await sweepHoldPending(payment, pi);
+  } else if (payment.status === 'releasing') {
+    await sweepReleasing(payment, pi);
   }
 }
 
@@ -810,6 +812,172 @@ async function sweepCapturePending(payment, pi) {
       auctionId: payment.auction_id,
       stripePiStatus: pi.status,
       reason: `Unexpected Stripe PI state '${pi.status}' for capture_pending payment`,
+    });
+    console.warn(`[PaymentWorker] Sweeper: Payment ${payment.id} has unexpected PI state '${pi.status}'. Admin alerted.`);
+  }
+}
+
+/**
+ * Reconcile a payment stuck in releasing (cancel/refund).
+ */
+async function sweepReleasing(payment, pi) {
+  if (pi.status === 'canceled') {
+    // Already canceled on Stripe — sync DB
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const updateResult = await client.query(
+        `UPDATE payments SET status = 'refunded', updated_at = NOW() WHERE id = $1 AND status = 'releasing' RETURNING id`,
+        [payment.id]
+      );
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'sweeper_releasing_synced',
+        deltaState: { stripe_pi_status: 'canceled', synced_to: 'refunded' },
+        actorId: null,
+      }, client);
+      await client.query('COMMIT');
+      console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} release (cancel) synced from Stripe.`);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } else if (pi.status === 'succeeded') {
+    // Captured on Stripe, need to ensure refund exists
+    const refunds = await stripe.refunds.list({ payment_intent: payment.stripe_pi_id });
+    const succeededRefund = refunds.data.find(r => r.status === 'succeeded');
+    if (succeededRefund) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const updateResult = await client.query(
+          `UPDATE payments SET status = 'refunded', updated_at = NOW() WHERE id = $1 AND status = 'releasing' RETURNING id`,
+          [payment.id]
+        );
+        if (updateResult.rowCount === 0) {
+          await client.query('ROLLBACK');
+          return;
+        }
+        
+        await writeAuditLog({
+          referenceId: payment.id,
+          referenceType: 'payment',
+          action: 'sweeper_releasing_synced',
+          deltaState: { stripe_pi_status: 'succeeded', refund_id: succeededRefund.id, synced_to: 'refunded' },
+          actorId: null,
+        }, client);
+        await client.query('COMMIT');
+        console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} release (refund) synced from Stripe.`);
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    } else {
+      // Create refund
+      let refund;
+      try {
+        refund = await stripe.refunds.create({ 
+          payment_intent: payment.stripe_pi_id 
+        }, {
+          idempotencyKey: `refund_${payment.id}`
+        });
+      } catch (refundErr) {
+        console.error(`[PaymentWorker] Sweeper: Payment ${payment.id} refund attempt failed:`, refundErr.message);
+        throw refundErr; // Transient
+      }
+        
+      if (refund.status === 'succeeded') {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const updateResult = await client.query(
+            `UPDATE payments SET status = 'refunded', updated_at = NOW() WHERE id = $1 AND status = 'releasing' RETURNING id`,
+            [payment.id]
+          );
+          if (updateResult.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return;
+          }
+          
+          await writeAuditLog({
+            referenceId: payment.id,
+            referenceType: 'payment',
+            action: 'sweeper_releasing_synced',
+            deltaState: { stripe_pi_status: 'succeeded', refund_id: refund.id, synced_to: 'refunded' },
+            actorId: null,
+          }, client);
+          await client.query('COMMIT');
+          console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} release (refund) retried successfully.`);
+        } catch (err) {
+          await client.query('ROLLBACK');
+          throw err;
+        } finally {
+          client.release();
+        }
+      } else {
+        console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} refund created but status is '${refund.status}'. Left in releasing.`);
+      }
+    }
+  } else if (pi.status === 'requires_capture') {
+    // Still authorized, need to cancel
+    try {
+      await stripe.paymentIntents.cancel(payment.stripe_pi_id);
+    } catch (cancelErr) {
+      console.error(`[PaymentWorker] Sweeper: Payment ${payment.id} cancel attempt failed:`, cancelErr.message);
+      throw cancelErr; // Transient
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const updateResult = await client.query(
+        `UPDATE payments SET status = 'refunded', updated_at = NOW() WHERE id = $1 AND status = 'releasing' RETURNING id`,
+        [payment.id]
+      );
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      
+      await writeAuditLog({
+        referenceId: payment.id,
+        referenceType: 'payment',
+        action: 'sweeper_releasing_synced',
+        deltaState: { stripe_pi_status: 'requires_capture', canceled: true, synced_to: 'refunded' },
+        actorId: null,
+      }, client);
+      await client.query('COMMIT');
+      console.log(`[PaymentWorker] Sweeper: Payment ${payment.id} release (cancel) retried successfully.`);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } else {
+    // Unexpected state — alert Admin
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'sweeper_admin_alert',
+      deltaState: { stuck_status: 'releasing', stripe_pi_id: payment.stripe_pi_id, stripe_pi_status: pi.status, auction_id: payment.auction_id },
+      actorId: null,
+    });
+    await emitToAdmin('payment:reconciliation-alert', {
+      paymentId: payment.id,
+      auctionId: payment.auction_id,
+      stripePiStatus: pi.status,
+      reason: `Unexpected Stripe PI state '${pi.status}' for releasing payment`,
     });
     console.warn(`[PaymentWorker] Sweeper: Payment ${payment.id} has unexpected PI state '${pi.status}'. Admin alerted.`);
   }
