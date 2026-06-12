@@ -6,7 +6,7 @@ export function VerifyEmailPage() {
   const token = searchParams.get('token');
 
   const { data, isLoading, error } = useFetch(
-    token ? `/auth/verify-email?token=${token}` : null,
+    token ? `/auth/verify-email?token=${encodeURIComponent(token)}` : null,
     {},
     !!token
   );

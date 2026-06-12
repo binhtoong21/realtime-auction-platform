@@ -10,11 +10,12 @@ import { pool } from '../config/database.js';
  * @param {Object} params.deltaState - JSON object containing the state changes
  * @param {string|null} params.actorId - The user ID who performed the action, or null if system
  * @param {string|null} params.ipAddress - The IP address of the actor, or null
- * @param {Object} [dbClient] - Optional pg client if running within a transaction
  */
-export async function writeAuditLog({ referenceId, referenceType, action, deltaState, actorId = null, ipAddress = null }, dbClient = pool) {
+export async function writeAuditLog({ referenceId, referenceType, action, deltaState, actorId = null, ipAddress = null }) {
   try {
-    await dbClient.query(
+    // ALWAYS use pool.query instead of a passed transaction client
+    // so that the audit write is autonomous and cannot be rolled back
+    await pool.query(
       `INSERT INTO financial_audit_logs 
         (reference_id, reference_type, action, delta_state, actor_id, ip_address)
        VALUES ($1, $2, $3, $4, $5, $6)`,

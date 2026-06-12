@@ -60,6 +60,7 @@ axiosClient.interceptors.response.use(
           pendingRequests.push({ resolve, reject });
         })
           .then((token) => {
+            originalRequest._retry = true; // Prevent queued request from triggering another refresh
             originalRequest.headers.Authorization = `Bearer ${token}`;
             return axiosClient(originalRequest);
           })

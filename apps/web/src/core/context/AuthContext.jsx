@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { axiosClient } from '../api/axiosClient';
 import { clearAccessToken } from '../api/tokenManager';
 
@@ -14,39 +14,43 @@ export function AuthProvider({ children }) {
   // might trigger a 401 initially, but our axios interceptor will intercept it,
   // call /auth/refresh, get a new access token, and retry the /auth/me request successfully.
   useEffect(() => {
+    let mounted = true;
+
     const initAuth = async () => {
       try {
         const data = await axiosClient.get('/auth/me');
-        // Assuming API returns { success: true, data: { user: {...} } } or similar
-        // Adjust according to actual backend response structure.
-        setUser(data.data || data);
+        if (mounted) {
+          setUser(data.data || data);
+        }
       } catch (err) {
-        // If it fails even after the interceptor attempts a refresh, 
-        // the user is truly unauthenticated.
-        setUser(null);
+        if (mounted) {
+          setUser(null);
+        }
       } finally {
-        setIsLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     initAuth();
 
-    // Listen to custom logout event dispatched by interceptor or other parts of the app
     const handleLogout = () => {
       setUser(null);
     };
     window.addEventListener('auth:logout', handleLogout);
 
     return () => {
+      mounted = false;
       window.removeEventListener('auth:logout', handleLogout);
     };
   }, []);
 
-  const login = (userData) => {
+  const login = useCallback((userData) => {
     setUser(userData);
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await axiosClient.post('/auth/logout');
     } catch (err) {
@@ -55,17 +59,17 @@ export function AuthProvider({ children }) {
       clearAccessToken();
       setUser(null);
     }
-  };
+  }, []);
+
+  const dispatchValue = useMemo(() => ({ login, logout }), [login, logout]);
 
   if (isLoading) {
-    // Optionally return a full-screen loading spinner here
-    // so we don't flash unauthenticated content
     return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading...</div>;
   }
 
   return (
     <AuthStateContext.Provider value={user}>
-      <AuthDispatchContext.Provider value={{ login, logout }}>
+      <AuthDispatchContext.Provider value={dispatchValue}>
         {children}
       </AuthDispatchContext.Provider>
     </AuthStateContext.Provider>

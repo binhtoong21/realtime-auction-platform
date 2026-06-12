@@ -1,8 +1,10 @@
 /**
  * Joi Validation Middleware
+ * @param {import('joi').ObjectSchema} schema - The Joi schema to validate against
+ * @param {'body' | 'query' | 'params'} target - The part of the request to validate (default: 'body')
  */
-const validate = (schema) => (req, res, next) => {
-  const { error, value } = schema.validate(req.body, { abortEarly: false });
+const validate = (schema, target = 'body') => (req, res, next) => {
+  const { error, value } = schema.validate(req[target], { abortEarly: false });
   
   if (error) {
     const details = error.details.map(err => ({
@@ -20,8 +22,8 @@ const validate = (schema) => (req, res, next) => {
     });
   }
 
-  // Replace req.body with validated and sanitized value
-  req.body = value;
+  // Replace the target object with validated and sanitized value
+  req[target] = value;
   next();
 };
 

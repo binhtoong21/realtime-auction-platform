@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import 'https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap';
 
 :root {
   /* ============================================
@@ -155,17 +155,19 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.btn-primary {
+.btn-primary,
+.btn-primary a,
+a.btn-primary {
   display: inline-block;
   background-color: var(--color-action);
-  color: var(--color-action-text) !important;
+  color: var(--color-action-text);
   border: none;
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-4);
   font-family: var(--font-body);
   font-weight: 500;
   text-align: center;
-  text-decoration: none !important;
+  text-decoration: none;
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
 }
@@ -210,6 +212,12 @@ input[type="password"]::-ms-clear {
   display: none;
 }
 
+/* 
+  TODO (FE Phase 3 - Dashboard/Auctions): 
+  These animation classes (.price-updated, .countdown-critical, .bid-entry-new) 
+  will be wired into the Live Auction Room components to reflect price updates, 
+  countdown warnings, and new bid entries.
+*/
 /* Animations */
 @keyframes bid-flash {
   0%   { color: var(--color-bid-flash); }

@@ -43,30 +43,31 @@ const register = async ({ email, password, displayName }) => {
   if (existing.rows.length > 0) {
     const user = existing.rows[0];
     if (user.status === 'unverified') {
-      const recentToken = await pool.query(
-        `SELECT expires_at FROM email_verification_tokens WHERE user_id = $1 ORDER BY expires_at DESC LIMIT 1`,
-        [user.id]
-      );
-      
-      if (recentToken.rows.length > 0) {
-        const expiresAt = new Date(recentToken.rows[0].expires_at);
-        // We set expires_at to NOW() + 24 hours during creation
-        const createdAt = new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
-        const minutesSinceCreation = (new Date() - createdAt) / (1000 * 60);
-        
-        if (minutesSinceCreation < 5) {
-           const error = new Error('Please wait 5 minutes before requesting a new registration/verification email for this account.');
-           error.statusCode = 429;
-           error.errorCode = 'TOO_MANY_REQUESTS';
-           throw error;
-        }
-      }
-
-      const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-      const verifyToken = generateCryptoToken();
-      const verifyTokenHash = hashToken(verifyToken);
-
       await withTransaction(async (client) => {
+        // Acquire a lock on the user's verification rows to prevent TOCTOU
+        const recentToken = await client.query(
+          `SELECT expires_at FROM email_verification_tokens WHERE user_id = $1 ORDER BY expires_at DESC LIMIT 1 FOR UPDATE`,
+          [user.id]
+        );
+        
+        if (recentToken.rows.length > 0) {
+          const expiresAt = new Date(recentToken.rows[0].expires_at);
+          // We set expires_at to NOW() + 24 hours during creation
+          const createdAt = new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
+          const minutesSinceCreation = (new Date() - createdAt) / (1000 * 60);
+          
+          if (minutesSinceCreation < 5) {
+             const error = new Error('Please wait 5 minutes before requesting a new registration/verification email for this account.');
+             error.statusCode = 429;
+             error.errorCode = 'TOO_MANY_REQUESTS';
+             throw error;
+          }
+        }
+
+        const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+        const verifyToken = generateCryptoToken();
+        const verifyTokenHash = hashToken(verifyToken);
+
         await client.query(
           `UPDATE users SET password_hash = $1, display_name = $2 WHERE id = $3`,
           [passwordHash, displayName, user.id]
@@ -80,9 +81,12 @@ const register = async ({ email, password, displayName }) => {
            VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours')`,
           [uuidv4(), user.id, verifyTokenHash]
         );
+        
+        // Return token outside transaction to avoid blocking it with external API calls
+        return verifyToken;
+      }).then(async (verifyToken) => {
+         await sendVerificationEmail(email, verifyToken);
       });
-
-      await sendVerificationEmail(email, verifyToken);
       return { userId: user.id };
     } else {
       const error = new Error('Email already registered');
