@@ -20,7 +20,7 @@ export function LoginPage() {
       
       if (!response?.data?.accessToken || !response?.data?.user) {
         console.error('Invalid response from server: Missing authentication data');
-        return; // Early return to prevent navigating into the authenticated area
+        throw new Error('Unexpected server response. Please try again.');
       }
 
       // Store token in module-level variable
