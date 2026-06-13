@@ -6,6 +6,9 @@ const AuthStateContext = createContext(undefined);
 const AuthDispatchContext = createContext(undefined);
 
 export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
   // Public API for user-initiated logout (calls backend)
   const logout = useCallback(async () => {
     try {

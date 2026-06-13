@@ -1,27 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { useMutation } from '../../../core/hooks/useMutation';
+import { axiosClient } from '../../../core/api/axiosClient';
 
 export function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   
-  const { mutate, isLoading, error } = useMutation('/auth/verify-email', 'get');
   const calledRef = useRef(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(!!token);
 
   useEffect(() => {
     if (token && !calledRef.current) {
       calledRef.current = true;
-      mutate(null, { url: `/auth/verify-email?token=${encodeURIComponent(token)}` })
+      setIsLoading(true);
+      axiosClient.get(`/auth/verify-email?token=${encodeURIComponent(token)}`)
         .then(response => {
           if (response?.data?.success) {
             setSuccessMsg(response.data.message || 'Email verified successfully!');
           }
         })
-        .catch(() => {});
+        .catch(err => {
+          const errData = err.response?.data;
+          const msg = errData?.error?.details?.[0]?.message || errData?.error?.message || errData?.message || err.message || 'Verification failed';
+          setErrorMsg(msg);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
     }
-  }, [token, mutate]);
+  }, [token]);
 
   return (
     <div style={{ maxWidth: '400px', margin: '40px auto', backgroundColor: 'var(--color-surface)', padding: 'var(--space-6)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)', textAlign: 'center' }}>
@@ -39,9 +48,9 @@ export function VerifyEmailPage() {
         </div>
       )}
 
-      {error && (
+      {errorMsg && (
         <div style={{ backgroundColor: '#FEF2F2', color: 'var(--color-danger)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
-          {error}
+          {errorMsg}
         </div>
       )}
 
