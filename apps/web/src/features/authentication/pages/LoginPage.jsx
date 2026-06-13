@@ -18,15 +18,16 @@ export function LoginPage() {
     try {
       const response = await mutate({ email, password });
       
-      // Store token in module-level variable
-      if (response?.data?.accessToken) {
-        setAccessToken(response.data.accessToken);
+      if (!response?.data?.accessToken || !response?.data?.user) {
+        console.error('Invalid response from server: Missing authentication data');
+        return; // Early return to prevent navigating into the authenticated area
       }
+
+      // Store token in module-level variable
+      setAccessToken(response.data.accessToken);
       
       // Store user in context
-      if (response?.data?.user) {
-        login(response.data.user);
-      }
+      login(response.data.user);
       
       navigate('/');
     } catch (err) {

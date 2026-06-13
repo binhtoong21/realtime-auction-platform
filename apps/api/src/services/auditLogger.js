@@ -12,12 +12,19 @@ import { pool } from '../config/database.js';
  */
 export async function writeAuditLog({ referenceId, referenceType, action, deltaState, actorId = null, ipAddress = null, strict = false }) {
   try {
-    // ALWAYS use pool.query instead of a passed transaction client (dbClient).
+    // ALWAYS use pool.query instead of a passed transaction client.
     // This makes the audit write an autonomous transaction.
-    // Why? We want to record failed attempts or actions even if the main transaction rolls back.
-    // However, for pure financial_audit_logs, we might want them to be atomic. If atomic is needed, 
-    // the caller should pass dbClient (if we revert this) OR we rely on eventual consistency.
-    // Currently, our design states audit logs must not be rolled back.
+    // TRADE-OFF: This causes eventual consistency and potential orphaned audit rows 
+    // if the app crashes before the main transaction commits.
+    // 
+    // For the special-case table `financial_audit_logs`, this is generally acceptable 
+    // to ensure we log attempts even if the main transaction rolls back.
+    // However, callers who strictly need atomicity with their main transaction 
+    // MUST use an alternative atomic pathway (e.g. passing a dbClient if we modify this signature later, 
+    // or using the outbox pattern).
+    //
+    // TODO: Verify downstream consumers handle eventual consistency.
+    // TODO: Add tests or monitoring for orphaned audit rows.
     await pool.query(
       `INSERT INTO financial_audit_logs 
         (reference_id, reference_type, action, delta_state, actor_id, ip_address)
@@ -30,10 +37,11 @@ export async function writeAuditLog({ referenceId, referenceType, action, deltaS
       console.warn(`[AuditLogger] Table financial_audit_logs does not exist yet. Skipping audit log for ${action}.`);
     } else {
       console.error(`[AuditLogger] Failed to write audit log for ${action}:`, err.message);
-      if (strict) {
-        throw err;
-      }
-      // If strict=false, we don't throw here to avoid failing the main transaction just because of audit log failure
     }
+
+    if (strict) {
+      throw err;
+    }
+    // If strict=false, we don't throw here to avoid failing the main transaction just because of audit log failure
   }
 }

@@ -127,7 +127,20 @@ const register = async ({ email, password, displayName }) => {
       [customer.id, userId]
     );
   } catch (stripeErr) {
-    console.error('[Stripe] Failed to create customer for user', userId, stripeErr.message);
+    // Structured operational logging
+    console.error(JSON.stringify({
+      event: 'StripeCustomerCreationFailed',
+      userId,
+      email,
+      error: stripeErr.message,
+      stack: stripeErr.stack
+    }));
+
+    // TODO: Emit monitoring metric or alert (e.g., StripeCustomerCreationFailures)
+    
+    // TODO: Enqueue a background retry job (e.g., via BullMQ 'createStripeCustomer' queue) 
+    // or insert a retry row so the missing stripe_cus_id can be retried/monitored.
+    // This ensures failures do not throw back into the main registration flow while preserving recoverability.
   }
 
   return { userId };
