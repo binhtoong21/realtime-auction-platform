@@ -28,6 +28,7 @@ export async function writeAuditLog({ referenceId, referenceType, action, deltaS
     // 42P01: undefined_table (in case the migration hasn't run yet)
     if (err.code === '42P01') {
       console.warn(`[AuditLogger] Table financial_audit_logs does not exist yet. Skipping audit log for ${action}.`);
+    } else {
       console.error(`[AuditLogger] Failed to write audit log for ${action}:`, err.message);
       if (strict) {
         throw err;

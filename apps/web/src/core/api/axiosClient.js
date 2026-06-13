@@ -40,6 +40,10 @@ axiosClient.interceptors.request.use(
 );
 
 // Response Interceptor
+// Convention: This interceptor returns the raw axios response (not response.data).
+// The hooks (useFetch, useMutation) are responsible for unpacking response.data 
+// (which is the server payload { success, data }), and returning it to the caller.
+// Callers then access the actual data via response.data.xxx.
 axiosClient.interceptors.response.use(
   (response) => {
     return response;
