@@ -9,47 +9,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Bootstrap logic: Fetch user profile on mount
-  // If the user has a valid session (HttpOnly refresh token), this request
-  // might trigger a 401 initially, but our axios interceptor will intercept it,
-  // call /auth/refresh, get a new access token, and retry the /auth/me request successfully.
-  useEffect(() => {
-    let mounted = true;
-
-    const initAuth = async () => {
-      try {
-        const data = await axiosClient.get('/auth/me');
-        if (mounted) {
-          setUser(data.data || data);
-        }
-      } catch (err) {
-        if (mounted) {
-          setUser(null);
-        }
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    initAuth();
-
-    const handleLogout = () => {
-      setUser(null);
-    };
-    window.addEventListener('auth:logout', handleLogout);
-
-    return () => {
-      mounted = false;
-      window.removeEventListener('auth:logout', handleLogout);
-    };
-  }, []);
-
-  const login = useCallback((userData) => {
-    setUser(userData);
-  }, []);
-
+  // Public API for user-initiated logout (calls backend)
   const logout = useCallback(async () => {
     try {
       await axiosClient.post('/auth/logout');
@@ -59,6 +19,59 @@ export function AuthProvider({ children }) {
       clearAccessToken();
       setUser(null);
     }
+  }, []);
+
+  // Internal handler for session-expired events (no backend call)
+  const handleSessionExpired = useCallback(() => {
+    clearAccessToken();
+    setUser(null);
+  }, []);
+
+  // Bootstrap logic: Fetch user profile on mount
+  // If the user has a valid session (HttpOnly refresh token), this request
+  // might trigger a 401 initially, but our axios interceptor will intercept it,
+  // call /auth/refresh, get a new access token, and retry the /auth/me request successfully.
+  useEffect(() => {
+    let mounted = true;
+    
+    // Fallback timeout to prevent infinite loading if backend hangs
+    const fallbackTimer = setTimeout(() => {
+      if (mounted) setIsLoading(false);
+    }, 5000);
+
+    const initAuth = async () => {
+      try {
+        const response = await axiosClient.get('/auth/me');
+        if (mounted) {
+          // axiosClient.get returns the raw axios response
+          // response.data is the server payload { success, data: { user } }
+          setUser(response.data?.data?.user || null);
+        }
+      } catch (err) {
+        if (mounted) {
+          setUser(null);
+        }
+      } finally {
+        if (mounted) {
+          clearTimeout(fallbackTimer);
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initAuth();
+
+    window.addEventListener('auth:logout', handleSessionExpired);
+
+    return () => {
+      mounted = false;
+      clearTimeout(fallbackTimer);
+      window.removeEventListener('auth:logout', handleSessionExpired);
+    };
+  }, [handleSessionExpired]);
+
+  const login = useCallback((userData) => {
+    setUser(userData);
   }, []);
 
   const dispatchValue = useMemo(() => ({ login, logout }), [login, logout]);

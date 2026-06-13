@@ -3,6 +3,7 @@ import { BaseLayout } from '../components/layout/BaseLayout';
 import { LoginPage } from '../features/authentication/pages/LoginPage';
 import { RegisterPage } from '../features/authentication/pages/RegisterPage';
 import { VerifyEmailPage } from '../features/authentication/pages/VerifyEmailPage';
+import { ForgotPasswordPage } from '../features/authentication/pages/ForgotPasswordPage';
 
 export const router = createBrowserRouter([
   {
@@ -29,6 +30,10 @@ export const router = createBrowserRouter([
       {
         path: 'auth/verify-email',
         element: <VerifyEmailPage />,
+      },
+      {
+        path: 'auth/forgot-password',
+        element: <ForgotPasswordPage />,
       },
       // Placeholder for future routes
       {

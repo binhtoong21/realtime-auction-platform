@@ -1,15 +1,36 @@
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { useFetch } from '../../../core/hooks/useFetch';
+import { axiosClient } from '../../../core/api/axiosClient';
 
 export function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  
+  const calledRef = useRef(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(!!token);
 
-  const { data, isLoading, error } = useFetch(
-    token ? `/auth/verify-email?token=${encodeURIComponent(token)}` : null,
-    {},
-    !!token
-  );
+  useEffect(() => {
+    if (token && !calledRef.current) {
+      calledRef.current = true;
+      setIsLoading(true);
+      axiosClient.get(`/auth/verify-email?token=${encodeURIComponent(token)}`)
+        .then(response => {
+          if (response?.data?.success) {
+            setSuccessMsg(response.data.message || 'Email verified successfully!');
+          }
+        })
+        .catch(err => {
+          const errData = err.response?.data;
+          const msg = errData?.error?.details?.[0]?.message || errData?.error?.message || errData?.message || err.message || 'Verification failed';
+          setErrorMsg(msg);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
+  }, [token]);
 
   return (
     <div style={{ maxWidth: '400px', margin: '40px auto', backgroundColor: 'var(--color-surface)', padding: 'var(--space-6)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)', textAlign: 'center' }}>
@@ -27,15 +48,15 @@ export function VerifyEmailPage() {
         </div>
       )}
 
-      {error && (
+      {errorMsg && (
         <div style={{ backgroundColor: '#FEF2F2', color: 'var(--color-danger)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
-          {error}
+          {errorMsg}
         </div>
       )}
 
-      {data && data.success && (
+      {successMsg && (
         <div style={{ backgroundColor: '#F0FDF4', color: 'var(--color-success)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
-          {data.message || 'Email verified successfully!'}
+          {successMsg}
         </div>
       )}
 

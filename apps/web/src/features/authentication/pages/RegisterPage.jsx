@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useMutation } from '../../../core/hooks/useMutation';
@@ -13,7 +13,7 @@ export function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const emailCheckResultRef = useRef(null);
   
   const { mutate, isLoading, error } = useMutation('/auth/register', 'post');
   const navigate = useNavigate();
@@ -21,18 +21,11 @@ export function RegisterPage() {
   const handleEmailBlur = async () => {
     if (!email || !email.includes('@')) return;
     
-    setIsCheckingEmail(true);
-    setFieldErrors(prev => ({ ...prev, email: null }));
-    
     try {
       const response = await axiosClient.get(`/auth/check-email?email=${encodeURIComponent(email)}`);
-      if (response.data && !response.data.data.available) {
-        setFieldErrors(prev => ({ ...prev, email: response.data.data.message }));
-      }
+      emailCheckResultRef.current = response.data?.data ?? null;
     } catch (err) {
-      // Ignore network errors here to not block the user, or log them
-    } finally {
-      setIsCheckingEmail(false);
+      emailCheckResultRef.current = null; // network error → fallback to submit-time check
     }
   };
 
@@ -45,9 +38,26 @@ export function RegisterPage() {
       setFieldErrors({ confirmPassword: 'Passwords do not match' });
       return;
     }
+
+    const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      setFieldErrors({ password: 'Must be at least 8 characters, including a capital letter and a number.' });
+      return;
+    }
     
-    if (fieldErrors.email) {
-      // Don't submit if we already know the email is taken
+    let emailCheck = emailCheckResultRef.current;
+    if (!emailCheck) {
+      // user hasn't blurred or request hasn't returned → fetch now
+      try {
+        const response = await axiosClient.get(`/auth/check-email?email=${encodeURIComponent(email)}`);
+        emailCheck = response.data?.data ?? null;
+      } catch (err) {
+        // network error → ignore and let BE return 409 if exists
+      }
+    }
+
+    if (emailCheck && !emailCheck.available) {
+      setFieldErrors({ email: emailCheck.message });
       return;
     }
 
@@ -101,6 +111,7 @@ export function RegisterPage() {
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
+              emailCheckResultRef.current = null; // stale, needs re-fetch
               if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: null }));
             }}
             onBlur={handleEmailBlur}
@@ -109,7 +120,7 @@ export function RegisterPage() {
               borderColor: fieldErrors.email ? 'var(--color-danger)' : 'var(--color-border)'
             }}
             required
-            disabled={isLoading || isCheckingEmail}
+            disabled={isLoading}
           />
           {fieldErrors.email && (
             <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}>
@@ -149,9 +160,15 @@ export function RegisterPage() {
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
           </div>
-          <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
-            Must be at least 8 characters, including a capital letter and a number.
-          </div>
+          {fieldErrors.password ? (
+            <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}>
+              {fieldErrors.password}
+            </div>
+          ) : (
+            <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+              Must be at least 8 characters, including a capital letter and a number.
+            </div>
+          )}
         </div>
         <div>
           <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>Confirm Password</label>

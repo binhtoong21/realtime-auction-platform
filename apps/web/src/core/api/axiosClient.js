@@ -40,9 +40,13 @@ axiosClient.interceptors.request.use(
 );
 
 // Response Interceptor
+// Convention: This interceptor returns the raw axios response (not response.data).
+// The hooks (useFetch, useMutation) are responsible for unpacking response.data 
+// (which is the server payload { success, data }), and returning it to the caller.
+// Callers then access the actual data via response.data.xxx.
 axiosClient.interceptors.response.use(
   (response) => {
-    return response.data; // Standardize response, assuming our API wraps data in `data` field sometimes, but we can return response.data directly.
+    return response;
   },
   async (error) => {
     const originalRequest = error.config;
@@ -78,6 +82,10 @@ axiosClient.interceptors.response.use(
         const { data } = await axios.post('/api/auth/refresh', {}, {
           withCredentials: true
         });
+
+        if (!data?.data?.accessToken) {
+          throw new TypeError('Missing access token in refresh response');
+        }
 
         const newToken = data.data.accessToken;
         setAccessToken(newToken);
