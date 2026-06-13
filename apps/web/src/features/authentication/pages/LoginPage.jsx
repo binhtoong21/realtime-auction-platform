@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useMutation } from '../../../core/hooks/useMutation';
 import { useAuthDispatch } from '../../../core/context/AuthContext';
@@ -12,6 +12,7 @@ export function LoginPage() {
   const { mutate, isLoading, error } = useMutation('/auth/login', 'post');
   const { login } = useAuthDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,7 +30,8 @@ export function LoginPage() {
       // Store user in context
       login(response.data.user);
       
-      navigate('/');
+      const returnUrl = location.state?.from || '/';
+      navigate(returnUrl);
     } catch (err) {
       // Error is handled by useMutation, accessible via `error` state
     }
@@ -87,6 +89,9 @@ export function LoginPage() {
             >
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
+          </div>
+          <div style={{ marginTop: 'var(--space-2)', textAlign: 'right' }}>
+            <Link to="/auth/forgot-password" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-brand)' }}>Forgot password?</Link>
           </div>
         </div>
         <button 

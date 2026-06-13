@@ -38,6 +38,12 @@ export function RegisterPage() {
       setFieldErrors({ confirmPassword: 'Passwords do not match' });
       return;
     }
+
+    const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      setFieldErrors({ password: 'Must be at least 8 characters, including a capital letter and a number.' });
+      return;
+    }
     
     let emailCheck = emailCheckResultRef.current;
     if (!emailCheck) {
@@ -154,9 +160,15 @@ export function RegisterPage() {
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
           </div>
-          <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
-            Must be at least 8 characters, including a capital letter and a number.
-          </div>
+          {fieldErrors.password ? (
+            <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}>
+              {fieldErrors.password}
+            </div>
+          ) : (
+            <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+              Must be at least 8 characters, including a capital letter and a number.
+            </div>
+          )}
         </div>
         <div>
           <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>Confirm Password</label>

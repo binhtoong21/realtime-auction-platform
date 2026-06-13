@@ -83,6 +83,10 @@ axiosClient.interceptors.response.use(
           withCredentials: true
         });
 
+        if (!data?.data?.accessToken) {
+          throw new TypeError('Missing access token in refresh response');
+        }
+
         const newToken = data.data.accessToken;
         setAccessToken(newToken);
         

@@ -6,8 +6,23 @@ const AuthStateContext = createContext(undefined);
 const AuthDispatchContext = createContext(undefined);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Public API for user-initiated logout (calls backend)
+  const logout = useCallback(async () => {
+    try {
+      await axiosClient.post('/auth/logout');
+    } catch (err) {
+      console.error('Logout failed:', err);
+    } finally {
+      clearAccessToken();
+      setUser(null);
+    }
+  }, []);
+
+  // Internal handler for session-expired events (no backend call)
+  const handleSessionExpired = useCallback(() => {
+    clearAccessToken();
+    setUser(null);
+  }, []);
 
   // Bootstrap logic: Fetch user profile on mount
   // If the user has a valid session (HttpOnly refresh token), this request
@@ -43,31 +58,17 @@ export function AuthProvider({ children }) {
 
     initAuth();
 
-    const handleLogout = () => {
-      setUser(null);
-    };
-    window.addEventListener('auth:logout', handleLogout);
+    window.addEventListener('auth:logout', handleSessionExpired);
 
     return () => {
       mounted = false;
       clearTimeout(fallbackTimer);
-      window.removeEventListener('auth:logout', handleLogout);
+      window.removeEventListener('auth:logout', handleSessionExpired);
     };
-  }, []);
+  }, [handleSessionExpired]);
 
   const login = useCallback((userData) => {
     setUser(userData);
-  }, []);
-
-  const logout = useCallback(async () => {
-    try {
-      await axiosClient.post('/auth/logout');
-    } catch (err) {
-      console.error('Logout failed:', err);
-    } finally {
-      clearAccessToken();
-      setUser(null);
-    }
   }, []);
 
   const dispatchValue = useMemo(() => ({ login, logout }), [login, logout]);
