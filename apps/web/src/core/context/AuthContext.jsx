@@ -15,12 +15,19 @@ export function AuthProvider({ children }) {
   // call /auth/refresh, get a new access token, and retry the /auth/me request successfully.
   useEffect(() => {
     let mounted = true;
+    
+    // Fallback timeout to prevent infinite loading if backend hangs
+    const fallbackTimer = setTimeout(() => {
+      if (mounted) setIsLoading(false);
+    }, 5000);
 
     const initAuth = async () => {
       try {
-        const data = await axiosClient.get('/auth/me');
+        const response = await axiosClient.get('/auth/me');
         if (mounted) {
-          setUser(data.data || data);
+          // axiosClient.get returns the raw axios response
+          // response.data is the server payload { success, data: { user } }
+          setUser(response.data?.data?.user || null);
         }
       } catch (err) {
         if (mounted) {
@@ -28,6 +35,7 @@ export function AuthProvider({ children }) {
         }
       } finally {
         if (mounted) {
+          clearTimeout(fallbackTimer);
           setIsLoading(false);
         }
       }
@@ -42,6 +50,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false;
+      clearTimeout(fallbackTimer);
       window.removeEventListener('auth:logout', handleLogout);
     };
   }, []);

@@ -19,13 +19,13 @@ export function LoginPage() {
       const response = await mutate({ email, password });
       
       // Store token in module-level variable
-      if (response?.accessToken) {
-        setAccessToken(response.accessToken);
+      if (response?.data?.accessToken) {
+        setAccessToken(response.data.accessToken);
       }
       
       // Store user in context
-      if (response?.user) {
-        login(response.user);
+      if (response?.data?.user) {
+        login(response.data.user);
       }
       
       navigate('/');

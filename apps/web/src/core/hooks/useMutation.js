@@ -24,8 +24,8 @@ export function useMutation(url, method = 'post') {
           ...overrideOptions,
         });
 
-        setData(response.data || response);
-        return response.data || response;
+        setData(response.data);
+        return response.data;
       } catch (err) {
         const errData = err.response?.data;
         const errorMsg = errData?.error?.details?.[0]?.message || errData?.error?.message || errData?.message || err.message || 'An error occurred';

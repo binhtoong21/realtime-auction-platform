@@ -46,14 +46,12 @@ const register = async ({ email, password, displayName }) => {
       await withTransaction(async (client) => {
         // Acquire a lock on the user's verification rows to prevent TOCTOU
         const recentToken = await client.query(
-          `SELECT expires_at FROM email_verification_tokens WHERE user_id = $1 ORDER BY expires_at DESC LIMIT 1 FOR UPDATE`,
+          `SELECT created_at FROM email_verification_tokens WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
           [user.id]
         );
         
         if (recentToken.rows.length > 0) {
-          const expiresAt = new Date(recentToken.rows[0].expires_at);
-          // We set expires_at to NOW() + 24 hours during creation
-          const createdAt = new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
+          const createdAt = new Date(recentToken.rows[0].created_at);
           const minutesSinceCreation = (new Date() - createdAt) / (1000 * 60);
           
           if (minutesSinceCreation < 5) {
@@ -518,13 +516,12 @@ const checkEmail = async (email) => {
   const user = result.rows[0];
   if (user.status === 'unverified') {
     const recentToken = await pool.query(
-      `SELECT expires_at FROM email_verification_tokens WHERE user_id = $1 ORDER BY expires_at DESC LIMIT 1`,
+      `SELECT created_at FROM email_verification_tokens WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [user.id]
     );
 
     if (recentToken.rows.length > 0) {
-      const expiresAt = new Date(recentToken.rows[0].expires_at);
-      const createdAt = new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
+      const createdAt = new Date(recentToken.rows[0].created_at);
       const minutesSinceCreation = (new Date() - createdAt) / (1000 * 60);
 
       if (minutesSinceCreation < 5) {

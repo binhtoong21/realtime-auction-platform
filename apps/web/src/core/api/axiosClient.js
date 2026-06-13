@@ -42,7 +42,7 @@ axiosClient.interceptors.request.use(
 // Response Interceptor
 axiosClient.interceptors.response.use(
   (response) => {
-    return response.data; // Standardize response, assuming our API wraps data in `data` field sometimes, but we can return response.data directly.
+    return response;
   },
   async (error) => {
     const originalRequest = error.config;

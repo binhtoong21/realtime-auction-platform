@@ -41,10 +41,9 @@ export function useFetch(url, options = {}, executeImmediately = true) {
 
         // Only update state if this is the most recent request
         if (currentRequestId === requestIdRef.current) {
-          // Adjust based on your API response structure (e.g., response.data or just response)
-          setData(response.data || response);
+          setData(response.data);
         }
-        return response.data || response;
+        return response.data;
       } catch (err) {
         // If the error was an intentional abort, ignore it
         if (err.name === 'CanceledError' || err.message === 'canceled') {

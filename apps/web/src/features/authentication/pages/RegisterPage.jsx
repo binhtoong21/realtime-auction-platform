@@ -26,7 +26,9 @@ export function RegisterPage() {
     
     try {
       const response = await axiosClient.get(`/auth/check-email?email=${encodeURIComponent(email)}`);
-      if (response.data && !response.data.data.available) {
+      // Since interceptor now returns the raw axios response:
+      // response.data is { success: true, data: { available, message } }
+      if (response.data?.data && !response.data.data.available) {
         setFieldErrors(prev => ({ ...prev, email: response.data.data.message }));
       }
     } catch (err) {
