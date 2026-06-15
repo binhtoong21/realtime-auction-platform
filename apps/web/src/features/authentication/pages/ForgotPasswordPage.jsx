@@ -1,14 +1,21 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useMutation } from '../../../core/hooks/useMutation';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const { mutate, isLoading, error } = useMutation('/auth/forgot-password', 'post');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Placeholder for actual API call
-    setSubmitted(true);
+    try {
+      await mutate({ email });
+      setSubmitted(true);
+    } catch (err) {
+      // Error is handled by useMutation, accessible via `error` state
+      console.error('Forgot password error:', err);
+    }
   };
 
   return (
@@ -28,6 +35,12 @@ export function ForgotPasswordPage() {
             Enter your email address and we'll send you a link to reset your password.
           </p>
 
+          {error && (
+            <div style={{ backgroundColor: 'var(--color-danger-subtle)', color: 'var(--color-danger)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)', border: '1px solid var(--color-danger)' }}>
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>Email</label>
@@ -35,13 +48,15 @@ export function ForgotPasswordPage() {
                 type="email" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={{ width: '100%' }}
+                style={{ width: '100%', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
                 required
+                disabled={isLoading}
               />
             </div>
             
             <button 
               type="submit" 
+              disabled={isLoading}
               style={{
                 backgroundColor: 'var(--color-action)',
                 color: 'var(--color-action-text)',
@@ -49,10 +64,12 @@ export function ForgotPasswordPage() {
                 borderRadius: 'var(--radius-md)',
                 padding: 'var(--space-3)',
                 fontWeight: 500,
-                marginTop: 'var(--space-2)'
+                marginTop: 'var(--space-2)',
+                opacity: isLoading ? 0.7 : 1,
+                cursor: isLoading ? 'not-allowed' : 'pointer'
               }}
             >
-              Send Reset Link
+              {isLoading ? 'Sending...' : 'Send Reset Link'}
             </button>
           </form>
 

@@ -4,6 +4,7 @@ import { LoginPage } from '../features/authentication/pages/LoginPage';
 import { RegisterPage } from '../features/authentication/pages/RegisterPage';
 import { VerifyEmailPage } from '../features/authentication/pages/VerifyEmailPage';
 import { ForgotPasswordPage } from '../features/authentication/pages/ForgotPasswordPage';
+import { ResetPasswordPage } from '../features/authentication/pages/ResetPasswordPage';
 
 export const router = createBrowserRouter([
   {
@@ -34,6 +35,10 @@ export const router = createBrowserRouter([
       {
         path: 'auth/forgot-password',
         element: <ForgotPasswordPage />,
+      },
+      {
+        path: 'auth/reset-password',
+        element: <ResetPasswordPage />,
       },
       // Placeholder for future routes
       {

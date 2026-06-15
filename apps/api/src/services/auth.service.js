@@ -153,7 +153,8 @@ const verifyEmail = async (token) => {
   const tokenHash = hashToken(token);
 
   const result = await pool.query(
-    `SELECT evt.id, evt.user_id, evt.expires_at, evt.used_at
+    `SELECT evt.id, evt.user_id, evt.expires_at, evt.used_at,
+            (evt.expires_at < NOW()) as is_expired
      FROM email_verification_tokens evt
      WHERE evt.token_hash = $1`,
     [tokenHash]
@@ -175,7 +176,7 @@ const verifyEmail = async (token) => {
     throw error;
   }
 
-  if (new Date(record.expires_at) < new Date()) {
+  if (record.is_expired) {
     const error = new Error('Verification token has expired');
     error.statusCode = 400;
     error.errorCode = 'TOKEN_EXPIRED';
@@ -412,7 +413,8 @@ const resetPassword = async (token, newPassword) => {
   const tokenHash = hashToken(token);
 
   const result = await pool.query(
-    `SELECT id, user_id, expires_at, used_at
+    `SELECT id, user_id, expires_at, used_at,
+            (expires_at < NOW()) as is_expired
      FROM password_reset_tokens
      WHERE token_hash = $1`,
     [tokenHash]
@@ -434,7 +436,7 @@ const resetPassword = async (token, newPassword) => {
     throw error;
   }
 
-  if (new Date(record.expires_at) < new Date()) {
+  if (record.is_expired) {
     const error = new Error('Reset token has expired');
     error.statusCode = 400;
     error.errorCode = 'TOKEN_EXPIRED';

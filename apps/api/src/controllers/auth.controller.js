@@ -141,7 +141,11 @@ export const logout = async (req, res, next) => {
  */
 export const forgotPassword = async (req, res, next) => {
   try {
-    await authService.forgotPassword(req.body.email);
+    // Fire and forget to prevent email enumeration via timing attacks
+    authService.forgotPassword(req.body.email).catch((err) => {
+      console.error('Background forgotPassword error:', err);
+    });
+
     res.status(200).json({
       success: true,
       message: 'If an account exists with that email, a reset link has been sent.',

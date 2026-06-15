@@ -62,7 +62,22 @@ export const getAuctionBids = async (req, res, next) => {
 export const createAuction = async (req, res, next) => {
   try {
     const sellerId = req.user.id;
-    const auction = await auctionService.createAuction(sellerId, req.body);
+    const serviceData = {
+      title: req.body.title,
+      description: req.body.description,
+      images: req.body.images,
+      starting_price: req.body.startingPrice,
+      reserve_price: req.body.reservePrice,
+      bid_increment: req.body.bidIncrement,
+      start_at: req.body.startAt,
+      end_at: req.body.endAt,
+      category_id: req.body.categoryId
+    };
+    
+    // Remove undefined fields so we don't pass them if they are not provided (important for update)
+    Object.keys(serviceData).forEach(key => serviceData[key] === undefined && delete serviceData[key]);
+
+    const auction = await auctionService.createAuction(sellerId, serviceData);
     
     res.status(201).json({
       success: true,
@@ -78,7 +93,22 @@ export const updateAuction = async (req, res, next) => {
     const { id } = req.params;
     const sellerId = req.user.id;
     
-    const auction = await auctionService.updateAuction(id, sellerId, req.body);
+    const serviceData = {
+      title: req.body.title,
+      description: req.body.description,
+      images: req.body.images,
+      starting_price: req.body.startingPrice,
+      reserve_price: req.body.reservePrice,
+      bid_increment: req.body.bidIncrement,
+      start_at: req.body.startAt,
+      end_at: req.body.endAt,
+      category_id: req.body.categoryId
+    };
+    
+    // Remove undefined fields
+    Object.keys(serviceData).forEach(key => serviceData[key] === undefined && delete serviceData[key]);
+
+    const auction = await auctionService.updateAuction(id, sellerId, serviceData);
     
     res.status(200).json({
       success: true,
@@ -115,7 +145,8 @@ export const joinAuction = async (req, res, next) => {
     if (result.alreadyJoined) {
       return res.status(200).json({
         success: true,
-        data: { message: 'Already joined this auction' },
+        message: 'Already joined this auction',
+        data: {},
       });
     }
 

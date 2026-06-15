@@ -18,22 +18,22 @@ export const createAuctionSchema = Joi.object({
   // TODO: Replace with multipart/form-data + S3 upload
   // Currently accepts image URLs directly for development
   images: Joi.array().items(Joi.string().uri()).max(10).required(),
-  starting_price: Joi.number().integer().positive().required(),
-  reserve_price: Joi.number().integer().positive().allow(null).optional(),
-  bid_increment: Joi.number().integer().positive().required(),
-  start_at: Joi.date().iso().greater('now').required(),
-  end_at: Joi.date().iso().greater(Joi.ref('start_at')).required(),
-  category_id: Joi.string().uuid().required()
+  startingPrice: Joi.number().integer().positive().required(),
+  reservePrice: Joi.number().integer().positive().allow(null).optional(),
+  bidIncrement: Joi.number().integer().positive().required(),
+  startAt: Joi.date().iso().greater('now').required(),
+  endAt: Joi.date().iso().greater(Joi.ref('startAt')).required(),
+  categoryId: Joi.string().uuid().required()
 });
 
 export const updateAuctionSchema = Joi.object({
   title: Joi.string().min(3).max(100).optional(),
   description: Joi.string().max(2000).optional(),
   images: Joi.array().items(Joi.string().uri()).max(10).optional(),
-  starting_price: Joi.number().integer().positive().optional(),
-  reserve_price: Joi.number().integer().positive().allow(null).optional(),
-  bid_increment: Joi.number().integer().positive().optional(),
-  start_at: Joi.date().iso().greater('now').optional(),
-  end_at: Joi.date().iso().greater(Joi.ref('start_at')).optional(),
-  category_id: Joi.string().uuid().optional()
+  startingPrice: Joi.number().integer().positive().optional(),
+  reservePrice: Joi.number().integer().positive().allow(null).optional(),
+  bidIncrement: Joi.number().integer().positive().optional(),
+  startAt: Joi.date().iso().greater('now').optional(),
+  endAt: Joi.date().iso().greater(Joi.ref('startAt')).optional(),
+  categoryId: Joi.string().uuid().optional()
 });
