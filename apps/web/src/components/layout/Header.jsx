@@ -68,16 +68,21 @@ export function Header() {
             title="Disconnected"
           />
 
-          {user ? (
-            <div className="header__user">
-              <span className="header__user-email" title={user.email}>
-                {user.displayName || user.email}
-              </span>
-              <button onClick={logout} className="header__logout-btn">
-                Logout
-              </button>
-            </div>
-          ) : (
+          {user ? (() => {
+            const displayEmail = typeof user.email === 'string' ? user.email : '';
+            const displayLabel = typeof user.displayName === 'string' ? user.displayName : (displayEmail || 'User');
+            
+            return (
+              <div className="header__user">
+                <span className="header__user-email" title={displayEmail}>
+                  {displayLabel}
+                </span>
+                <button onClick={logout} className="header__logout-btn">
+                  Logout
+                </button>
+              </div>
+            );
+          })() : (
             <div className="header__auth">
               <Link to="/auth/login" className="header__nav-link">
                 Login
