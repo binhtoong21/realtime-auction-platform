@@ -70,7 +70,9 @@ export function Header() {
 
           {user ? (
             <div className="header__user">
-              <span className="header__user-email">{user.email}</span>
+              <span className="header__user-email" title={user.email}>
+                {user.displayName || user.email}
+              </span>
               <button onClick={logout} className="header__logout-btn">
                 Logout
               </button>
