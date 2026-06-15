@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import './Footer.css';
 
+/** Site footer with copyright and navigation links. */
 export function Footer() {
   return (
     <footer className="footer" id="site-footer">

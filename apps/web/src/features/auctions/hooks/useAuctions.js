@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useFetch } from '../../../core/hooks/useFetch';
 
+/** Builds a URL query string from filter params, omitting null/undefined values. */
 function buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limit }) {
   const params = new URLSearchParams();
   if (status) params.set('status', status);

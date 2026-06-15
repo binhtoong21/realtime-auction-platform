@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
 import { Footer } from './Footer';
 
+/** Root layout composing Header, page content (Outlet), and Footer. */
 export function BaseLayout() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>

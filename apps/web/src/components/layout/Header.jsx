@@ -4,6 +4,9 @@ import { useAuth, useAuthDispatch } from '../../core/context/AuthContext';
 import { Sun, Moon } from 'lucide-react';
 import './Header.css';
 
+/**
+ * Site header with navigation, theme toggle, auth controls, and connection status.
+ */
 export function Header() {
   const user = useAuth();
   const { logout } = useAuthDispatch();
