@@ -36,10 +36,9 @@ export function useAuctions({ status, categoryId, minPrice, maxPrice, sort, curs
   const url = queryString ? `/auctions?${queryString}` : '/auctions';
   const { data, error, isLoading, refetch } = useFetch(url, {}, true);
 
-  const auctions = data?.data || [];
-  const meta = data?.meta || null;
-  const nextCursor = meta?.nextCursor || null;
-  const hasMore = meta?.hasMore ?? false;
+  const auctions = data?.data?.items || [];
+  const nextCursor = data?.data?.nextCursor || null;
+  const hasMore = !!nextCursor;
 
   return { auctions, nextCursor, hasMore, isLoading, error, refetch };
 }
