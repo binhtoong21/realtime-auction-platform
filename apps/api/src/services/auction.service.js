@@ -43,9 +43,16 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
     // Note: To properly support cursors with dynamic sort, the cursor logic needs to match the sort field.
     // For MVP, we only apply cursor logic if sorting by newest (created_at DESC).
     if (sort === 'newest') {
-      query += ` AND a.created_at < $${paramCount}`;
-      values.push(new Date(cursor));
-      paramCount++;
+      const [cursorTime, cursorId] = cursor.split('_');
+      if (cursorId) {
+        query += ` AND (a.created_at, a.id) < ($${paramCount}, $${paramCount + 1})`;
+        values.push(new Date(cursorTime), cursorId);
+        paramCount += 2;
+      } else {
+        query += ` AND a.created_at < $${paramCount}`;
+        values.push(new Date(cursor));
+        paramCount++;
+      }
     }
   }
 
@@ -62,7 +69,7 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
       break;
     case 'newest':
     default:
-      query += ` ORDER BY a.created_at DESC LIMIT $${paramCount}`;
+      query += ` ORDER BY a.created_at DESC, a.id DESC LIMIT $${paramCount}`;
       break;
   }
   
@@ -73,7 +80,8 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
 
   let nextCursor = null;
   if (items.length > 0 && items.length === Number(limit) && sort === 'newest') {
-    nextCursor = items[items.length - 1].created_at.toISOString();
+    const lastItem = items[items.length - 1];
+    nextCursor = `${lastItem.created_at.toISOString()}_${lastItem.id}`;
   }
 
   return {
