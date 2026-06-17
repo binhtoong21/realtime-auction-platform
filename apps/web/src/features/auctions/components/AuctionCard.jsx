@@ -13,14 +13,30 @@ export function AuctionCard({ auction, variant = 'list' }) {
     return null;
   }
 
-  const { id, title = 'Untitled Auction', currentPrice = 0, endAt, bidCount = 0, status = 'unknown', seller, images } = auction;
+  const { 
+    id, 
+    title = 'Untitled Auction', 
+    currentPrice,
+    current_price, 
+    endAt,
+    end_at, 
+    bidCount,
+    bid_count, 
+    status = 'unknown', 
+    seller, 
+    images 
+  } = auction;
+
+  const price = currentPrice ?? current_price ?? 0;
+  const endDate = endAt ?? end_at;
+  const bids = bidCount ?? bid_count ?? 0;
   const imageUrl = images?.[0] || '';
 
   // Format currency
   const formattedPrice = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-  }).format((currentPrice || 0) / 100);
+  }).format(price / 100);
 
   // Status Badge mappings
   const getStatusBadge = (status) => {
@@ -59,10 +75,10 @@ export function AuctionCard({ auction, variant = 'list' }) {
 
         <div className="auction-card-footer">
           <div className="auction-card-countdown">
-            <CountdownTimer endAt={endAt} />
+            <CountdownTimer endAt={endDate} />
           </div>
           <span className="auction-card-bid-count">
-            {bidCount} {bidCount === 1 ? 'bid' : 'bids'}
+            {bids} {bids === 1 ? 'bid' : 'bids'}
           </span>
         </div>
       </div>

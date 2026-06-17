@@ -38,7 +38,7 @@ export function Header() {
                 `header__nav-link${isActive ? ' header__nav-link--active' : ''}`
               }
             >
-              Browse
+              Auctions
             </NavLink>
             {user && (
               <NavLink
