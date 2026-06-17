@@ -6,6 +6,7 @@ export const getAuctionsSchema = Joi.object({
   sellerId: Joi.alternatives().try(Joi.string().uuid(), Joi.string().valid('me')).optional(),
   cursor: Joi.string().isoDate().optional(),
   limit: Joi.number().integer().min(1).max(100).default(20).optional(),
+  sort: Joi.string().valid('ending_soon', 'newest', 'price_asc', 'price_desc').optional(),
 });
 
 export const getAuctionBidsSchema = Joi.object({

@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import errorHandler from './middleware/errorHandler.js';
 import { pool } from './config/database.js';
 import auctionRoutes from './routes/auctions.routes.js';
@@ -24,6 +25,9 @@ app.use('/webhooks', webhooksRoutes);
 
 // Parse JSON payload
 app.use(express.json());
+
+// Parse cookies
+app.use(cookieParser());
 
 // API Routes
 app.use('/auth', authRoutes);
