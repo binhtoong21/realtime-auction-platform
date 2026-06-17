@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { useFetch } from '../../../core/hooks/useFetch';
 
 /** Builds a URL query string from filter params, omitting null/undefined values. */
+const EMPTY_ARRAY = [];
+
 function buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limit }) {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
@@ -36,7 +38,7 @@ export function useAuctions({ status, categoryId, minPrice, maxPrice, sort, curs
   const url = queryString ? `/auctions?${queryString}` : '/auctions';
   const { data, error, isLoading, refetch } = useFetch(url, {}, true);
 
-  const auctions = data?.data?.items || [];
+  const auctions = data?.data?.items || EMPTY_ARRAY;
   const nextCursor = data?.data?.nextCursor || null;
   const hasMore = !!nextCursor;
 

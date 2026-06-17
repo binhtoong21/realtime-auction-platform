@@ -28,7 +28,7 @@ export function FilterSidebar({ filters, onChange }) {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => {
           onChange(next);
-        }, 600);
+        }, 1000);
       } else {
         onChange(next);
       }
