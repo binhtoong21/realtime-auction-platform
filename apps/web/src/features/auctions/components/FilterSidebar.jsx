@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { useCategories } from '../hooks/useCategories';
 import './FilterSidebar.css';
 
@@ -9,19 +10,42 @@ import './FilterSidebar.css';
  */
 export function FilterSidebar({ filters, onChange }) {
   const { categories, isLoading, error } = useCategories();
+  const [localFilters, setLocalFilters] = useState(filters);
+  const timeoutRef = useRef(null);
+
+  // Sync from props if they change externally (e.g. clear filters or browser back button)
+  useEffect(() => {
+    setLocalFilters(filters);
+  }, [filters]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    onChange({ ...filters, [name]: value });
+    
+    setLocalFilters(prev => {
+      const next = { ...prev, [name]: value };
+      
+      if (name === 'minPrice' || name === 'maxPrice') {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+          onChange(next);
+        }, 600);
+      } else {
+        onChange(next);
+      }
+      
+      return next;
+    });
   };
 
   const handleClearFilters = () => {
-    onChange({
+    const cleared = {
       categoryId: '',
       minPrice: '',
       maxPrice: '',
       status: 'active'
-    });
+    };
+    setLocalFilters(cleared);
+    onChange(cleared);
   };
 
   return (
@@ -41,7 +65,7 @@ export function FilterSidebar({ filters, onChange }) {
         <label className="filter-label">Status</label>
         <select
           name="status"
-          value={filters.status || ''}
+          value={localFilters.status || ''}
           onChange={handleInputChange}
           className="filter-input"
         >
@@ -60,7 +84,7 @@ export function FilterSidebar({ filters, onChange }) {
         ) : (
           <select
             name="categoryId"
-            value={filters.categoryId || ''}
+            value={localFilters.categoryId || ''}
             onChange={handleInputChange}
             className="filter-input"
           >
@@ -81,7 +105,7 @@ export function FilterSidebar({ filters, onChange }) {
             type="number"
             name="minPrice"
             placeholder="Min"
-            value={filters.minPrice || ''}
+            value={localFilters.minPrice || ''}
             onChange={handleInputChange}
             className="filter-input"
             min="0"
@@ -91,7 +115,7 @@ export function FilterSidebar({ filters, onChange }) {
             type="number"
             name="maxPrice"
             placeholder="Max"
-            value={filters.maxPrice || ''}
+            value={localFilters.maxPrice || ''}
             onChange={handleInputChange}
             className="filter-input"
             min="0"
