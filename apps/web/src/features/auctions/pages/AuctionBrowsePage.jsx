@@ -5,6 +5,11 @@ import { FilterSidebar } from '../components/FilterSidebar';
 import { AuctionCard } from '../components/AuctionCard';
 import './AuctionBrowsePage.css';
 
+/**
+ * Auction Browse Page component.
+ * Allows users to browse, filter, and view a paginated list of auctions.
+ * @returns {JSX.Element} The rendered component.
+ */
 export function AuctionBrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [allAuctions, setAllAuctions] = useState([]);

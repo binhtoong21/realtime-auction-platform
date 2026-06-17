@@ -17,6 +17,15 @@ function buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limi
 /**
  * Hook for fetching paginated auction listings.
  * All params must be primitives to avoid infinite re-fetch loops.
+ * @param {Object} params
+ * @param {string} [params.status] - Filter by status (e.g., active, ended)
+ * @param {string} [params.categoryId] - Filter by category ID
+ * @param {number|string} [params.minPrice] - Minimum current price
+ * @param {number|string} [params.maxPrice] - Maximum current price
+ * @param {string} [params.sort] - Sort order (e.g., ending_soon, newest, price_asc, price_desc)
+ * @param {string} [params.cursor] - Pagination cursor
+ * @param {number} [params.limit] - Number of items per page
+ * @returns {{ auctions: Array, nextCursor: string|null, hasMore: boolean, isLoading: boolean, error: any, refetch: Function }}
  */
 export function useAuctions({ status, categoryId, minPrice, maxPrice, sort, cursor, limit } = {}) {
   const queryString = useMemo(

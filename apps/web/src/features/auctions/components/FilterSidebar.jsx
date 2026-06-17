@@ -1,6 +1,12 @@
 import { useCategories } from '../hooks/useCategories';
 import './FilterSidebar.css';
 
+/**
+ * Sidebar component for filtering auctions by category, status, and price range.
+ * @param {Object} props
+ * @param {Object} props.filters - Current filter values.
+ * @param {Function} props.onChange - Callback fired when filters change.
+ */
 export function FilterSidebar({ filters, onChange }) {
   const { categories, isLoading, error } = useCategories();
 

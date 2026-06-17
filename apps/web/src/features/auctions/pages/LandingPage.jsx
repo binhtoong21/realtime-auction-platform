@@ -3,6 +3,11 @@ import { useAuctions } from '../hooks/useAuctions';
 import { AuctionCard } from '../components/AuctionCard';
 import './LandingPage.css';
 
+/**
+ * Landing Page component for the Realtime Auction Platform.
+ * Displays hero section, featured auctions, and a how-it-works guide.
+ * @returns {JSX.Element} The rendered component.
+ */
 export function LandingPage() {
   const navigate = useNavigate();
   
