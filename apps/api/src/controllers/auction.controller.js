@@ -2,7 +2,7 @@ import * as auctionService from '../services/auction.service.js';
 
 export const getAuctions = async (req, res, next) => {
   try {
-    const { status, categoryId, cursor, limit, sort } = req.query;
+    const { status, categoryId, cursor, limit, sort, minPrice, maxPrice } = req.query;
     let { sellerId } = req.query;
 
     if (sellerId === 'me') {
@@ -19,6 +19,8 @@ export const getAuctions = async (req, res, next) => {
       cursor,
       limit: limit ? parseInt(limit, 10) : 20,
       sort,
+      minPrice: minPrice ? Math.round(parseFloat(minPrice) * 100) : undefined,
+      maxPrice: maxPrice ? Math.round(parseFloat(maxPrice) * 100) : undefined,
     });
     
     res.status(200).json({

@@ -8,7 +8,7 @@ import { ensureStripeCustomer } from './kyc.service.js';
  * Lấy danh sách auctions với Cursor-based Pagination
  * Cursor dựa trên created_at để tránh duplicate/skip khi có auction mới.
  */
-export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit = 20, sort = 'newest' }) => {
+export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit = 20, sort = 'newest', minPrice, maxPrice }) => {
   let query = `
     SELECT a.id, a.title, a.current_price, a.status, a.end_at, a.images, a.created_at,
            c.name as category_name
@@ -36,6 +36,18 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
     // Tạm thời ở layer DB chỉ nhận UUID hợp lệ.
     query += ` AND a.seller_id = $${paramCount}`;
     values.push(sellerId);
+    paramCount++;
+  }
+
+  if (minPrice !== undefined) {
+    query += ` AND a.current_price >= $${paramCount}`;
+    values.push(minPrice);
+    paramCount++;
+  }
+
+  if (maxPrice !== undefined) {
+    query += ` AND a.current_price <= $${paramCount}`;
+    values.push(maxPrice);
     paramCount++;
   }
 
