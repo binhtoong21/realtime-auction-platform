@@ -1,0 +1,89 @@
+/* apps/web/src/features/auctions/components/FilterSidebar.css */
+.filter-sidebar {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: var(--space-4);
+}
+
+.filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-3);
+}
+
+.filter-header h3 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.btn-clear {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-clear:hover {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+}
+
+.filter-section {
+  margin-bottom: var(--space-5);
+}
+
+.filter-label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-bottom: var(--space-2);
+  color: var(--color-text-primary);
+}
+
+.filter-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: var(--color-action);
+}
+
+.price-inputs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.price-separator {
+  color: var(--color-text-secondary);
+}
+
+.filter-loading, .filter-error {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.filter-error {
+  color: var(--color-danger);
+}
