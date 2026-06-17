@@ -74,9 +74,20 @@ export const verifyEmail = async (req, res, next) => {
 export const login = async (req, res, next) => {
   try {
     const result = await authService.login(req.body);
+
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     res.status(200).json({
       success: true,
-      data: result,
+      data: {
+        accessToken: result.accessToken,
+        user: result.user
+      },
     });
   } catch (error) {
     next(error);
@@ -91,7 +102,7 @@ export const login = async (req, res, next) => {
  */
 export const refreshToken = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.refreshToken;
 
     if (!refreshToken) {
       return res.status(400).json({
@@ -101,9 +112,19 @@ export const refreshToken = async (req, res, next) => {
     }
 
     const result = await authService.refresh(refreshToken);
+
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     res.status(200).json({
       success: true,
-      data: result,
+      data: {
+        accessToken: result.accessToken
+      },
     });
   } catch (error) {
     next(error);
@@ -118,11 +139,13 @@ export const refreshToken = async (req, res, next) => {
  */
 export const logout = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.refreshToken;
 
     if (refreshToken) {
       await authService.logout(refreshToken);
     }
+
+    res.clearCookie('refreshToken');
 
     res.status(200).json({
       success: true,

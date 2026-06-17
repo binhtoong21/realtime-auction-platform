@@ -5,9 +5,10 @@ import stripe from '../config/stripe.js';
 import { ensureStripeCustomer } from './kyc.service.js';
 /**
  * Lấy danh sách auctions với Cursor-based Pagination
+ * Lấy danh sách auctions với Cursor-based Pagination
  * Cursor dựa trên created_at để tránh duplicate/skip khi có auction mới.
  */
-export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit = 20 }) => {
+export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit = 20, sort = 'newest' }) => {
   let query = `
     SELECT a.id, a.title, a.current_price, a.status, a.end_at, a.images, a.created_at,
            c.name as category_name
@@ -39,21 +40,39 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
   }
 
   if (cursor) {
-    // cursor là timestamp (created_at) của record cuối cùng ở page trước
-    query += ` AND a.created_at < $${paramCount}`;
-    values.push(new Date(cursor));
-    paramCount++;
+    // Note: To properly support cursors with dynamic sort, the cursor logic needs to match the sort field.
+    // For MVP, we only apply cursor logic if sorting by newest (created_at DESC).
+    if (sort === 'newest') {
+      query += ` AND a.created_at < $${paramCount}`;
+      values.push(new Date(cursor));
+      paramCount++;
+    }
   }
 
-  // Sắp xếp mới nhất lên đầu
-  query += ` ORDER BY a.created_at DESC LIMIT $${paramCount}`;
+  // Sắp xếp
+  switch (sort) {
+    case 'ending_soon':
+      query += ` ORDER BY a.end_at ASC LIMIT $${paramCount}`;
+      break;
+    case 'price_asc':
+      query += ` ORDER BY a.current_price ASC, a.created_at DESC LIMIT $${paramCount}`;
+      break;
+    case 'price_desc':
+      query += ` ORDER BY a.current_price DESC, a.created_at DESC LIMIT $${paramCount}`;
+      break;
+    case 'newest':
+    default:
+      query += ` ORDER BY a.created_at DESC LIMIT $${paramCount}`;
+      break;
+  }
+  
   values.push(limit);
 
   const result = await pool.query(query, values);
   const items = result.rows;
 
   let nextCursor = null;
-  if (items.length > 0 && items.length === Number(limit)) {
+  if (items.length > 0 && items.length === Number(limit) && sort === 'newest') {
     nextCursor = items[items.length - 1].created_at.toISOString();
   }
 
