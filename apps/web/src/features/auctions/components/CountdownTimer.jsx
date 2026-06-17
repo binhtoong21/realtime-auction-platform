@@ -18,6 +18,12 @@ export function CountdownTimer({ endAt }) {
       // const now = Date.now() + timeOffset;
       const now = Date.now();
       const end = new Date(endAt).getTime();
+      
+      if (Number.isNaN(end)) {
+        setIsEnded(true);
+        return 0;
+      }
+
       const diff = Math.max(0, end - now);
       
       if (diff === 0) {

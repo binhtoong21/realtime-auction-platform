@@ -9,7 +9,11 @@ import './AuctionCard.css';
  * @param {"featured" | "list"} props.variant - Layout variant: vertical (featured) or horizontal (list).
  */
 export function AuctionCard({ auction, variant = 'list' }) {
-  const { id, title, currentPrice, endAt, bidCount, status, seller, images } = auction;
+  if (!auction || !auction.id) {
+    return null;
+  }
+
+  const { id, title = 'Untitled Auction', currentPrice = 0, endAt, bidCount = 0, status = 'unknown', seller, images } = auction;
   const imageUrl = images?.[0] || '';
 
   // Format currency

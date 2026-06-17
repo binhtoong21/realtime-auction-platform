@@ -6,9 +6,8 @@ export function RequireAuth({ children }) {
   const location = useLocation();
 
   if (!user) {
-    // Redirect to login with the return URL
-    const returnUrl = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/auth/login?returnUrl=${returnUrl}`} replace />;
+    // Redirect to login with the return URL in state
+    return <Navigate to="/auth/login" state={{ from: location.pathname + location.search }} replace />;
   }
 
   return children;

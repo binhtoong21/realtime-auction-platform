@@ -12,9 +12,9 @@ export function AuctionBrowsePage() {
 
   const filters = {
     categoryId: searchParams.get('categoryId') || '',
-    minPrice: searchParams.get('minPrice') || '',
-    maxPrice: searchParams.get('maxPrice') || '',
-    status: searchParams.get('status') || 'active',
+    minPrice: searchParams.get('minPrice') || null,
+    maxPrice: searchParams.get('maxPrice') || null,
+    status: searchParams.get('status') !== null ? searchParams.get('status') : 'active',
   };
 
   const { auctions, nextCursor, hasMore, isLoading, error } = useAuctions({
@@ -44,8 +44,10 @@ export function AuctionBrowsePage() {
   const handleFilterChange = (newFilters) => {
     const newParams = new URLSearchParams();
     Object.entries(newFilters).forEach(([key, value]) => {
-      if (value) {
+      if (value !== null && value !== undefined && value !== '') {
         newParams.set(key, value);
+      } else if (key === 'status' && value === '') {
+        newParams.set(key, '');
       }
     });
     setSearchParams(newParams);
@@ -67,7 +69,7 @@ export function AuctionBrowsePage() {
         </aside>
 
         <main className="browse-main">
-          {error && cursor === null && (
+          {error && (
             <div className="error-state">
               <p>Failed to load auctions. Please try again.</p>
             </div>

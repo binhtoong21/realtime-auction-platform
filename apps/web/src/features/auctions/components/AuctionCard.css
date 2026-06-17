@@ -148,7 +148,7 @@
 .status-badge.active {
   border-color: var(--color-action);
   color: var(--color-action);
-  background-color: #F0FDF4; /* From ui_design.md */
+  background-color: var(--color-success-subtle);
 }
 
 .status-badge.ended {
