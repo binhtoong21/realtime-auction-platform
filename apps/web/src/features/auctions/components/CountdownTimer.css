@@ -1,0 +1,18 @@
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+.countdown-timer {
+  font-family: var(--font-mono);
+}
+
+.countdown-critical {
+  color: var(--color-warning);
+  animation: pulse-warning 1s ease-in-out infinite;
+}
+
+.countdown-ended {
+  font-family: var(--font-mono);
+  color: var(--color-text-disabled);
+}

@@ -5,6 +5,9 @@ import { RegisterPage } from '../features/authentication/pages/RegisterPage';
 import { VerifyEmailPage } from '../features/authentication/pages/VerifyEmailPage';
 import { ForgotPasswordPage } from '../features/authentication/pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/authentication/pages/ResetPasswordPage';
+import { LandingPage } from '../features/auctions/pages/LandingPage';
+import { AuctionBrowsePage } from '../features/auctions/pages/AuctionBrowsePage';
+import { RequireAuth } from './RequireAuth';
 
 export const router = createBrowserRouter([
   {
@@ -13,12 +16,7 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: (
-          <div style={{ textAlign: 'center', marginTop: 'var(--space-10)' }}>
-            <h1 style={{ marginBottom: 'var(--space-4)' }}>Welcome to AuctionHouse</h1>
-            <p style={{ color: 'var(--color-text-secondary)' }}>Discover and bid on exclusive items.</p>
-          </div>
-        ),
+        element: <LandingPage />,
       },
       {
         path: 'auth/login',
@@ -40,10 +38,13 @@ export const router = createBrowserRouter([
         path: 'auth/reset-password',
         element: <ResetPasswordPage />,
       },
-      // Placeholder for future routes
       {
         path: 'auctions',
-        element: <div>Auctions Listing Page</div>,
+        element: (
+          <RequireAuth>
+            <AuctionBrowsePage />
+          </RequireAuth>
+        ),
       }
     ],
   },

@@ -1,0 +1,49 @@
+/* apps/web/src/features/auctions/pages/AuctionBrowsePage.css */
+
+.auction-browse-page {
+  padding: var(--space-8) var(--space-4);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.browse-title {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  margin-bottom: var(--space-8);
+}
+
+.browse-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--space-8);
+  align-items: start;
+}
+
+.browse-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-8);
+}
+
+/* Skeleton specifically for list variant height */
+.browse-grid .skeleton-card {
+  height: 180px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+}
+
+@media (max-width: 768px) {
+  .browse-layout {
+    grid-template-columns: 1fr;
+  }
+  .browse-grid .skeleton-card {
+    height: 350px;
+  }
+}
