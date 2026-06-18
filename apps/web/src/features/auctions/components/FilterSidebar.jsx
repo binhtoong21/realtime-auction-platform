@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { useCategories } from '../hooks/useCategories';
 import './FilterSidebar.css';
 
@@ -9,19 +10,61 @@ import './FilterSidebar.css';
  */
 export function FilterSidebar({ filters, onChange }) {
   const { categories, isLoading, error } = useCategories();
+  const [localFilters, setLocalFilters] = useState(filters);
+  const localFiltersRef = useRef(filters);
+  const timeoutRef = useRef(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  // Sync from props if they change externally (e.g. clear filters or browser back button)
+  useEffect(() => {
+    const syncedFilters = {
+      categoryId: filters.categoryId || '',
+      minPrice: filters.minPrice || '',
+      maxPrice: filters.maxPrice || '',
+      status: filters.status || 'active'
+    };
+    setLocalFilters(syncedFilters);
+    localFiltersRef.current = syncedFilters;
+  }, [filters.categoryId, filters.minPrice, filters.maxPrice, filters.status]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    onChange({ ...filters, [name]: value });
+    
+    // Synchronously track the accumulated state for multiple rapid events
+    const nextFilters = { ...localFiltersRef.current, [name]: value };
+    localFiltersRef.current = nextFilters;
+    
+    // Update React state for UI
+    setLocalFilters(nextFilters);
+    
+    // Perform side-effects safely outside the state updater
+    if (name === 'minPrice' || name === 'maxPrice') {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        onChange(localFiltersRef.current);
+      }, 1000);
+    } else {
+      onChange(nextFilters);
+    }
   };
 
   const handleClearFilters = () => {
-    onChange({
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    const cleared = {
       categoryId: '',
       minPrice: '',
       maxPrice: '',
       status: 'active'
-    });
+    };
+    setLocalFilters(cleared);
+    localFiltersRef.current = cleared;
+    onChange(cleared);
   };
 
   return (
@@ -41,7 +84,7 @@ export function FilterSidebar({ filters, onChange }) {
         <label className="filter-label">Status</label>
         <select
           name="status"
-          value={filters.status || ''}
+          value={localFilters.status || ''}
           onChange={handleInputChange}
           className="filter-input"
         >
@@ -60,7 +103,7 @@ export function FilterSidebar({ filters, onChange }) {
         ) : (
           <select
             name="categoryId"
-            value={filters.categoryId || ''}
+            value={localFilters.categoryId || ''}
             onChange={handleInputChange}
             className="filter-input"
           >
@@ -81,7 +124,7 @@ export function FilterSidebar({ filters, onChange }) {
             type="number"
             name="minPrice"
             placeholder="Min"
-            value={filters.minPrice || ''}
+            value={localFilters.minPrice || ''}
             onChange={handleInputChange}
             className="filter-input"
             min="0"
@@ -91,7 +134,7 @@ export function FilterSidebar({ filters, onChange }) {
             type="number"
             name="maxPrice"
             placeholder="Max"
-            value={filters.maxPrice || ''}
+            value={localFilters.maxPrice || ''}
             onChange={handleInputChange}
             className="filter-input"
             min="0"

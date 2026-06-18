@@ -28,23 +28,28 @@ export function AuctionBrowsePage() {
     limit: 12
   });
 
-  // Whenever filters change, reset cursor and accumulated auctions
+  // Whenever filters change, reset cursor
   useEffect(() => {
     setCursor(null);
-    setAllAuctions([]);
   }, [filters.categoryId, filters.minPrice, filters.maxPrice, filters.status]);
 
-  // Accumulate auctions when `auctions` array changes
+  // Accumulate or replace auctions when `auctions` array changes
   useEffect(() => {
-    if (auctions && auctions.length > 0) {
-      setAllAuctions((prev) => {
-        // Prevent duplicates based on ID
+    if (!auctions) return;
+
+    setAllAuctions((prev) => {
+      if (!cursor) {
+        // Fresh fetch (cursor is null) -> Replace
+        return auctions;
+      } else {
+        // Load More -> Append
         const existingIds = new Set(prev.map(a => a.id));
         const newAuctions = auctions.filter(a => !existingIds.has(a.id));
+        if (newAuctions.length === 0) return prev;
         return [...prev, ...newAuctions];
-      });
-    }
-  }, [auctions]);
+      }
+    });
+  }, [auctions, cursor]);
 
   const handleFilterChange = (newFilters) => {
     const newParams = new URLSearchParams();
@@ -86,7 +91,14 @@ export function AuctionBrowsePage() {
             </div>
           )}
 
-          <div className="browse-grid">
+          <div 
+            className="browse-grid"
+            style={{ 
+              opacity: isLoading && !cursor ? 0.5 : 1, 
+              transition: 'opacity 0.2s',
+              pointerEvents: isLoading && !cursor ? 'none' : 'auto' 
+            }}
+          >
             {allAuctions.map((auction) => (
               <AuctionCard key={auction.id} auction={auction} variant="list" />
             ))}
