@@ -19,8 +19,8 @@ export const getAuctions = async (req, res, next) => {
       cursor,
       limit: limit ? parseInt(limit, 10) : 20,
       sort,
-      minPrice: minPrice ? Math.round(parseFloat(minPrice) * 100) : undefined,
-      maxPrice: maxPrice ? Math.round(parseFloat(maxPrice) * 100) : undefined,
+      minPrice: minPrice !== undefined && minPrice !== '' ? Math.round(parseFloat(minPrice) * 100) : undefined,
+      maxPrice: maxPrice !== undefined && maxPrice !== '' ? Math.round(parseFloat(maxPrice) * 100) : undefined,
     });
     
     res.status(200).json({

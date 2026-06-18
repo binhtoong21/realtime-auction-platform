@@ -11,33 +11,51 @@ import './FilterSidebar.css';
 export function FilterSidebar({ filters, onChange }) {
   const { categories, isLoading, error } = useCategories();
   const [localFilters, setLocalFilters] = useState(filters);
+  const localFiltersRef = useRef(filters);
   const timeoutRef = useRef(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   // Sync from props if they change externally (e.g. clear filters or browser back button)
   useEffect(() => {
-    setLocalFilters(filters);
-  }, [filters]);
+    const syncedFilters = {
+      categoryId: filters.categoryId || '',
+      minPrice: filters.minPrice || '',
+      maxPrice: filters.maxPrice || '',
+      status: filters.status || 'active'
+    };
+    setLocalFilters(syncedFilters);
+    localFiltersRef.current = syncedFilters;
+  }, [filters.categoryId, filters.minPrice, filters.maxPrice, filters.status]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     
-    setLocalFilters(prev => {
-      const next = { ...prev, [name]: value };
-      
-      if (name === 'minPrice' || name === 'maxPrice') {
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-          onChange(next);
-        }, 1000);
-      } else {
-        onChange(next);
-      }
-      
-      return next;
-    });
+    // Synchronously track the accumulated state for multiple rapid events
+    const nextFilters = { ...localFiltersRef.current, [name]: value };
+    localFiltersRef.current = nextFilters;
+    
+    // Update React state for UI
+    setLocalFilters(nextFilters);
+    
+    // Perform side-effects safely outside the state updater
+    if (name === 'minPrice' || name === 'maxPrice') {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        onChange(nextFilters);
+      }, 1000);
+    } else {
+      onChange(nextFilters);
+    }
   };
 
   const handleClearFilters = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     const cleared = {
       categoryId: '',
       minPrice: '',
@@ -45,6 +63,7 @@ export function FilterSidebar({ filters, onChange }) {
       status: 'active'
     };
     setLocalFilters(cleared);
+    localFiltersRef.current = cleared;
     onChange(cleared);
   };
 
