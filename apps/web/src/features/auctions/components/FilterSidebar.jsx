@@ -47,7 +47,7 @@ export function FilterSidebar({ filters, onChange }) {
     if (name === 'minPrice' || name === 'maxPrice') {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
-        onChange(nextFilters);
+        onChange(localFiltersRef.current);
       }, 1000);
     } else {
       onChange(nextFilters);
