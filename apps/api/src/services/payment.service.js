@@ -13,6 +13,26 @@ const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
 const SHIPPING_DEADLINE_DAYS = 5;
 
 /**
+ * Defensively resolves a Stripe Customer ID when users.stripe_cus_id is missing.
+ * If the user has a valid stripePmId, retrieves the PM from Stripe and syncs pm.customer.
+ * Returns the customer ID, or null if unrecoverable.
+ */
+const resolveStripeCustomerDefensively = async (userId, stripePmId) => {
+  if (!stripePmId) return null;
+  try {
+    const pm = await stripe.paymentMethods.retrieve(stripePmId);
+    if (pm.customer) {
+      await pool.query('UPDATE users SET stripe_cus_id = $1 WHERE id = $2', [pm.customer, userId]);
+      return pm.customer;
+    }
+  } catch (err) {
+    console.error(`[Payment] Failed to defensively resolve customer for user ${userId}:`, err.message);
+  }
+  return null;
+};
+
+
+/**
  * Create an Auth Hold (PaymentIntent with capture_method: manual) for the auction winner.
  *
  * Flow:
@@ -54,10 +74,13 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
     'SELECT stripe_cus_id FROM users WHERE id = $1',
     [winnerId]
   );
-  const stripeCusId = userResult.rows[0]?.stripe_cus_id;
+  let stripeCusId = userResult.rows[0]?.stripe_cus_id;
 
   if (!stripeCusId) {
-    return await handleNoPaymentMethod({ auctionId, winnerId, sellerId, amountInCents });
+    stripeCusId = await resolveStripeCustomerDefensively(winnerId, stripePmId);
+    if (!stripeCusId) {
+      return await handleNoPaymentMethod({ auctionId, winnerId, sellerId, amountInCents });
+    }
   }
 
   // 3. Calculate platform fee
@@ -305,6 +328,14 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     throw { status: 400, message: 'No valid payment method available to retry' };
   }
 
+  let stripeCusId = payment.stripe_cus_id;
+  if (!stripeCusId) {
+    stripeCusId = await resolveStripeCustomerDefensively(buyerId, stripePmId);
+    if (!stripeCusId) {
+      throw { status: 400, message: 'No valid payment account configured' };
+    }
+  }
+
   // Atomic lock: prevent duplicate holds and TOCTOU on grace_expires_at
   const lockResult = await pool.query(
     `UPDATE payments 
@@ -322,7 +353,7 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Number(payment.amount),
       currency: CURRENCY,
-      customer: payment.stripe_cus_id,
+      customer: stripeCusId,
       payment_method: stripePmId,
       capture_method: 'manual',
       confirm: true,
@@ -505,18 +536,21 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
     [userId]
   );
 
-  if (!userResult.rows[0]?.stripe_cus_id) {
-    await transitionToNoSale({
-      paymentId: payment.id,
-      auctionId,
-      payment,
-      reason: 'runner_up_no_stripe_customer',
-      userId,
-    });
-    throw { status: 402, code: 'HOLD_FAILED', message: 'Payment account not configured' };
-  }
+  let stripeCusId = userResult.rows[0]?.stripe_cus_id;
 
-  const stripeCusId = userResult.rows[0].stripe_cus_id;
+  if (!stripeCusId) {
+    stripeCusId = await resolveStripeCustomerDefensively(userId, stripePmId);
+    if (!stripeCusId) {
+      await transitionToNoSale({
+        paymentId: payment.id,
+        auctionId,
+        payment,
+        reason: 'runner_up_no_stripe_customer',
+        userId,
+      });
+      throw { status: 402, code: 'HOLD_FAILED', message: 'Payment account not configured' };
+    }
+  }
 
   // Calculate platform fee for the new amount
   const { feeAmount } = await calculatePlatformFee(Number(payment.second_chance_amount));

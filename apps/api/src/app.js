@@ -13,6 +13,18 @@ import paymentMethodRoutes from './routes/payment-method.routes.js';
 import paymentsRoutes from './routes/payments.routes.js';
 import disputesRoutes from './routes/disputes.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import { redisClient } from './config/redis.js';
+
+const pingRedisWithTimeout = async () => {
+  try {
+    return await Promise.race([
+      redisClient.ping().then(() => 'ok'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500))
+    ]);
+  } catch (err) {
+    return 'error';
+  }
+};
 
 const app = express();
 
@@ -39,21 +51,38 @@ app.use('/payments', paymentsRoutes);
 app.use('/disputes', disputesRoutes);
 app.use('/admin', adminRoutes);
 
-// Health Check Route
 app.get('/health', async (req, res, next) => {
+  let dbStatus = 'error';
+  let dbTime = null;
+  let redisStatus = 'error';
+  let isDegraded = false;
+
   try {
-    // Check DB
     const dbRes = await pool.query('SELECT NOW()');
-    
-    res.status(200).json({
-      status: 'ok',
-      db: dbRes.rows[0].now,
-      redis: 'pending_setup',
-      timestamp: new Date().toISOString()
-    });
+    dbStatus = 'ok';
+    dbTime = dbRes.rows[0].now;
   } catch (error) {
-    next(error);
+    isDegraded = true;
+    console.error('[Health] DB ping failed:', error.message);
   }
+
+  try {
+    redisStatus = await pingRedisWithTimeout();
+    if (redisStatus === 'error') isDegraded = true;
+  } catch (error) {
+    isDegraded = true;
+    redisStatus = 'error';
+    console.error('[Health] Redis ping failed:', error.message);
+  }
+
+  const statusCode = isDegraded ? 503 : 200;
+
+  res.status(statusCode).json({
+    status: isDegraded ? 'degraded' : 'ok',
+    db: dbStatus === 'ok' ? dbTime : 'error',
+    redis: redisStatus,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Global Error Handler must be the last middleware
