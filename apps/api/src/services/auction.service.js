@@ -446,10 +446,11 @@ export const confirmJoinAuction = async (userId, auctionId) => {
   const setupIntent = await stripe.setupIntents.retrieve(stripe_si_id);
 
   if (setupIntent.status === 'succeeded') {
-    await pool.query(
-      'UPDATE auction_participants SET payment_method_id = $1 WHERE auction_id = $2 AND user_id = $3',
-      [setupIntent.payment_method, auctionId, userId]
-    );
+    // Re-use the webhook logic to properly create the payment_method record 
+    // and link its UUID to auction_participants
+    const { handleSetupIntentSucceeded } = await import('./kyc.service.js');
+    await handleSetupIntentSucceeded(setupIntent);
+    
     return { success: true, message: 'Payment method confirmed' };
   } else {
     throw new Error('Card setup is not yet successful');
