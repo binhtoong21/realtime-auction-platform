@@ -51,7 +51,14 @@ export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) 
         throw { code: ErrorCodes.AUCTION_ENDED, message: 'Auction is already ended or not active' };
       }
       
-      throw { code: ErrorCodes.OUTBID, message: `Bid amount must be at least ${Number(auction.current_price) + Number(auction.bid_increment)}` };
+      throw { 
+        code: ErrorCodes.OUTBID, 
+        message: `Bid amount must be at least ${Number(auction.current_price) + Number(auction.bid_increment)}`,
+        details: {
+          currentPrice: Number(auction.current_price),
+          bidIncrement: Number(auction.bid_increment)
+        }
+      };
     }
 
     const updatedAuction = updateResult.rows[0];

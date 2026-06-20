@@ -6,7 +6,7 @@ import './CountdownTimer.css';
  * Formats time as HH:MM:SS or DD days HH:MM:SS.
  * Adds warning styles if less than 2 minutes remain.
  */
-export function CountdownTimer({ endAt }) {
+export function CountdownTimer({ endAt, timeOffset = 0 }) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isEnded, setIsEnded] = useState(false);
 
@@ -14,9 +14,7 @@ export function CountdownTimer({ endAt }) {
     if (!endAt) return;
 
     const calculateTimeLeft = () => {
-      // TODO: apply timeOffset from WS in Phase 3
-      // const now = Date.now() + timeOffset;
-      const now = Date.now();
+      const now = Date.now() + timeOffset;
       const end = new Date(endAt).getTime();
       
       if (Number.isNaN(end)) {

@@ -43,7 +43,9 @@ export function useBidSubmit(auctionId, refetchAuction) {
     } catch (err) {
       const status = err.response?.status;
       const code = err.response?.data?.error?.code;
-      setErrorCode(code);
+      const details = err.response?.data?.error?.details;
+      
+      setErrorCode({ code, details });
       
       if (status === 400 || status === 422 || status === 403 || status === 402) {
         // Definitive rejection (e.g. Outbid, Ended, Payment Required, Forbidden)
