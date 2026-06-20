@@ -43,9 +43,9 @@ export function AuctionDetailPage() {
   }, [auction?.bid_increment]);
 
   const onOutbid = useCallback((currentPrice) => {
-    const minBid = Number(currentPrice) + Number(bidIncrementRef.current);
-    setBidAmount(String(minBid));
-    showError(`Bạn đã bị vượt giá! Giá tối thiểu: $${(minBid / 100).toFixed(2)}`);
+    const minBidCents = Number(currentPrice) + Number(bidIncrementRef.current);
+    setBidAmount(String(minBidCents / 100));
+    showError(`Bạn đã bị vượt giá! Giá tối thiểu: $${(minBidCents / 100).toFixed(2)}`);
   }, [showError]);
 
   const { connectionStatus, timeOffset } = useAuctionSocket(id, setAuctionData, onOutbid);
@@ -77,8 +77,8 @@ export function AuctionDetailPage() {
   const isBidInitializedRef = useRef(false);
   useEffect(() => {
     if (auction && !isBidInitializedRef.current) {
-      const minBid = Number(auction.current_price || 0) + Number(auction.bid_increment || 0);
-      setBidAmount(String(minBid));
+      const minBidCents = Number(auction.current_price || 0) + Number(auction.bid_increment || 0);
+      setBidAmount(String(minBidCents / 100));
       isBidInitializedRef.current = true;
     }
   }, [auction]);

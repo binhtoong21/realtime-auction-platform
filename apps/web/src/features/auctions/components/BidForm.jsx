@@ -64,14 +64,14 @@ export function BidForm({
         if (code === 'OUTBID') {
           const actualPrice = details?.currentPrice ?? currentPrice;
           const actualIncrement = details?.bidIncrement ?? bidIncrement;
-          setBidAmount(String(actualPrice + actualIncrement));
+          setBidAmount(String((actualPrice + actualIncrement) / 100));
         }
         break;
       case 'INVALID_INCREMENT': {
         const actualPrice = details?.currentPrice ?? currentPrice;
         const actualIncrement = details?.bidIncrement ?? bidIncrement;
         showError(`Minimum bid: $${((actualPrice + actualIncrement) / 100).toFixed(2)}`);
-        setBidAmount(String(actualPrice + actualIncrement));
+        setBidAmount(String((actualPrice + actualIncrement) / 100));
         break;
       }
       case 'RATE_LIMIT_EXCEEDED':
@@ -82,14 +82,16 @@ export function BidForm({
     }
   }, [bidState, errorCode]);
 
-  const minValidAmount = currentPrice + bidIncrement;
+  const minValidAmountCents = currentPrice + bidIncrement;
+  const minValidAmountDollars = minValidAmountCents / 100;
+  const bidIncrementDollars = bidIncrement / 100;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const amount = Number(bidAmount);
+    const amountInCents = Math.round(Number(bidAmount) * 100);
 
-    if (!amount || amount < minValidAmount) {
-      showError(`Minimum bid is $${(minValidAmount / 100).toFixed(2)}`);
+    if (!amountInCents || amountInCents < minValidAmountCents) {
+      showError(`Minimum bid is $${minValidAmountDollars.toFixed(2)}`);
       return;
     }
 
@@ -99,14 +101,14 @@ export function BidForm({
     }
 
     try {
-      await submitBid(amount);
+      await submitBid(amountInCents);
     } catch {
       // Error handling is done via bidState/errorCode
     }
   };
 
   const handleRetry = () => {
-    submitBid(Number(bidAmount)).catch(() => {});
+    submitBid(Math.round(Number(bidAmount) * 100)).catch(() => {});
   };
 
   const handleCancel = () => {
@@ -142,9 +144,9 @@ export function BidForm({
             value={bidAmount}
             onChange={(e) => setBidAmount(e.target.value)}
             disabled={isDisabled}
-            min={minValidAmount}
-            step={bidIncrement || 1}
-            placeholder={String(minValidAmount)}
+            min={minValidAmountDollars}
+            step={bidIncrementDollars || 1}
+            placeholder={String(minValidAmountDollars)}
           />
         </div>
 
@@ -165,7 +167,7 @@ export function BidForm({
       </form>
 
       <p className="bid-form-hint">
-        Min bid: ${(minValidAmount / 100).toFixed(2)} (current + ${(bidIncrement / 100).toFixed(2)} increment)
+        Min bid: ${minValidAmountDollars.toFixed(2)} (current + ${bidIncrementDollars.toFixed(2)} increment)
       </p>
     </div>
   );
