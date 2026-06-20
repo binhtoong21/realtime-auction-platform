@@ -20,7 +20,7 @@ const router = Router();
 
 // Read routes (Public or Guest allowed)
 router.get('/', optionalAuth, validate(getAuctionsSchema, 'query'), getAuctions);
-router.get('/:id', getAuctionById);
+router.get('/:id', optionalAuth, getAuctionById);
 router.get('/:id/bids', validate(getAuctionBidsSchema, 'query'), getAuctionBids);
 
 const bidSchema = Joi.object({

@@ -105,18 +105,20 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
 /**
  * Lấy chi tiết 1 phiên đấu giá
  */
-export const getAuctionById = async (id) => {
+export const getAuctionById = async (id, userId = null) => {
   const query = `
     SELECT a.*, 
            c.name as category_name, c.slug as category_slug,
            u.display_name as seller_name,
            (SELECT COUNT(*) FROM bids b WHERE b.auction_id = a.id) as bid_count
+           ${userId ? `, EXISTS(SELECT 1 FROM auction_participants ap WHERE ap.auction_id = a.id AND ap.user_id = $2 AND ap.payment_method_id IS NOT NULL) as is_joined` : ''}
     FROM auctions a
     LEFT JOIN categories c ON a.category_id = c.id
     JOIN users u ON a.seller_id = u.id
     WHERE a.id = $1
   `;
-  const result = await pool.query(query, [id]);
+  const params = userId ? [id, userId] : [id];
+  const result = await pool.query(query, params);
   
   if (result.rows.length === 0) {
     const error = new Error('Auction not found');

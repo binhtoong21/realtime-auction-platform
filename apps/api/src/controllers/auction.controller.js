@@ -35,7 +35,8 @@ export const getAuctions = async (req, res, next) => {
 export const getAuctionById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const auction = await auctionService.getAuctionById(id);
+    const userId = req.user?.id || null;
+    const auction = await auctionService.getAuctionById(id, userId);
     
     res.status(200).json({
       success: true,
