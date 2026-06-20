@@ -16,13 +16,18 @@ import adminRoutes from './routes/admin.routes.js';
 import { redisClient } from './config/redis.js';
 
 const pingRedisWithTimeout = async () => {
+  let timeoutId;
   try {
     return await Promise.race([
       redisClient.ping().then(() => 'ok'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500))
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('timeout')), 500);
+      })
     ]);
   } catch (err) {
     return 'error';
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
 
@@ -57,22 +62,23 @@ app.get('/health', async (req, res, next) => {
   let redisStatus = 'error';
   let isDegraded = false;
 
-  try {
-    const dbRes = await pool.query('SELECT NOW()');
+  const [dbResult, redisResult] = await Promise.allSettled([
+    pool.query('SELECT NOW()'),
+    pingRedisWithTimeout()
+  ]);
+
+  if (dbResult.status === 'fulfilled') {
     dbStatus = 'ok';
-    dbTime = dbRes.rows[0].now;
-  } catch (error) {
+    dbTime = dbResult.value.rows[0].now;
+  } else {
     isDegraded = true;
-    console.error('[Health] DB ping failed:', error.message);
+    console.error('[Health] DB ping failed:', dbResult.reason.message);
   }
 
-  try {
-    redisStatus = await pingRedisWithTimeout();
-    if (redisStatus === 'error') isDegraded = true;
-  } catch (error) {
+  redisStatus = redisResult.status === 'fulfilled' ? redisResult.value : 'error';
+  if (redisStatus === 'error') {
     isDegraded = true;
-    redisStatus = 'error';
-    console.error('[Health] Redis ping failed:', error.message);
+    if (redisResult.reason) console.error('[Health] Redis ping failed:', redisResult.reason.message);
   }
 
   const statusCode = isDegraded ? 503 : 200;

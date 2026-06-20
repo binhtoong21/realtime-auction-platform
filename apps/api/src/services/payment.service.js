@@ -26,7 +26,10 @@ const resolveStripeCustomerDefensively = async (userId, stripePmId) => {
       return pm.customer;
     }
   } catch (err) {
-    console.error(`[Payment] Failed to defensively resolve customer for user ${userId}:`, err.message);
+    console.error(`[Payment] Failed to defensively resolve customer for user ${userId}:`, err.message, {
+      code: err.code,
+      type: err.type
+    });
   }
   return null;
 };
