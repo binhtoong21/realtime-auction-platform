@@ -3,6 +3,8 @@ import { pool } from '../src/config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { generateAccessToken } from '../src/utils/jwt.js';
 
+import bcrypt from 'bcryptjs';
+
 async function seed() {
   const client = await pool.connect();
   try {
@@ -16,25 +18,29 @@ async function seed() {
     const bidderId = uuidv7();
     const unverifiedId = uuidv7();
     
+    // Default password for all seeded users: password123
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash('password123', salt);
+    
     // Seller - Fully KYC'd & Onboarded
     await client.query(
-      `INSERT INTO users (id, email, auth_provider, identity_status, connect_status) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [sellerId, 'seller@example.com', 'email', 'verified', 'payouts_enabled']
+      `INSERT INTO users (id, email, password_hash, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [sellerId, 'seller@example.com', passwordHash, 'email', 'verified', 'payouts_enabled', 'active']
     );
     
     // Bidder - Identity verified, Connect not started
     await client.query(
-      `INSERT INTO users (id, email, auth_provider, identity_status, connect_status) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [bidderId, 'bidder@example.com', 'email', 'verified', 'not_started']
+      `INSERT INTO users (id, email, password_hash, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [bidderId, 'bidder@example.com', passwordHash, 'email', 'verified', 'not_started', 'active']
     );
 
     // Unverified User
     await client.query(
-      `INSERT INTO users (id, email, auth_provider, identity_status, connect_status) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [unverifiedId, 'unverified@example.com', 'email', 'not_started', 'not_started']
+      `INSERT INTO users (id, email, password_hash, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [unverifiedId, 'unverified@example.com', passwordHash, 'email', 'not_started', 'not_started', 'unverified']
     );
 
     // Generate Tokens
