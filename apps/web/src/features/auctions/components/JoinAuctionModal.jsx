@@ -19,6 +19,7 @@ function JoinForm({ clientSecret, onSuccess, onClose }) {
   const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
 
@@ -42,7 +43,7 @@ function JoinForm({ clientSecret, onSuccess, onClose }) {
       }
     } catch (err) {
       if (!isMountedRef.current) return;
-      showError('An unexpected error occurred. Please try again.');
+      showError(err.message || 'An unexpected error occurred. Please try again.');
     } finally {
       if (isMountedRef.current) {
         setIsConfirming(false);
