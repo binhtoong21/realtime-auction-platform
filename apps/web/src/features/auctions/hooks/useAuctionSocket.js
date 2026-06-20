@@ -25,13 +25,15 @@ export function useAuctionSocket(auctionId, setAuctionData, onOutbid) {
     const handleDisconnect = () => setConnectionStatus('disconnected');
 
     const handleCatchup = (data) => {
+      // Simple timeOffset for countdown UI display; for critical sync, consider NTP-like RTT compensation.
       setTimeOffset(data.serverTime - Date.now());
       if (data.seq) lastSeqRef.current = data.seq;
       
+      const { seq, serverTime, ...stateParams } = data;
       // prev ở đây là object envelope { success: true, data: {...} } trả về từ useFetch
       setAuctionData(prev => ({
         ...prev,
-        data: { ...prev?.data, ...data.state }
+        data: { ...prev?.data, ...stateParams }
       }));
     };
 
@@ -43,8 +45,8 @@ export function useAuctionSocket(auctionId, setAuctionData, onOutbid) {
         data: {
           ...prev?.data,
           currentPrice: bidData.newPrice,
-          endAt: bidData.endAt || prev?.data?.endAt,
-          extendedCount: bidData.extendedCount || prev?.data?.extendedCount,
+          endAt: bidData.endAt !== undefined ? bidData.endAt : prev?.data?.endAt,
+          extendedCount: bidData.extendedCount !== undefined ? bidData.extendedCount : prev?.data?.extendedCount,
           bidCount: (prev?.data?.bidCount || 0) + 1
         }
       }));
@@ -71,6 +73,7 @@ export function useAuctionSocket(auctionId, setAuctionData, onOutbid) {
     }
 
     return () => {
+      socket.emit('auction:unsubscribe', { auctionId });
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('auction:catchup', handleCatchup);

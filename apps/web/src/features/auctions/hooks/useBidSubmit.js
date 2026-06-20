@@ -2,8 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMutation } from '../../../core/hooks/useMutation';
 
 export function useBidSubmit(auctionId, refetchAuction) {
-  const [idempotencyKey, setIdempotencyKey] = useState(null);
-  const [lastSubmittedAmount, setLastSubmittedAmount] = useState(null);
+  const idempotencyKeyRef = useRef(null);
+  const lastSubmittedAmountRef = useRef(null);
   // 'idle' | 'submitting' | 'success' | 'network_error' | 'rejected'
   const [bidState, setBidState] = useState('idle'); 
   const [errorCode, setErrorCode] = useState(null);
@@ -17,11 +17,11 @@ export function useBidSubmit(auctionId, refetchAuction) {
   }, []);
 
   const submitBid = useCallback(async (amount) => {
-    let currentKey = idempotencyKey;
-    if (amount !== lastSubmittedAmount || !currentKey) {
+    let currentKey = idempotencyKeyRef.current;
+    if (amount !== lastSubmittedAmountRef.current || !currentKey) {
       currentKey = crypto.randomUUID();
-      setIdempotencyKey(currentKey);
-      setLastSubmittedAmount(amount);
+      idempotencyKeyRef.current = currentKey;
+      lastSubmittedAmountRef.current = amount;
     }
 
     setBidState('submitting');
@@ -37,8 +37,8 @@ export function useBidSubmit(auctionId, refetchAuction) {
       
       // Success (201)
       setBidState('success');
-      setIdempotencyKey(null);
-      setLastSubmittedAmount(null);
+      idempotencyKeyRef.current = null;
+      lastSubmittedAmountRef.current = null;
       return response;
     } catch (err) {
       const status = err.response?.status;
@@ -48,12 +48,12 @@ export function useBidSubmit(auctionId, refetchAuction) {
       if (status === 400 || status === 422 || status === 403 || status === 402) {
         // Definitive rejection (e.g. Outbid, Ended, Payment Required, Forbidden)
         setBidState('rejected');
-        setIdempotencyKey(null);
+        idempotencyKeyRef.current = null;
       } else if (status === 409) {
         // Conflict - đã được xử lý bởi server, hiển thị "đang xử lý" trên UI.
         // Tuyệt đối không đọc response body vì server không trả originalResult.
         setBidState('success');
-        setIdempotencyKey(null);
+        idempotencyKeyRef.current = null;
         
         // 3s Fallback refetch mechanism
         fallbackTimerRef.current = setTimeout(() => {
@@ -65,7 +65,7 @@ export function useBidSubmit(auctionId, refetchAuction) {
       }
       throw err;
     }
-  }, [auctionId, idempotencyKey, lastSubmittedAmount, mutate, refetchAuction]);
+  }, [auctionId, mutate, refetchAuction]);
 
   const resetState = () => {
     setBidState('idle');
