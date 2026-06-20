@@ -8,6 +8,9 @@ async function seed() {
   try {
     await client.query('BEGIN');
 
+    // 0. Clear existing data
+    await client.query('TRUNCATE users, auctions, bids, payment_methods, auction_participants, payments CASCADE');
+
     // 1. Create Users
     const sellerId = uuidv7();
     const bidderId = uuidv7();
