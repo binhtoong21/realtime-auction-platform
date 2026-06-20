@@ -24,23 +24,23 @@ async function seed() {
     
     // Seller - Fully KYC'd & Onboarded
     await client.query(
-      `INSERT INTO users (id, email, password_hash, auth_provider, identity_status, connect_status, status) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [sellerId, 'seller@example.com', passwordHash, 'email', 'verified', 'payouts_enabled', 'active']
+      `INSERT INTO users (id, email, password_hash, display_name, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [sellerId, 'seller@example.com', passwordHash, 'Seller Account', 'email', 'verified', 'payouts_enabled', 'active']
     );
     
     // Bidder - Identity verified, Connect not started
     await client.query(
-      `INSERT INTO users (id, email, password_hash, auth_provider, identity_status, connect_status, status) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [bidderId, 'bidder@example.com', passwordHash, 'email', 'verified', 'not_started', 'active']
+      `INSERT INTO users (id, email, password_hash, display_name, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [bidderId, 'bidder@example.com', passwordHash, 'Bidder Account', 'email', 'verified', 'not_started', 'active']
     );
 
     // Unverified User
     await client.query(
-      `INSERT INTO users (id, email, password_hash, auth_provider, identity_status, connect_status, status) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [unverifiedId, 'unverified@example.com', passwordHash, 'email', 'not_started', 'not_started', 'unverified']
+      `INSERT INTO users (id, email, password_hash, display_name, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [unverifiedId, 'unverified@example.com', passwordHash, 'Unverified Account', 'email', 'not_started', 'not_started', 'unverified']
     );
 
     // Generate Tokens
