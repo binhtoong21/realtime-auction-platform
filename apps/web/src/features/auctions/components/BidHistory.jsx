@@ -2,14 +2,18 @@ import { useState, useRef, useEffect } from 'react';
 import './BidHistory.css';
 
 /**
- * Masks bidder display name — show first 40% (max 5 chars), hide the rest.
- * Vietnamese names have the given name (most identifying) at the end,
- * so masking the end protects privacy better.
+ * Masks bidder display name to protect privacy in the public bid room.
+ * Shows the first and last few characters of the display name.
  */
 const maskName = (name) => {
-  if (!name || name.length <= 3) return '***';
-  const visibleCount = Math.min(Math.ceil(name.length * 0.4), 5);
-  return name.slice(0, visibleCount) + '***';
+  if (!name) return '***';
+  if (name.length <= 3) return name[0] + '***';
+  
+  // Show max 3 chars at start, max 2 chars at end
+  const visibleStart = Math.min(3, Math.ceil(name.length / 3));
+  const visibleEnd = Math.min(2, Math.floor(name.length / 3));
+  
+  return name.slice(0, visibleStart) + '***' + name.slice(-visibleEnd);
 };
 
 /**
