@@ -30,10 +30,20 @@ export function useAuctionSocket(auctionId, setAuctionData, onOutbid) {
       if (data.seq) lastSeqRef.current = data.seq;
       
       const { seq, serverTime, ...stateParams } = data;
-      // prev ở đây là object envelope { success: true, data: {...} } trả về từ useFetch
+      // Convert camelCase from socket to snake_case for local state
+      const snakeCaseParams = {
+        current_price: stateParams.currentPrice,
+        end_at: stateParams.endAt,
+        extended_count: stateParams.extendedCount,
+        bid_count: stateParams.bidCount
+      };
+
+      // Remove undefined values
+      Object.keys(snakeCaseParams).forEach(key => snakeCaseParams[key] === undefined && delete snakeCaseParams[key]);
+
       setAuctionData(prev => ({
         ...prev,
-        data: { ...prev?.data, ...stateParams }
+        data: { ...prev?.data, ...snakeCaseParams }
       }));
     };
 
@@ -44,10 +54,10 @@ export function useAuctionSocket(auctionId, setAuctionData, onOutbid) {
         ...prev,
         data: {
           ...prev?.data,
-          currentPrice: bidData.newPrice,
-          endAt: bidData.endAt !== undefined ? bidData.endAt : prev?.data?.endAt,
-          extendedCount: bidData.extendedCount !== undefined ? bidData.extendedCount : prev?.data?.extendedCount,
-          bidCount: (prev?.data?.bidCount || 0) + 1
+          current_price: bidData.newPrice,
+          end_at: bidData.endAt !== undefined ? bidData.endAt : prev?.data?.end_at,
+          extended_count: bidData.extendedCount !== undefined ? bidData.extendedCount : prev?.data?.extended_count,
+          bid_count: (Number(prev?.data?.bid_count) || 0) + 1
         }
       }));
     };
