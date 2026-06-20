@@ -16,8 +16,8 @@ export function useJoinAuction(auctionId) {
     isRequestingRef.current = true;
     try {
       const response = await mutate({}); // Body rỗng
-      // Contract: { success: true, data: { setupIntentClientSecret, alreadyJoined } }
-      const secret = response.data?.setupIntentClientSecret;
+      // Contract: { success: true, data: { clientSecret } }
+      const secret = response.data?.clientSecret;
       setClientSecret(secret);
       return response.data;
     } finally {
