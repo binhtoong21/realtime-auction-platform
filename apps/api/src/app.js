@@ -13,6 +13,23 @@ import paymentMethodRoutes from './routes/payment-method.routes.js';
 import paymentsRoutes from './routes/payments.routes.js';
 import disputesRoutes from './routes/disputes.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import { redisClient } from './config/redis.js';
+
+const pingRedisWithTimeout = async () => {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      redisClient.ping().then(() => 'ok'),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('timeout')), 500);
+      })
+    ]);
+  } catch (err) {
+    return 'error';
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 const app = express();
 
@@ -39,21 +56,39 @@ app.use('/payments', paymentsRoutes);
 app.use('/disputes', disputesRoutes);
 app.use('/admin', adminRoutes);
 
-// Health Check Route
 app.get('/health', async (req, res, next) => {
-  try {
-    // Check DB
-    const dbRes = await pool.query('SELECT NOW()');
-    
-    res.status(200).json({
-      status: 'ok',
-      db: dbRes.rows[0].now,
-      redis: 'pending_setup',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
+  let dbStatus = 'error';
+  let dbTime = null;
+  let redisStatus = 'error';
+  let isDegraded = false;
+
+  const [dbResult, redisResult] = await Promise.allSettled([
+    pool.query('SELECT NOW()'),
+    pingRedisWithTimeout()
+  ]);
+
+  if (dbResult.status === 'fulfilled') {
+    dbStatus = 'ok';
+    dbTime = dbResult.value.rows[0].now;
+  } else {
+    isDegraded = true;
+    console.error('[Health] DB ping failed:', dbResult.reason.message);
   }
+
+  redisStatus = redisResult.status === 'fulfilled' ? redisResult.value : 'error';
+  if (redisStatus === 'error') {
+    isDegraded = true;
+    if (redisResult.reason) console.error('[Health] Redis ping failed:', redisResult.reason.message);
+  }
+
+  const statusCode = isDegraded ? 503 : 200;
+
+  res.status(statusCode).json({
+    status: isDegraded ? 'degraded' : 'ok',
+    db: dbStatus === 'ok' ? dbTime : 'error',
+    redis: redisStatus,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Global Error Handler must be the last middleware

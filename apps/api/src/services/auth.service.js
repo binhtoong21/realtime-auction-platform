@@ -138,9 +138,8 @@ const register = async ({ email, password, displayName }) => {
 
     // TODO: Emit monitoring metric or alert (e.g., StripeCustomerCreationFailures)
     
-    // TODO: Enqueue a background retry job (e.g., via BullMQ 'createStripeCustomer' queue) 
-    // or insert a retry row so the missing stripe_cus_id can be retried/monitored.
-    // This ensures failures do not throw back into the main registration flow while preserving recoverability.
+    // Do not add BullMQ retry yet. Keep lazy recovery via ensureStripeCustomer() 
+    // for join/card setup, but note that payment lifecycle code depends on this invariant.
   }
 
   return { userId };
