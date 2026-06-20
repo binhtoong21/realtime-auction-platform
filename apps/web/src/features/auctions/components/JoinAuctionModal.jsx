@@ -11,7 +11,7 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || '');
  * Inner form rendered inside Stripe Elements provider.
  * Handles card setup confirmation including 3D Secure.
  */
-function JoinForm({ clientSecret, onSuccess, onClose }) {
+function JoinForm({ clientSecret, onSuccess, onClose, confirmSetup }) {
   const stripe = useStripe();
   const elements = useElements();
   const { showError } = useToast();
@@ -39,6 +39,11 @@ function JoinForm({ clientSecret, onSuccess, onClose }) {
       if (result.error) {
         showError(result.error.message || 'Card setup failed. Please try again.');
       } else {
+        // Fallback for local testing without webhooks:
+        // Tell backend to check SetupIntent status and save payment method.
+        if (confirmSetup) {
+          await confirmSetup();
+        }
         onSuccess();
       }
     } catch (err) {
@@ -98,7 +103,7 @@ function JoinForm({ clientSecret, onSuccess, onClose }) {
  */
 export function JoinAuctionModal({ isOpen, onClose, auctionId, onJoinSuccess }) {
   const { showSuccess, showError } = useToast();
-  const { joinAuction, clientSecret, isLoading, error } = useJoinAuction(auctionId);
+  const { joinAuction, confirmSetup, clientSecret, isLoading, error } = useJoinAuction(auctionId);
   const [hasRequested, setHasRequested] = useState(false);
 
   // Request client secret when modal opens
@@ -176,6 +181,7 @@ export function JoinAuctionModal({ isOpen, onClose, auctionId, onJoinSuccess }) 
                 clientSecret={clientSecret}
                 onSuccess={handleJoinSuccess}
                 onClose={onClose}
+                confirmSetup={confirmSetup}
               />
             </Elements>
           )}

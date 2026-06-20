@@ -162,3 +162,19 @@ export const joinAuction = async (req, res, next) => {
     next(error);
   }
 };
+
+export const confirmJoinAuction = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const result = await auctionService.confirmJoinAuction(userId, id);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

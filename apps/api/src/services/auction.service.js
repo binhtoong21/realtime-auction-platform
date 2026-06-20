@@ -418,3 +418,40 @@ export const joinAuction = async (userId, auctionId) => {
 
   return { clientSecret: setupIntent.client_secret };
 };
+
+/**
+ * Confirm join auction — Checks SetupIntent and updates payment_method_id if successful.
+ * Acts as a fallback for Webhooks.
+ */
+export const confirmJoinAuction = async (userId, auctionId) => {
+  const result = await pool.query(
+    'SELECT stripe_si_id, payment_method_id FROM auction_participants WHERE auction_id = $1 AND user_id = $2',
+    [auctionId, userId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error('Participant record not found');
+  }
+
+  const { stripe_si_id, payment_method_id } = result.rows[0];
+
+  if (payment_method_id) {
+    return { success: true, message: 'Already confirmed' };
+  }
+
+  if (!stripe_si_id) {
+    throw new Error('No SetupIntent found for this participant');
+  }
+
+  const setupIntent = await stripe.setupIntents.retrieve(stripe_si_id);
+
+  if (setupIntent.status === 'succeeded') {
+    await pool.query(
+      'UPDATE auction_participants SET payment_method_id = $1 WHERE auction_id = $2 AND user_id = $3',
+      [setupIntent.payment_method, auctionId, userId]
+    );
+    return { success: true, message: 'Payment method confirmed' };
+  } else {
+    throw new Error('Card setup is not yet successful');
+  }
+};

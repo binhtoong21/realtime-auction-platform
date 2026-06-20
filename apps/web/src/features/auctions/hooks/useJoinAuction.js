@@ -25,7 +25,19 @@ export function useJoinAuction(auctionId) {
     }
   }, [mutate]);
 
-  return { joinAuction, isLoading, error, clientSecret };
+  const { mutate: confirmMutate } = useMutation(`/auctions/${auctionId}/join/confirm`, 'POST');
+
+  const confirmSetup = useCallback(async () => {
+    try {
+      const response = await confirmMutate({});
+      return response.data;
+    } catch (err) {
+      console.error('Failed to confirm join on backend:', err);
+      throw err;
+    }
+  }, [confirmMutate]);
+
+  return { joinAuction, confirmSetup, isLoading, error, clientSecret };
 }
 
 
