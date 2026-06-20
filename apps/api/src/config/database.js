@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import pg from 'pg';
-const { Pool } = pg;
+const { Pool, types } = pg;
+
+// OID 1114 is 'timestamp without time zone'.
+// Force node-postgres to treat it as UTC instead of local time.
+types.setTypeParser(1114, str => new Date(str + 'Z'));
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
