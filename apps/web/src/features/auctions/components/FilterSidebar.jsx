@@ -71,9 +71,9 @@ export function FilterSidebar({ filters, onChange }) {
   };
 
   return (
-    <aside className="filter-sidebar">
+    <div className="filter-sidebar">
       <div className="filter-header">
-        <h3>Filters</h3>
+        <span className="filter-title">Filters</span>
         <button type="button" className="btn-clear" onClick={handleClearFilters}>
           Clear All
         </button>
@@ -144,6 +144,6 @@ export function FilterSidebar({ filters, onChange }) {
           />
         </div>
       </div>
-    </aside>
+    </div>
   );
 }

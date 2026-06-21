@@ -3,12 +3,11 @@ import { CountdownTimer } from './CountdownTimer';
 import './AuctionCard.css';
 
 /**
- * Pure component to render an auction card.
+ * Pure component to render an auction card in high-density grid.
  * @param {Object} props
  * @param {Object} props.auction - The auction data.
- * @param {"featured" | "list"} props.variant - Layout variant: vertical (featured) or horizontal (list).
  */
-export function AuctionCard({ auction, variant = 'list' }) {
+export function AuctionCard({ auction }) {
   if (!auction || !auction.id) {
     return null;
   }
@@ -51,7 +50,7 @@ export function AuctionCard({ auction, variant = 'list' }) {
   };
 
   return (
-    <Link to={`/auctions/${id}`} className={`auction-card card-${variant}`}>
+    <Link to={`/auctions/${id}`} className="auction-card">
       <div className="auction-card-image-wrapper">
         {imageUrl ? (
           <img src={imageUrl} alt={title} className="auction-card-image" loading="lazy" />
@@ -61,17 +60,8 @@ export function AuctionCard({ auction, variant = 'list' }) {
       </div>
       
       <div className="auction-card-info">
-        {getStatusBadge(status)}
-        
         <h3 className="auction-card-title">{title}</h3>
-        
-        {seller?.displayName && (
-          <p className="auction-card-seller">Seller: {seller.displayName}</p>
-        )}
-
-        <div className="auction-card-price-section">
-          <span className="auction-card-price">{formattedPrice}</span>
-        </div>
+        <span className="auction-card-price">{formattedPrice}</span>
 
         <div className="auction-card-footer">
           <div className="auction-card-countdown">

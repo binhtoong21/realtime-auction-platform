@@ -1,28 +1,27 @@
 /* apps/web/src/features/auctions/pages/AuctionBrowsePage.css */
 
 .auction-browse-page {
-  padding: var(--space-8) var(--space-4);
-  max-width: 1200px;
-  margin: 0 auto;
   width: 100%;
-}
-
-.browse-title {
-  font-family: var(--font-display);
-  font-size: var(--text-3xl);
-  margin-bottom: var(--space-8);
+  display: flex;
+  flex-direction: column;
 }
 
 .browse-layout {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: var(--space-8);
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+}
+
+.browse-main {
+  padding: var(--space-4) var(--space-6);
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .browse-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--space-4);
 }
 
@@ -30,20 +29,32 @@
   display: flex;
   justify-content: center;
   margin-top: var(--space-8);
+  margin-bottom: var(--space-8);
 }
 
-/* Skeleton specifically for list variant height */
 .browse-grid .skeleton-card {
-  height: 180px;
+  aspect-ratio: 1/1.2;
   border-radius: var(--radius-md);
   background-color: var(--color-surface-raised);
 }
 
-@media (max-width: 768px) {
-  .browse-layout {
-    grid-template-columns: 1fr;
+@media (max-width: 1280px) {
+  .browse-grid {
+    grid-template-columns: repeat(4, 1fr);
   }
-  .browse-grid .skeleton-card {
-    height: 350px;
+}
+
+@media (max-width: 1024px) {
+  .browse-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .browse-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .browse-main {
+    padding: var(--space-3) var(--space-4);
   }
 }

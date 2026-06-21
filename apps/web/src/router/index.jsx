@@ -5,7 +5,6 @@ import { RegisterPage } from '../features/authentication/pages/RegisterPage';
 import { VerifyEmailPage } from '../features/authentication/pages/VerifyEmailPage';
 import { ForgotPasswordPage } from '../features/authentication/pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/authentication/pages/ResetPasswordPage';
-import { LandingPage } from '../features/auctions/pages/LandingPage';
 import { AuctionBrowsePage } from '../features/auctions/pages/AuctionBrowsePage';
 import { AuctionDetailPage } from '../features/auctions/pages/AuctionDetailPage';
 import { RequireAuth } from './RequireAuth';
@@ -17,7 +16,7 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <LandingPage />,
+        element: <AuctionBrowsePage />,
       },
       {
         path: 'auth/login',
@@ -41,11 +40,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'auctions',
-        element: (
-          <RequireAuth>
-            <AuctionBrowsePage />
-          </RequireAuth>
-        ),
+        element: <AuctionBrowsePage />,
       },
       {
         path: 'auctions/:id',

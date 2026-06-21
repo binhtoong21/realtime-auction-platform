@@ -13,6 +13,7 @@ import paymentMethodRoutes from './routes/payment-method.routes.js';
 import paymentsRoutes from './routes/payments.routes.js';
 import disputesRoutes from './routes/disputes.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import testRoutes from './routes/test.routes.js';
 import { redisClient } from './config/redis.js';
 
 const pingRedisWithTimeout = async () => {
@@ -55,6 +56,10 @@ app.use('/payment-methods', paymentMethodRoutes);
 app.use('/payments', paymentsRoutes);
 app.use('/disputes', disputesRoutes);
 app.use('/admin', adminRoutes);
+
+if (process.env.NODE_ENV === 'test') {
+  app.use('/api/test', testRoutes);
+}
 
 app.get('/health', async (req, res, next) => {
   let dbStatus = 'error';

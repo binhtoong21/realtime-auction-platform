@@ -1,4 +1,4 @@
-@import 'https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap';
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
   /* ============================================
@@ -55,10 +55,8 @@
   --text-xs:   0.694rem;  /* 11px */
   --text-sm:   0.833rem;  /* 13px */
   --text-base: 1rem;      /* 16px */
-  --text-lg:   1.333rem;  /* 21px */
-  --text-xl:   1.777rem;  /* 28px */
-  --text-2xl:  2.369rem;  /* 38px */
-  --text-3xl:  3.157rem;  /* 51px */
+  --text-lg:   1.125rem;  /* 18px */
+  --text-xl:   1.5rem;    /* 24px */
 
   /* ============================================
      SPACING & SHAPE
@@ -73,17 +71,14 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
-  --space-20: 80px;
 
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08),
-               0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10),
-               0 2px 6px  rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 
 [data-theme="dark"] {
@@ -117,17 +112,19 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-body);
   color: var(--color-text-primary);
   line-height: 1.2;
+  font-weight: 500;
 }
 
-h1 { font-family: var(--font-display); font-size: var(--text-xl); }
-h2, h3 { font-size: var(--text-lg); font-weight: 600; }
+h1 { font-size: var(--text-lg); }
+h2, h3 { font-size: var(--text-sm); }
 
 a {
   color: var(--color-brand);
   text-decoration: none;
-  transition: color 0.15s, opacity 0.15s;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 a:hover {
@@ -138,6 +135,7 @@ a:hover {
   color: var(--color-text-primary);
   font-weight: 500;
   text-decoration: none;
+  transition: color 0.15s;
 }
 
 .nav-link:hover {
@@ -147,7 +145,7 @@ a:hover {
 button {
   cursor: pointer;
   font-family: var(--font-body);
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 button:disabled {
@@ -174,6 +172,8 @@ a.btn-primary {
 
 .btn-primary:hover:not(:disabled) {
   background-color: var(--color-action-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:disabled {
@@ -195,6 +195,7 @@ input, textarea {
 input:focus, textarea:focus {
   outline: none;
   border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px var(--color-brand-subtle);
 }
 
 input:disabled, textarea:disabled {
@@ -252,3 +253,5 @@ input[type="password"]::-ms-clear {
 .bid-entry-new {
   animation: slide-in-top 0.2s ease-out forwards;
 }
+
+

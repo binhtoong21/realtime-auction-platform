@@ -96,32 +96,19 @@ export function BidHistory({ bids, isLoading, error }) {
   }
 
   return (
-    <div className="bid-history">
-      <table className="bid-history-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Bidder</th>
-            <th>Amount</th>
-            <th>Time</th>
-          </tr>
-        </thead>
-        <tbody>
-          {bids.map((bid, index) => (
-            <tr
-              key={bid.id}
-              className={`bid-history-row ${
-                bid.id === newBidId ? 'bid-entry-new' : ''
-              } ${bid.is_winning ? 'winning-bid' : ''}`}
-            >
-              <td className="bid-rank">{index + 1}</td>
-              <td className="bid-bidder">{maskName(bid.bidder_name)}</td>
-              <td className="bid-amount">{formatAmount(bid.amount)}</td>
-              <td className="bid-time">{formatRelativeTime(bid.created_at)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="bid-history-list">
+      {bids.map((bid) => (
+        <div
+          key={bid.id}
+          className={`bid-history-item ${
+            bid.id === newBidId ? 'new-bid' : ''
+          }`}
+        >
+          <span className="bid-user">{maskName(bid.bidder_name)}</span>
+          <span className="bid-amount">{formatAmount(bid.amount)}</span>
+          <span className="bid-time">{formatRelativeTime(bid.created_at)}</span>
+        </div>
+      ))}
     </div>
   );
 }

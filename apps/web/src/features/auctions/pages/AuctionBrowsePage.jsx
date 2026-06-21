@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuctions } from '../hooks/useAuctions';
-import { FilterSidebar } from '../components/FilterSidebar';
+import { FilterPills } from '../components/FilterPills';
 import { AuctionCard } from '../components/AuctionCard';
 import './AuctionBrowsePage.css';
 
@@ -73,14 +73,17 @@ export function AuctionBrowsePage() {
     }
   };
 
+  const handleCategoryChange = (categoryId) => {
+    handleFilterChange({ ...filters, categoryId });
+  };
+
   return (
-    <div className="auction-browse-page container">
-      <h1 className="browse-title">Browse Auctions</h1>
-      
+    <div className="auction-browse-page">
       <div className="browse-layout">
-        <aside className="browse-sidebar">
-          <FilterSidebar filters={filters} onChange={handleFilterChange} />
-        </aside>
+        <FilterPills 
+          activeCategory={filters.categoryId} 
+          onCategoryChange={handleCategoryChange} 
+        />
 
         <main className="browse-main">
           {error && (
@@ -104,7 +107,9 @@ export function AuctionBrowsePage() {
             }}
           >
             {allAuctions.map((auction) => (
-              <AuctionCard key={auction.id} auction={auction} variant="list" />
+              <div key={auction.id}>
+                <AuctionCard auction={auction} />
+              </div>
             ))}
             
             {/* Skeleton for initial load or load more */}
