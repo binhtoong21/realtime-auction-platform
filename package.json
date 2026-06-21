@@ -9,7 +9,8 @@
   "scripts": {
     "start:api": "npm start -w @auction/api",
     "dev:api": "npm run dev -w @auction/api",
-    "dev:web": "npm run dev -w @auction/web"
+    "dev:web": "npm run dev -w @auction/web",
+    "db:seed": "npm run db:seed -w @auction/api"
   },
   "devDependencies": {
     "eslint": "^10.3.0",

@@ -94,6 +94,7 @@ export function ToastProvider({ children }) {
  * Hook to access toast notification methods.
  * @returns {{ showSuccess: (msg: string) => void, showError: (msg: string) => void, showInfo: (msg: string) => void }}
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useToast() {
   const context = useContext(ToastContext);
   if (context === null) {

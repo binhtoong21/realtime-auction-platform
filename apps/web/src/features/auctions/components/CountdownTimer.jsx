@@ -6,7 +6,7 @@ import './CountdownTimer.css';
  * Formats time as HH:MM:SS or DD days HH:MM:SS.
  * Adds warning styles if less than 2 minutes remain.
  */
-export function CountdownTimer({ endAt }) {
+export function CountdownTimer({ endAt, timeOffset = 0 }) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isEnded, setIsEnded] = useState(false);
 
@@ -14,9 +14,7 @@ export function CountdownTimer({ endAt }) {
     if (!endAt) return;
 
     const calculateTimeLeft = () => {
-      // TODO: apply timeOffset from WS in Phase 3
-      // const now = Date.now() + timeOffset;
-      const now = Date.now();
+      const now = Date.now() + timeOffset;
       const end = new Date(endAt).getTime();
       
       if (Number.isNaN(end)) {
@@ -34,6 +32,7 @@ export function CountdownTimer({ endAt }) {
       return diff;
     };
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimeLeft(calculateTimeLeft());
 
     const intervalId = setInterval(() => {
@@ -45,7 +44,7 @@ export function CountdownTimer({ endAt }) {
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [endAt]);
+  }, [endAt, timeOffset]);
 
   if (isEnded) {
     return <span className="countdown-ended" style={{ color: 'var(--color-text-disabled)' }}>Ended</span>;
@@ -61,12 +60,9 @@ export function CountdownTimer({ endAt }) {
 
   const formatUnit = (unit) => unit.toString().padStart(2, '0');
 
-  let timeString = '';
-  if (days > 0) {
-    timeString = `${days}d ${formatUnit(hours)}h ${formatUnit(minutes)}m`;
-  } else {
-    timeString = `${formatUnit(hours)}:${formatUnit(minutes)}:${formatUnit(seconds)}`;
-  }
+  const timeString = days > 0 
+    ? `${days}d ${formatUnit(hours)}h ${formatUnit(minutes)}m`
+    : `${formatUnit(hours)}:${formatUnit(minutes)}:${formatUnit(seconds)}`;
 
   return (
     <span className={`countdown-timer ${isCritical ? 'countdown-critical' : ''}`}>

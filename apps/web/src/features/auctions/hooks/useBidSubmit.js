@@ -9,6 +9,7 @@ export function useBidSubmit(auctionId, refetchAuction) {
   const [errorCode, setErrorCode] = useState(null);
   const { mutate } = useMutation(`/auctions/${auctionId}/bids`, 'POST');
   
+  const isRequestingRef = useRef(false);
   const fallbackTimerRef = useRef(null);
 
   // Clear timer on unmount
@@ -17,6 +18,9 @@ export function useBidSubmit(auctionId, refetchAuction) {
   }, []);
 
   const submitBid = useCallback(async (amount) => {
+    if (isRequestingRef.current) return;
+    isRequestingRef.current = true;
+
     let currentKey = idempotencyKeyRef.current;
     if (amount !== lastSubmittedAmountRef.current || !currentKey) {
       currentKey = crypto.randomUUID();
@@ -43,7 +47,9 @@ export function useBidSubmit(auctionId, refetchAuction) {
     } catch (err) {
       const status = err.response?.status;
       const code = err.response?.data?.error?.code;
-      setErrorCode(code);
+      const details = err.response?.data?.error?.details;
+      
+      setErrorCode({ code, details });
       
       if (status === 400 || status === 422 || status === 403 || status === 402) {
         // Definitive rejection (e.g. Outbid, Ended, Payment Required, Forbidden)
@@ -52,8 +58,8 @@ export function useBidSubmit(auctionId, refetchAuction) {
       } else if (status === 409) {
         // Conflict - đã được xử lý bởi server, hiển thị "đang xử lý" trên UI.
         // Tuyệt đối không đọc response body vì server không trả originalResult.
+        // Tuyệt đối KHÔNG xóa idempotencyKey để tránh bypass nếu user tiếp tục spam.
         setBidState('success');
-        idempotencyKeyRef.current = null;
         
         // 3s Fallback refetch mechanism
         fallbackTimerRef.current = setTimeout(() => {
@@ -64,8 +70,10 @@ export function useBidSubmit(auctionId, refetchAuction) {
         setBidState('network_error');
       }
       throw err;
+    } finally {
+      isRequestingRef.current = false;
     }
-  }, [auctionId, mutate, refetchAuction]);
+  }, [mutate, refetchAuction]);
 
   const resetState = () => {
     setBidState('idle');

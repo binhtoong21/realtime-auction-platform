@@ -7,6 +7,7 @@ import { ForgotPasswordPage } from '../features/authentication/pages/ForgotPassw
 import { ResetPasswordPage } from '../features/authentication/pages/ResetPasswordPage';
 import { LandingPage } from '../features/auctions/pages/LandingPage';
 import { AuctionBrowsePage } from '../features/auctions/pages/AuctionBrowsePage';
+import { AuctionDetailPage } from '../features/auctions/pages/AuctionDetailPage';
 import { RequireAuth } from './RequireAuth';
 
 export const router = createBrowserRouter([
@@ -45,7 +46,16 @@ export const router = createBrowserRouter([
             <AuctionBrowsePage />
           </RequireAuth>
         ),
-      }
+      },
+      {
+        path: 'auctions/:id',
+        element: (
+          <RequireAuth>
+            <AuctionDetailPage />
+          </RequireAuth>
+        ),
+      },
     ],
   },
 ]);
+

@@ -24,7 +24,7 @@ export function RegisterPage() {
     try {
       const response = await axiosClient.get(`/auth/check-email?email=${encodeURIComponent(email)}`);
       emailCheckResultRef.current = response.data?.data ?? null;
-    } catch (err) {
+    } catch {
       emailCheckResultRef.current = null; // network error → fallback to submit-time check
     }
   };
@@ -51,7 +51,7 @@ export function RegisterPage() {
       try {
         const response = await axiosClient.get(`/auth/check-email?email=${encodeURIComponent(email)}`);
         emailCheck = response.data?.data ?? null;
-      } catch (err) {
+      } catch {
         // network error → ignore and let BE return 409 if exists
       }
     }
@@ -69,7 +69,7 @@ export function RegisterPage() {
       setTimeout(() => {
         navigate('/auth/login');
       }, 3000);
-    } catch (err) {
+    } catch {
       // Error is handled by useMutation, accessible via `error` state
     }
   };

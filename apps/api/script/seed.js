@@ -3,10 +3,26 @@ import { pool } from '../src/config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { generateAccessToken } from '../src/utils/jwt.js';
 
+import bcrypt from 'bcryptjs';
+
 async function seed() {
+  const allowedEnvs = ['development', 'test'];
+  if (!allowedEnvs.includes(process.env.NODE_ENV)) {
+    console.error(`Error: Refusing to seed database in ${process.env.NODE_ENV} environment.`);
+    process.exit(1);
+  }
+
+  // Default password for all seeded users: password123
+  // Executing CPU-bound bcrypt operations before acquiring DB connection/transaction
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash('password123', salt);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // 0. Clear existing data
+    await client.query('TRUNCATE users, auctions, bids, payment_methods, auction_participants, payments CASCADE');
 
     // 1. Create Users
     const sellerId = uuidv7();
@@ -15,23 +31,23 @@ async function seed() {
     
     // Seller - Fully KYC'd & Onboarded
     await client.query(
-      `INSERT INTO users (id, email, auth_provider, identity_status, connect_status) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [sellerId, 'seller@example.com', 'email', 'verified', 'payouts_enabled']
+      `INSERT INTO users (id, email, password_hash, display_name, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [sellerId, 'seller@example.com', passwordHash, 'Seller Account', 'email', 'verified', 'payouts_enabled', 'active']
     );
     
     // Bidder - Identity verified, Connect not started
     await client.query(
-      `INSERT INTO users (id, email, auth_provider, identity_status, connect_status) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [bidderId, 'bidder@example.com', 'email', 'verified', 'not_started']
+      `INSERT INTO users (id, email, password_hash, display_name, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [bidderId, 'bidder@example.com', passwordHash, 'Bidder Account', 'email', 'verified', 'not_started', 'active']
     );
 
     // Unverified User
     await client.query(
-      `INSERT INTO users (id, email, auth_provider, identity_status, connect_status) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [unverifiedId, 'unverified@example.com', 'email', 'not_started', 'not_started']
+      `INSERT INTO users (id, email, password_hash, display_name, auth_provider, identity_status, connect_status, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [unverifiedId, 'unverified@example.com', passwordHash, 'Unverified Account', 'email', 'not_started', 'not_started', 'unverified']
     );
 
     // Generate Tokens
@@ -68,6 +84,7 @@ async function seed() {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error seeding data:', error);
+    process.exit(1);
   } finally {
     client.release();
     pool.end();

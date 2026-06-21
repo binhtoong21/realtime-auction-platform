@@ -2,13 +2,21 @@ import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { SocketContext } from './SocketContext';
 import { getAccessToken } from '../../../core/api/tokenManager';
+import { useAuth } from '../../context/AuthContext';
 
 export function SocketProvider({ children }) {
   const [socket, setSocket] = useState(null);
+  const user = useAuth(); // Depend on user state to trigger reconnects
+
+  const token = getAccessToken();
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return;
+    // If not authenticated, we shouldn't have a socket
+    if (!token || !user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSocket(null);
+      return;
+    }
 
     const newSocket = io(import.meta.env.VITE_API_URL, {
       auth: { token },
@@ -27,7 +35,7 @@ export function SocketProvider({ children }) {
       newSocket.off('connect_error');
       newSocket.disconnect();
     };
-  }, []);
+  }, [user, token]); // Re-run whenever auth state or token changes
 
   return (
     <SocketContext.Provider value={socket}>

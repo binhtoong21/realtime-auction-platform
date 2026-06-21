@@ -35,7 +35,8 @@ export const getAuctions = async (req, res, next) => {
 export const getAuctionById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const auction = await auctionService.getAuctionById(id);
+    const userId = req.user?.id || null;
+    const auction = await auctionService.getAuctionById(id, userId);
     
     res.status(200).json({
       success: true,
@@ -156,6 +157,22 @@ export const joinAuction = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: { clientSecret: result.clientSecret },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const confirmJoinAuction = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const result = await auctionService.confirmJoinAuction(userId, id);
+
+    res.status(200).json({
+      success: true,
+      data: result,
     });
   } catch (error) {
     next(error);

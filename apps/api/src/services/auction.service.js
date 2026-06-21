@@ -105,18 +105,20 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
 /**
  * Lấy chi tiết 1 phiên đấu giá
  */
-export const getAuctionById = async (id) => {
+export const getAuctionById = async (id, userId = null) => {
   const query = `
     SELECT a.*, 
            c.name as category_name, c.slug as category_slug,
            u.display_name as seller_name,
            (SELECT COUNT(*) FROM bids b WHERE b.auction_id = a.id) as bid_count
+           ${userId ? `, EXISTS(SELECT 1 FROM auction_participants ap WHERE ap.auction_id = a.id AND ap.user_id = $2 AND ap.payment_method_id IS NOT NULL) as is_joined` : ''}
     FROM auctions a
     LEFT JOIN categories c ON a.category_id = c.id
     JOIN users u ON a.seller_id = u.id
     WHERE a.id = $1
   `;
-  const result = await pool.query(query, [id]);
+  const params = userId ? [id, userId] : [id];
+  const result = await pool.query(query, params);
   
   if (result.rows.length === 0) {
     const error = new Error('Auction not found');
@@ -415,4 +417,64 @@ export const joinAuction = async (userId, auctionId) => {
   }
 
   return { clientSecret: setupIntent.client_secret };
+};
+
+/**
+ * Confirm join auction — Checks SetupIntent and updates payment_method_id if successful.
+ * Acts as a fallback for Webhooks.
+ */
+export const confirmJoinAuction = async (userId, auctionId) => {
+  const result = await pool.query(
+    'SELECT stripe_si_id, payment_method_id FROM auction_participants WHERE auction_id = $1 AND user_id = $2',
+    [auctionId, userId]
+  );
+
+  if (result.rows.length === 0) {
+    const error = new Error('Participant record not found');
+    error.statusCode = 404;
+    error.errorCode = 'NOT_FOUND';
+    throw error;
+  }
+
+  const { stripe_si_id, payment_method_id } = result.rows[0];
+
+  if (payment_method_id) {
+    return { success: true, message: 'Already confirmed' };
+  }
+
+  if (!stripe_si_id) {
+    const error = new Error('No SetupIntent found for this participant');
+    error.statusCode = 400;
+    error.errorCode = 'BAD_REQUEST';
+    throw error;
+  }
+
+  const setupIntent = await stripe.setupIntents.retrieve(stripe_si_id);
+
+  if (setupIntent.status === 'succeeded') {
+    // Re-use the webhook logic to properly create the payment_method record 
+    // and link its UUID to auction_participants
+    const { handleSetupIntentSucceeded } = await import('./kyc.service.js');
+    await handleSetupIntentSucceeded(setupIntent);
+    
+    // Verify linkage
+    const verifyResult = await pool.query(
+      'SELECT payment_method_id FROM auction_participants WHERE auction_id = $1 AND user_id = $2',
+      [auctionId, userId]
+    );
+
+    if (!verifyResult.rows[0]?.payment_method_id) {
+      const error = new Error('Failed to verify payment method linkage after setup intent succeeded');
+      error.statusCode = 500;
+      error.errorCode = 'VERIFICATION_FAILED';
+      throw error;
+    }
+
+    return { success: true, message: 'Payment method confirmed' };
+  } else {
+    const error = new Error('Card setup is not yet successful');
+    error.statusCode = 400;
+    error.errorCode = 'BAD_REQUEST';
+    throw error;
+  }
 };

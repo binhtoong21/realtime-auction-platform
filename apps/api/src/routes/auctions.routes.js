@@ -11,7 +11,7 @@ import { handleAcceptSecondChance, handleDeclineSecondChance } from '../controll
 
 import optionalAuth from '../middleware/optionalAuth.js';
 import { getAuctionsSchema, getAuctionBidsSchema, createAuctionSchema, updateAuctionSchema } from '../validations/auction.validation.js';
-import { getAuctions, getAuctionById, getAuctionBids, createAuction, updateAuction, cancelAuction, joinAuction } from '../controllers/auction.controller.js';
+import { getAuctions, getAuctionById, getAuctionBids, createAuction, updateAuction, cancelAuction, joinAuction, confirmJoinAuction } from '../controllers/auction.controller.js';
 
 import { handleShipAuction, handleUpdateTracking, handleGetTracking, handleExtendShipping, handleConfirmDelivery, handleExtendDelivery } from '../controllers/fulfillment.controller.js';
 import { shipAuctionSchema, updateTrackingSchema, extendShippingSchema, extendDeliverySchema } from '../validations/fulfillment.validation.js';
@@ -20,7 +20,7 @@ const router = Router();
 
 // Read routes (Public or Guest allowed)
 router.get('/', optionalAuth, validate(getAuctionsSchema, 'query'), getAuctions);
-router.get('/:id', getAuctionById);
+router.get('/:id', optionalAuth, getAuctionById);
 router.get('/:id/bids', validate(getAuctionBidsSchema, 'query'), getAuctionBids);
 
 const bidSchema = Joi.object({
@@ -54,6 +54,12 @@ router.post(
   '/:id/join',
   requireAuth,
   joinAuction
+);
+
+router.post(
+  '/:id/join/confirm',
+  requireAuth,
+  confirmJoinAuction
 );
 
 router.post(

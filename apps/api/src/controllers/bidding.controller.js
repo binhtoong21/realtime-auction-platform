@@ -22,7 +22,7 @@ export const placeBid = async (req, res, next) => {
     if (error.code === 'ERR_OUTBID' || error.code === 'ERR_AUCTION_ENDED') {
       return res.status(400).json({
         success: false,
-        error: { code: error.code, message: error.message }
+        error: { code: error.code, message: error.message, details: error.details }
       });
     }
     next(error);
