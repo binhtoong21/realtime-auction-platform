@@ -8,10 +8,12 @@ export function SocketProvider({ children }) {
   const [socket, setSocket] = useState(null);
   const user = useAuth(); // Depend on user state to trigger reconnects
 
+  const token = getAccessToken();
+
   useEffect(() => {
-    const token = getAccessToken();
     // If not authenticated, we shouldn't have a socket
     if (!token || !user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSocket(null);
       return;
     }
@@ -33,7 +35,7 @@ export function SocketProvider({ children }) {
       newSocket.off('connect_error');
       newSocket.disconnect();
     };
-  }, [user]); // Re-run whenever auth state changes
+  }, [user, token]); // Re-run whenever auth state or token changes
 
   return (
     <SocketContext.Provider value={socket}>

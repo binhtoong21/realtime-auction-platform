@@ -73,7 +73,7 @@ export function useBidSubmit(auctionId, refetchAuction) {
     } finally {
       isRequestingRef.current = false;
     }
-  }, [auctionId, mutate, refetchAuction]);
+  }, [mutate, refetchAuction]);
 
   const resetState = () => {
     setBidState('idle');

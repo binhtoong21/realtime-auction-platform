@@ -32,7 +32,7 @@ export function LoginPage() {
       
       const returnUrl = location.state?.from || '/';
       navigate(returnUrl);
-    } catch (err) {
+    } catch {
       // Error is handled by useMutation, accessible via `error` state
     }
   };

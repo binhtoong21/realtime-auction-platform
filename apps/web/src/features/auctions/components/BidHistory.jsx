@@ -45,7 +45,7 @@ const formatAmount = (cents) => {
  * Renders a live-updating bid history list.
  * New bids appear at the top with slide-in animation.
  */
-export function BidHistory({ bids, isLoading }) {
+export function BidHistory({ bids, isLoading, error }) {
   const [newBidId, setNewBidId] = useState(null);
   const topBidIdRef = useRef(null);
 
@@ -74,6 +74,15 @@ export function BidHistory({ bids, isLoading }) {
             <div className="skeleton-line" style={{ width: '25%' }} />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bid-history-error">
+        <p>Failed to load bid history.</p>
+        <p className="error-details">{error.message || String(error)}</p>
       </div>
     );
   }

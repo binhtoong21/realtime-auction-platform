@@ -7,6 +7,7 @@ export function useJoinAuction(auctionId) {
   const isRequestingRef = useRef(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setClientSecret(null);
   }, [auctionId]);
 

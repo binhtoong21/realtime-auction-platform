@@ -29,6 +29,7 @@ export function FilterSidebar({ filters, onChange }) {
       maxPrice: filters.maxPrice || '',
       status: filters.status || 'active'
     };
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalFilters(syncedFilters);
     localFiltersRef.current = syncedFilters;
   }, [filters.categoryId, filters.minPrice, filters.maxPrice, filters.status]);

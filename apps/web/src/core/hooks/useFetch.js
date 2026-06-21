@@ -66,11 +66,13 @@ export function useFetch(url, options = {}, executeImmediately = true) {
     // if the caller passes an object inline `{ params: {...} }` without memoizing.
     // If dynamic URL or options are needed, caller should pass them via `overrideOptions` in `execute`
     // or we assume `url` is the primary dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [url] 
   );
 
   useEffect(() => {
     if (executeImmediately && url) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchData().catch((err) => {
         // Handle unhandled rejection if executeImmediately fails silently
         console.warn('Background fetch failed:', err.message);

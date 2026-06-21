@@ -430,7 +430,10 @@ export const confirmJoinAuction = async (userId, auctionId) => {
   );
 
   if (result.rows.length === 0) {
-    throw new Error('Participant record not found');
+    const error = new Error('Participant record not found');
+    error.statusCode = 404;
+    error.errorCode = 'NOT_FOUND';
+    throw error;
   }
 
   const { stripe_si_id, payment_method_id } = result.rows[0];
@@ -440,7 +443,10 @@ export const confirmJoinAuction = async (userId, auctionId) => {
   }
 
   if (!stripe_si_id) {
-    throw new Error('No SetupIntent found for this participant');
+    const error = new Error('No SetupIntent found for this participant');
+    error.statusCode = 400;
+    error.errorCode = 'BAD_REQUEST';
+    throw error;
   }
 
   const setupIntent = await stripe.setupIntents.retrieve(stripe_si_id);
@@ -451,8 +457,24 @@ export const confirmJoinAuction = async (userId, auctionId) => {
     const { handleSetupIntentSucceeded } = await import('./kyc.service.js');
     await handleSetupIntentSucceeded(setupIntent);
     
+    // Verify linkage
+    const verifyResult = await pool.query(
+      'SELECT payment_method_id FROM auction_participants WHERE auction_id = $1 AND user_id = $2',
+      [auctionId, userId]
+    );
+
+    if (!verifyResult.rows[0]?.payment_method_id) {
+      const error = new Error('Failed to verify payment method linkage after setup intent succeeded');
+      error.statusCode = 500;
+      error.errorCode = 'VERIFICATION_FAILED';
+      throw error;
+    }
+
     return { success: true, message: 'Payment method confirmed' };
   } else {
-    throw new Error('Card setup is not yet successful');
+    const error = new Error('Card setup is not yet successful');
+    error.statusCode = 400;
+    error.errorCode = 'BAD_REQUEST';
+    throw error;
   }
 };

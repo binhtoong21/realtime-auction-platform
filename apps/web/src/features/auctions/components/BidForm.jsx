@@ -7,7 +7,6 @@ import './BidForm.css';
  * Handles idle/submitting/success/network_error/rejected states.
  */
 export function BidForm({
-  auctionId,
   currentPrice,
   bidIncrement,
   isJoined,
@@ -37,16 +36,21 @@ export function BidForm({
   // Show toast on state transitions
   useEffect(() => {
     if (bidState === 'success') {
-      showSuccess(`Bid $${(Number(bidAmount) / 100).toFixed(2)} placed successfully!`);
+      showSuccess(`Bid $${Number(bidAmount).toFixed(2)} placed successfully!`);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bidState]);
 
   // Handle error codes
   useEffect(() => {
     if (bidState !== 'rejected' || !errorCode) return;
 
-    const code = typeof errorCode === 'object' ? errorCode?.code : errorCode;
+    let code = typeof errorCode === 'object' ? errorCode?.code : errorCode;
     const details = typeof errorCode === 'object' ? errorCode?.details : null;
+
+    if (code && typeof code === 'string' && code.startsWith('ERR_')) {
+      code = code.replace('ERR_', '');
+    }
 
     switch (code) {
       case 'PAYMENT_REQUIRED':
@@ -80,6 +84,7 @@ export function BidForm({
       default:
         showError('Bid rejected. Please try again.');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bidState, errorCode]);
 
   const minValidAmountCents = currentPrice + bidIncrement;

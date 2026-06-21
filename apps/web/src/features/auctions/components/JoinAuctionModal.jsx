@@ -5,7 +5,11 @@ import { useJoinAuction } from '../hooks/useJoinAuction';
 import { useToast } from '../../../core/context/ToastContext';
 import './JoinAuctionModal.css';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || '');
+const stripePublicKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+if (!stripePublicKey) {
+  console.error('Missing VITE_STRIPE_PUBLIC_KEY environment variable. Stripe will fail to load.');
+}
+const stripePromise = loadStripe(stripePublicKey || '');
 
 /**
  * Inner form rendered inside Stripe Elements provider.
@@ -42,7 +46,13 @@ function JoinForm({ clientSecret, onSuccess, onClose, confirmSetup }) {
         // Fallback for local testing without webhooks:
         // Tell backend to check SetupIntent status and save payment method.
         if (confirmSetup) {
-          await confirmSetup();
+          try {
+            await confirmSetup();
+          } catch (backendErr) {
+            if (!isMountedRef.current) return;
+            showError('Card verified by Stripe, but failed to link to your account: ' + (backendErr.message || 'Unknown error'));
+            return;
+          }
         }
         onSuccess();
       }
@@ -56,15 +66,20 @@ function JoinForm({ clientSecret, onSuccess, onClose, confirmSetup }) {
     }
   };
 
+  const getCSSVariable = (name, fallback) => {
+    if (typeof window === 'undefined') return fallback;
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  };
+
   const cardElementOptions = {
     style: {
       base: {
         fontSize: '16px',
         fontFamily: 'Inter, system-ui, sans-serif',
-        color: '#1C1917',
-        '::placeholder': { color: '#A8A29E' },
+        color: getCSSVariable('--text-primary', '#1C1917'),
+        '::placeholder': { color: getCSSVariable('--text-muted', '#A8A29E') },
       },
-      invalid: { color: '#DC2626' },
+      invalid: { color: getCSSVariable('--error', '#DC2626') },
     },
   };
 
@@ -109,14 +124,18 @@ export function JoinAuctionModal({ isOpen, onClose, auctionId, onJoinSuccess }) 
   // Request client secret when modal opens
   useEffect(() => {
     if (isOpen && !hasRequested) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasRequested(true);
-      joinAuction().catch(() => {});
+      joinAuction().catch((err) => {
+        showError(err.message || 'Failed to initialize payment.');
+      });
     }
-  }, [isOpen, hasRequested, joinAuction]);
+  }, [isOpen, hasRequested, joinAuction, showError]);
 
   // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasRequested(false);
     }
   }, [isOpen]);
@@ -162,7 +181,7 @@ export function JoinAuctionModal({ isOpen, onClose, auctionId, onJoinSuccess }) 
 
           {error && (
             <div className="join-modal-error">
-              <p>{error.response?.data?.message || 'Failed to initialize payment. Please try again.'}</p>
+              <p>{error || 'Failed to initialize payment. Please try again.'}</p>
               <button className="btn-primary" onClick={() => { setHasRequested(false); }}>
                 Retry
               </button>

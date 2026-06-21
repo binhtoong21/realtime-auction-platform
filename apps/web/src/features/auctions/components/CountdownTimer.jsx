@@ -32,6 +32,7 @@ export function CountdownTimer({ endAt, timeOffset = 0 }) {
       return diff;
     };
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimeLeft(calculateTimeLeft());
 
     const intervalId = setInterval(() => {
@@ -43,7 +44,7 @@ export function CountdownTimer({ endAt, timeOffset = 0 }) {
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [endAt]);
+  }, [endAt, timeOffset]);
 
   if (isEnded) {
     return <span className="countdown-ended" style={{ color: 'var(--color-text-disabled)' }}>Ended</span>;
@@ -59,12 +60,9 @@ export function CountdownTimer({ endAt, timeOffset = 0 }) {
 
   const formatUnit = (unit) => unit.toString().padStart(2, '0');
 
-  let timeString = '';
-  if (days > 0) {
-    timeString = `${days}d ${formatUnit(hours)}h ${formatUnit(minutes)}m`;
-  } else {
-    timeString = `${formatUnit(hours)}:${formatUnit(minutes)}:${formatUnit(seconds)}`;
-  }
+  const timeString = days > 0 
+    ? `${days}d ${formatUnit(hours)}h ${formatUnit(minutes)}m`
+    : `${formatUnit(hours)}:${formatUnit(minutes)}:${formatUnit(seconds)}`;
 
   return (
     <span className={`countdown-timer ${isCritical ? 'countdown-critical' : ''}`}>

@@ -47,7 +47,7 @@ export function AuthProvider({ children }) {
           // response.data is the server payload { success, data: { user } }
           setUser(response.data?.data?.user || null);
         }
-      } catch (err) {
+      } catch {
         if (mounted) {
           setUser(null);
         }
@@ -89,6 +89,7 @@ export function AuthProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthStateContext);
   if (context === undefined) {
@@ -97,6 +98,7 @@ export function useAuth() {
   return context;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuthDispatch() {
   const context = useContext(AuthDispatchContext);
   if (context === undefined) {

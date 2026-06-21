@@ -30,6 +30,7 @@ export function AuctionBrowsePage() {
 
   // Whenever filters change, reset cursor
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCursor(null);
   }, [filters.categoryId, filters.minPrice, filters.maxPrice, filters.status]);
 
@@ -37,6 +38,7 @@ export function AuctionBrowsePage() {
   useEffect(() => {
     if (!auctions) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAllAuctions((prev) => {
       if (!cursor) {
         // Fresh fetch (cursor is null) -> Replace

@@ -6,6 +6,16 @@ import { generateAccessToken } from '../src/utils/jwt.js';
 import bcrypt from 'bcryptjs';
 
 async function seed() {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('Error: Refusing to seed database in production environment.');
+    process.exit(1);
+  }
+
+  // Default password for all seeded users: password123
+  // Executing CPU-bound bcrypt operations before acquiring DB connection/transaction
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash('password123', salt);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -17,10 +27,6 @@ async function seed() {
     const sellerId = uuidv7();
     const bidderId = uuidv7();
     const unverifiedId = uuidv7();
-    
-    // Default password for all seeded users: password123
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash('password123', salt);
     
     // Seller - Fully KYC'd & Onboarded
     await client.query(

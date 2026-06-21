@@ -75,6 +75,12 @@ export function AuctionDetailPage() {
 
   // Set initial bid amount from auction data (only once per auction)
   const isBidInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (auction?.id) {
+      isBidInitializedRef.current = false;
+    }
+  }, [auction?.id]);
   useEffect(() => {
     if (auction && !isBidInitializedRef.current) {
       const minBidCents = Number(auction.current_price || 0) + Number(auction.bid_increment || 0);
@@ -133,7 +139,16 @@ export function AuctionDetailPage() {
     );
   }
 
-  if (!auction) return null;
+  if (!auction) {
+    return (
+      <div className="auction-detail-page">
+        <div className="auction-detail-empty">
+          <h2>No Data</h2>
+          <p>The auction details could not be loaded.</p>
+        </div>
+      </div>
+    );
+  }
 
   const currentPrice = Number(auction.current_price || 0);
   const bidIncrement = Number(auction.bid_increment || 0);

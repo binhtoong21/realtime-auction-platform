@@ -29,6 +29,7 @@ export function useAuctionSocket(auctionId, setAuctionData, onOutbid) {
       setTimeOffset(data.serverTime - Date.now());
       if (data.seq) lastSeqRef.current = data.seq;
       
+      // eslint-disable-next-line no-unused-vars
       const { seq, serverTime, ...stateParams } = data;
       // Convert camelCase from socket to snake_case for local state
       const snakeCaseParams = {
