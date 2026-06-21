@@ -6,6 +6,15 @@ import { generateAccessToken } from '../utils/jwt.js';
 
 const router = Router();
 
+router.use((req, res, next) => {
+  const dbName = process.env.DB_NAME || '';
+  const dbUrl = process.env.DATABASE_URL || '';
+  if (!dbName.includes('test') && !dbUrl.includes('test') && !dbUrl.includes('e2e')) {
+    return next(new Error('Test routes are only allowed on test databases.'));
+  }
+  next();
+});
+
 let cachedHash = null;
 const getPasswordHash = async () => {
   if (!cachedHash) {

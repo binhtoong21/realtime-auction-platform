@@ -98,8 +98,8 @@
 /* Right Column: Bidding Terminal */
 .auction-detail-terminal {
   position: sticky;
-  top: 64px; /* Account for slim header + gap */
-  height: calc(100vh - 80px);
+  top: calc(var(--header-height) + var(--space-4)); /* Account for slim header + gap */
+  height: calc(100vh - var(--header-height) - var(--space-8));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border);

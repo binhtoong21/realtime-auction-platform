@@ -58,6 +58,8 @@
   --text-lg:   1.125rem;  /* 18px */
   --text-xl:   1.5rem;    /* 24px */
 
+  --header-height: 48px;
+
   /* ============================================
      SPACING & SHAPE
      ============================================ */
@@ -172,8 +174,6 @@ a.btn-primary {
 
 .btn-primary:hover:not(:disabled) {
   background-color: var(--color-action-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:disabled {
@@ -195,7 +195,6 @@ input, textarea {
 input:focus, textarea:focus {
   outline: none;
   border-color: var(--color-brand);
-  box-shadow: 0 0 0 3px var(--color-brand-subtle);
 }
 
 input:disabled, textarea:disabled {

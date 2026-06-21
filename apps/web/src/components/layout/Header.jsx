@@ -29,7 +29,8 @@ export function Header() {
   const getInitials = () => {
     if (!user) return '';
     const name = user.displayName || user.email || 'U';
-    return name.substring(0, 2).toUpperCase();
+    if (name.includes('@')) return name.substring(0, 2).toUpperCase();
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   };
 
   return (

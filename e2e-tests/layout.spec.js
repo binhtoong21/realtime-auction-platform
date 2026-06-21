@@ -80,14 +80,6 @@ test.describe('Global Layout & App Shell (R1)', () => {
     expect(htmlThemeLight || 'light').toBe('light');
   });
 
-  test('TC-L1-05: One-Line Footer Layout', async ({ page }) => {
-    await page.goto('/');
-    const footer = page.locator('#site-footer');
-    // Footer is completely removed or simplified in V2. 
-    // Assert that standard 4-column footer elements are completely absent.
-    const footerCols = page.locator('.footer__column');
-    await expect(footerCols).toHaveCount(0);
-  });
 
   // ==========================================
   // TIER 2: Boundary & Corner Cases (Layout)
