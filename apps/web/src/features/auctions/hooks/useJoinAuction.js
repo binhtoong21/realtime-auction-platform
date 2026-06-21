@@ -4,11 +4,15 @@ import { useMutation } from '../../../core/hooks/useMutation';
 export function useJoinAuction(auctionId) {
   const { mutate, isLoading, error } = useMutation(`/auctions/${auctionId}/join`, 'POST');
   const [clientSecret, setClientSecret] = useState(null);
+  const [alreadyJoined, setAlreadyJoined] = useState(false);
   const isRequestingRef = useRef(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setClientSecret(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAlreadyJoined(false);
   }, [auctionId]);
 
   const joinAuction = useCallback(async () => {
@@ -19,7 +23,11 @@ export function useJoinAuction(auctionId) {
       const response = await mutate({}); // Body rỗng
       // Contract: { success: true, data: { clientSecret } }
       const secret = response.data?.clientSecret;
-      setClientSecret(secret);
+      if (response.data?.alreadyJoined) {
+        setAlreadyJoined(true);
+      } else {
+        setClientSecret(secret);
+      }
       return response.data;
     } finally {
       isRequestingRef.current = false;
@@ -38,7 +46,7 @@ export function useJoinAuction(auctionId) {
     }
   }, [confirmMutate]);
 
-  return { joinAuction, confirmSetup, isLoading, error, clientSecret };
+  return { joinAuction, confirmSetup, isLoading, error, clientSecret, alreadyJoined };
 }
 
 

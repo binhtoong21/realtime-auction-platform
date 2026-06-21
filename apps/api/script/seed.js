@@ -6,8 +6,9 @@ import { generateAccessToken } from '../src/utils/jwt.js';
 import bcrypt from 'bcryptjs';
 
 async function seed() {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('Error: Refusing to seed database in production environment.');
+  const allowedEnvs = ['development', 'test'];
+  if (!allowedEnvs.includes(process.env.NODE_ENV)) {
+    console.error(`Error: Refusing to seed database in ${process.env.NODE_ENV} environment.`);
     process.exit(1);
   }
 
@@ -83,6 +84,7 @@ async function seed() {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error seeding data:', error);
+    process.exit(1);
   } finally {
     client.release();
     pool.end();

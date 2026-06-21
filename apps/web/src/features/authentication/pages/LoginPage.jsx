@@ -10,6 +10,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const { mutate, isLoading, error } = useMutation('/auth/login', 'post');
+  const [validationError, setValidationError] = useState(null);
   const { login } = useAuthDispatch();
   const navigate = useNavigate();
   const location = useLocation();
@@ -21,7 +22,8 @@ export function LoginPage() {
       
       if (!response?.data?.accessToken || !response?.data?.user) {
         console.error('Invalid response from server: Missing authentication data');
-        throw new Error('Unexpected server response. Please try again.');
+        setValidationError('Unexpected server response. Please try again.');
+        return;
       }
 
       // Store token in module-level variable
@@ -41,9 +43,9 @@ export function LoginPage() {
     <div style={{ maxWidth: '400px', margin: '40px auto', backgroundColor: 'var(--color-surface)', padding: 'var(--space-6)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)' }}>
       <h1 style={{ marginBottom: 'var(--space-6)', textAlign: 'center', fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)' }}>Sign In</h1>
       
-      {error && (
+      {(error || validationError) && (
         <div style={{ backgroundColor: 'var(--color-danger-subtle)', color: 'var(--color-danger)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)', border: '1px solid var(--color-danger)' }}>
-          {error}
+          {error || validationError}
         </div>
       )}
 

@@ -28,6 +28,7 @@ export function AuctionDetailPage() {
   const {
     data: bidsData,
     isLoading: bidsLoading,
+    error: bidsError,
     refetch: refetchBids,
   } = useFetch(`/auctions/${id}/bids?limit=50`);
 
@@ -247,7 +248,7 @@ export function AuctionDetailPage() {
       {/* Bid History */}
       <div className="auction-detail-bids-section">
         <h2>Bid History</h2>
-        <BidHistory bids={bids} isLoading={bidsLoading} />
+        <BidHistory bids={bids} isLoading={bidsLoading} error={bidsError} />
       </div>
 
       {/* Join Auction Modal */}

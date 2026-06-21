@@ -118,7 +118,7 @@ function JoinForm({ clientSecret, onSuccess, onClose, confirmSetup }) {
  */
 export function JoinAuctionModal({ isOpen, onClose, auctionId, onJoinSuccess }) {
   const { showSuccess, showError } = useToast();
-  const { joinAuction, confirmSetup, clientSecret, isLoading, error } = useJoinAuction(auctionId);
+  const { joinAuction, confirmSetup, isLoading, error, clientSecret, alreadyJoined } = useJoinAuction(auctionId);
   const [hasRequested, setHasRequested] = useState(false);
 
   // Request client secret when modal opens
@@ -188,13 +188,24 @@ export function JoinAuctionModal({ isOpen, onClose, auctionId, onJoinSuccess }) 
             </div>
           )}
 
-          {isLoading && (
+          {isLoading && !alreadyJoined && (
             <div className="join-modal-loading">
               <p>Setting up secure payment...</p>
             </div>
           )}
 
-          {clientSecret && (
+          {alreadyJoined && (
+            <div className="join-modal-already-joined">
+              <p style={{ color: 'var(--color-success)', marginBottom: 'var(--space-4)' }}>
+                You have already joined this auction and your payment method is verified.
+              </p>
+              <button className="btn-primary" onClick={() => { handleJoinSuccess(); onClose(); }}>
+                Start Bidding
+              </button>
+            </div>
+          )}
+
+          {clientSecret && !alreadyJoined && (
             <Elements stripe={stripePromise}>
               <JoinForm
                 clientSecret={clientSecret}

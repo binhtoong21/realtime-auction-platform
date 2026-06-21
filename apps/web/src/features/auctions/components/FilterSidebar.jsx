@@ -23,6 +23,8 @@ export function FilterSidebar({ filters, onChange }) {
 
   // Sync from props if they change externally (e.g. clear filters or browser back button)
   useEffect(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
     const syncedFilters = {
       categoryId: filters.categoryId || '',
       minPrice: filters.minPrice || '',
