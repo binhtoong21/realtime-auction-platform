@@ -10,9 +10,11 @@
     "start:api": "npm start -w @auction/api",
     "dev:api": "npm run dev -w @auction/api",
     "dev:web": "npm run dev -w @auction/web",
-    "db:seed": "npm run db:seed -w @auction/api"
+    "db:seed": "npm run db:seed -w @auction/api",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.3"

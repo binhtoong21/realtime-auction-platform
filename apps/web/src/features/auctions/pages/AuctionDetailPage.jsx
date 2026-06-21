@@ -159,76 +159,78 @@ export function AuctionDetailPage() {
   return (
     <div className="auction-detail-page">
       <div className="auction-detail-layout">
-        {/* Left: Image Gallery */}
-        <div className="auction-detail-gallery">
-          {auction.images && auction.images.length > 0 ? (
-            <img
-              src={auction.images[0]}
-              alt={auction.title}
-              className="auction-detail-main-image"
-            />
-          ) : (
-            <div className="auction-detail-no-image">No Image Available</div>
-          )}
+        {/* Left: Image Gallery & Details */}
+        <div className="auction-detail-left">
+          <div className="auction-detail-gallery">
+            {auction.images && auction.images.length > 0 ? (
+              <img
+                src={auction.images[0]}
+                alt={auction.title}
+                className="auction-detail-main-image"
+              />
+            ) : (
+              <div className="auction-detail-no-image">No Image Available</div>
+            )}
+          </div>
+          
+          <div className="auction-detail-description">
+            <h2>Description</h2>
+            <p>{auction.description || 'No description provided.'}</p>
+          </div>
         </div>
 
-        {/* Right: Info + Bid Form */}
-        <div className="auction-detail-info">
-          <div className="auction-detail-header">
-            <h1>{auction.title}</h1>
-            <span className={`status-badge ${auction.status}`}>
-              {auction.status}
-            </span>
+        {/* Right: Bidding Terminal (Sticky) */}
+        <div className="auction-detail-terminal">
+          
+          <div className="terminal-header">
+            <div className="terminal-title-row">
+              <h1>{auction.title}</h1>
+              <span className={`status-badge ${auction.status}`}>
+                {auction.status}
+              </span>
+            </div>
+            <p className="auction-detail-seller">
+              Seller: {auction.seller_name || 'Unknown'}
+              <span className={`connection-dot ${connectionStatus}`} title={connectionStatus} />
+            </p>
           </div>
 
-          <p className="auction-detail-seller">
-            Seller: {auction.seller_name || 'Unknown'}
-          </p>
-
-          <div className="auction-detail-price-section">
-            <span className="auction-detail-price-label">Current Price</span>
-            <span className="auction-detail-price" id="auction-current-price">
-              {formatPrice(currentPrice)}
-            </span>
-          </div>
-
-          <div className="auction-detail-countdown-section">
-            <span className="auction-detail-countdown-label">
-              {isActive ? 'Time Left' : 'Ended'}
-            </span>
-            <div className="auction-detail-countdown">
-              <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
+          <div className="terminal-price-block">
+            <div className="auction-detail-price-section">
+              <span className="auction-detail-price-label">Current Price</span>
+              <span className="auction-detail-price" id="auction-current-price">
+                {formatPrice(currentPrice)}
+              </span>
+            </div>
+            <div className="auction-detail-countdown-section">
+              <span className="auction-detail-countdown-label">
+                {isActive ? 'Time Left' : 'Ended'}
+              </span>
+              <div className="auction-detail-countdown">
+                <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
+              </div>
             </div>
           </div>
 
-          <div className="auction-detail-stats">
-            <span>{auction.bid_count || 0} bids</span>
-            {auction.extended_count > 0 && (
-              <span>Extended {auction.extended_count}x</span>
-            )}
-            <span className={`connection-dot ${connectionStatus}`} title={connectionStatus} />
-          </div>
-
-          {/* Bid Form */}
-          {isActive && (
-            <BidForm
-              auctionId={id}
-              currentPrice={currentPrice}
-              bidIncrement={bidIncrement}
-              isJoined={isJoined}
-              auctionStatus={auction.status}
-              onJoinClick={handleJoinClick}
-              bidAmount={bidAmount}
-              setBidAmount={setBidAmount}
-              bidState={bidState}
-              errorCode={errorCode}
-              submitBid={submitBid}
-              resetState={resetState}
-              isSubmitting={isSubmitting}
-            />
-          )}
-
-          {!isActive && (
+          {isActive ? (
+            <div className="terminal-bid-block">
+              <BidForm
+                auctionId={id}
+                currentPrice={currentPrice}
+                bidIncrement={bidIncrement}
+                isJoined={isJoined}
+                auctionStatus={auction.status}
+                onJoinClick={handleJoinClick}
+                bidAmount={bidAmount}
+                setBidAmount={setBidAmount}
+                bidState={bidState}
+                errorCode={errorCode}
+                submitBid={submitBid}
+                resetState={resetState}
+                isSubmitting={isSubmitting}
+              />
+            </div>
+          ) : (
             <div className="auction-detail-ended-notice">
               <p>This auction has ended.</p>
               {auction.winner_id && (
@@ -236,19 +238,17 @@ export function AuctionDetailPage() {
               )}
             </div>
           )}
+
+          <div className="terminal-history-block">
+            <div className="history-header">
+              <h2>Bid History</h2>
+              <span className="history-total">{auction.bid_count || 0} bids</span>
+            </div>
+            <div className="history-list-container">
+              <BidHistory bids={bids} isLoading={bidsLoading} error={bidsError} />
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Description */}
-      <div className="auction-detail-description">
-        <h2>Description</h2>
-        <p>{auction.description || 'No description provided.'}</p>
-      </div>
-
-      {/* Bid History */}
-      <div className="auction-detail-bids-section">
-        <h2>Bid History</h2>
-        <BidHistory bids={bids} isLoading={bidsLoading} error={bidsError} />
       </div>
 
       {/* Join Auction Modal */}
