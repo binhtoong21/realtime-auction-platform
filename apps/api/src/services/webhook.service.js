@@ -25,7 +25,7 @@ export const processWebhookEvent = async (stripeEvent) => {
   const obj = data.object;
 
   switch (type) {
-    // --- KYC / Identity handlers (existing from Phase 9.2) ---
+    // --- KYC / Identity handlers ---
     case 'identity.verification_session.verified':
       await handleIdentityVerified(obj);
       break;
@@ -313,7 +313,7 @@ async function handlePaymentIntentCanceled(paymentIntent) {
 /**
  * Handle charge.dispute.created — Stripe-level dispute (chargeback).
  *
- * This is NOT an in-app dispute (Phase 11). A Stripe dispute happens when
+ * This is NOT an in-app dispute. A Stripe dispute happens when
  * the buyer contacts their issuing bank directly.
  *
  * Actions:

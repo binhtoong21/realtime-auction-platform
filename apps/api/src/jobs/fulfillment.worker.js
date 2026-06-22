@@ -179,7 +179,7 @@ async function processShippingDeadline(auctionId) {
 }
 
 async function processDeliveryAutoConfirm(auctionId) {
-  // Guard 1: Check for open disputes (forward-compatible with Phase 11)
+  // Guard 1: Check for open disputes
   let hasDispute = false;
   try {
     const disputeResult = await pool.query(
@@ -190,7 +190,7 @@ async function processDeliveryAutoConfirm(auctionId) {
     );
     if (disputeResult.rowCount > 0) hasDispute = true;
   } catch (err) {
-    // 42P01 = undefined_table (disputes table doesn't exist yet, Phase 11 not applied)
+    // 42P01 = undefined_table (disputes table doesn't exist yet)
     if (err.code !== '42P01') throw err;
   }
 
@@ -228,7 +228,7 @@ async function processDeliveryReminder(auctionId, type) {
 async function processFulfillmentSweeper() {
   console.log(`[FulfillmentWorker] Sweeper started`);
 
-  // Bootstrap Phase
+  // Initialize/bootstrap jobs from database
   // Optimization note: Can add updated_at > NOW() - INTERVAL '30 minutes' if scaling is needed
   const auctionsResult = await pool.query(
     `SELECT id, status, shipping_deadline_at, delivery_deadline_at, shipped_at
@@ -254,7 +254,7 @@ async function processFulfillmentSweeper() {
     }
   }
 
-  // Catch-up Phase is implicitly handled: if runAt is in the past, ensureJobScheduled sets delay=0
+  // Catch-up is implicitly handled: if runAt is in the past, ensureJobScheduled sets delay=0
 }
 
 fulfillmentWorker.on('completed', (job) => {
