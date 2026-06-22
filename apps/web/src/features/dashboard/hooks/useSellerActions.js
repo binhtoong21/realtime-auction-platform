@@ -8,7 +8,7 @@ import { useMutation } from '../../../../core/hooks/useMutation';
  */
 export function useSellerAuctions(status) {
   const { data, error, isLoading, refetch } = useFetch(
-    status ? `/auctions?sellerId=me&status=${status}` : '/auctions?sellerId=me'
+    status ? `/auctions?sellerId=me&status=${encodeURIComponent(status)}` : '/auctions?sellerId=me'
   );
 
   const auctions = data?.data?.items || [];
@@ -31,15 +31,30 @@ export function useCreateAuction() {
   const { mutate, data, error, isLoading, reset } = useMutation('/auctions', 'post');
 
   const create = async (auctionForm) => {
+    const startingPrice = Number(auctionForm.startingPrice);
+    const bidIncrement = Number(auctionForm.bidIncrement);
+    const reservePrice = auctionForm.reservePrice ? Number(auctionForm.reservePrice) : null;
+
+    if (isNaN(startingPrice) || isNaN(bidIncrement) || (reservePrice !== null && isNaN(reservePrice))) {
+      throw new Error('Invalid numeric values');
+    }
+
+    const startAt = new Date(auctionForm.startAt);
+    const endAt = new Date(auctionForm.endAt);
+
+    if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
+      throw new Error('Invalid date values');
+    }
+
     const body = {
       title: auctionForm.title,
       description: auctionForm.description,
       images: auctionForm.images || [],
-      startingPrice: Number(auctionForm.startingPrice),
-      reservePrice: auctionForm.reservePrice ? Number(auctionForm.reservePrice) : null,
-      bidIncrement: Number(auctionForm.bidIncrement),
-      startAt: new Date(auctionForm.startAt).toISOString(),
-      endAt: new Date(auctionForm.endAt).toISOString(),
+      startingPrice,
+      reservePrice,
+      bidIncrement,
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
       categoryId: auctionForm.categoryId,
     };
 
@@ -64,9 +79,10 @@ export function useShipAuction() {
   const { mutate, isLoading, error, reset } = useMutation('', 'post');
 
   const ship = async (auctionId, carrier, trackingNumber) => {
+    if (!auctionId) throw new Error('Auction ID is required');
     const body = { carrier, trackingNumber };
     const overrideOptions = {
-      url: `/auctions/${auctionId}/ship`,
+      url: `/auctions/${encodeURIComponent(auctionId)}/ship`,
     };
 
     const response = await mutate(body, overrideOptions);

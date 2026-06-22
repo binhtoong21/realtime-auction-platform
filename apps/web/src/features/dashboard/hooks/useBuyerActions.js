@@ -28,8 +28,9 @@ export function useConfirmDelivery() {
   const { mutate, isLoading, error, reset } = useMutation('', 'post');
 
   const confirm = async (auctionId) => {
+    if (!auctionId) throw new Error('Auction ID is required');
     const overrideOptions = {
-      url: `/auctions/${auctionId}/confirm-delivery`,
+      url: `/auctions/${encodeURIComponent(auctionId)}/confirm-delivery`,
     };
 
     const response = await mutate({}, overrideOptions);
@@ -79,9 +80,10 @@ export function useRetryPayment() {
   const { mutate, isLoading, error, reset } = useMutation('', 'post');
 
   const retry = async (paymentId, paymentMethodId) => {
+    if (!paymentId) throw new Error('Payment ID is required');
     const body = { paymentMethodId };
     const overrideOptions = {
-      url: `/payments/${paymentId}/retry`,
+      url: `/payments/${encodeURIComponent(paymentId)}/retry`,
     };
 
     const response = await mutate(body, overrideOptions);
