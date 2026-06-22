@@ -91,7 +91,7 @@ async function processEmergencyCapture({ paymentId, auctionId }) {
     return;
   }
 
-  // Check for active disputes (defensive — table may not exist until Phase 11)
+  // Check for active disputes (defensive — table may not exist yet)
   let disputeInfo = null;
   try {
     const disputeResult = await pool.query(
@@ -1129,7 +1129,7 @@ async function processPayout({ paymentId }) {
  *
  * Unified query covers:
  *   - Payout job dispatch failed (Redis down during webhook)
- *   - Phase 11 forgot to dispatch payout after dispute resolved
+ *   - Forgot to dispatch payout after dispute resolved
  *   - Seller was not onboarded at payout time, now onboarded
  *   - Crash recovery via idempotency key
  *

@@ -13,7 +13,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * change extremely rarely. When running multiple API instances, each
  * instance caches independently — worst case 5 min stale after admin update.
  *
- * TODO (Phase 12): When admin panel implements `PATCH /admin/settings/fee-tiers`,
+ * TODO: When admin panel implements `PATCH /admin/settings/fee-tiers`,
  * publish a Redis Pub/Sub event to bust cache across all instances immediately.
  */
 export async function loadFeeTiers() {

@@ -34,7 +34,7 @@ const buildTrackingUrl = (carrier, trackingNumber) => {
  *   - auction.seller_id = sellerId (ownership)
  *
  * Sets delivery_deadline_at = NOW() + 14 days (frozen per-transaction, same as shipped_at).
- * Sweeper (Phase 10.6) will detect the shipped auction and schedule BullMQ jobs.
+ * Sweeper will detect the shipped auction and schedule BullMQ jobs.
  */
 export const shipAuction = async ({ auctionId, sellerId, carrier, trackingNumber, ipAddress }) => {
   const client = await pool.connect();

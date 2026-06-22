@@ -80,7 +80,7 @@ export function FilterSidebar({ filters, onChange }) {
       </div>
 
       <div className="filter-section">
-        {/* TODO: Search box (Title/Description) will be added here in future phases */}
+        {/* TODO: Search box (Title/Description) */}
       </div>
 
       <div className="filter-section">

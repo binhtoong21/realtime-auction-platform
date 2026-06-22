@@ -58,7 +58,7 @@ export const createPayout = async (paymentId) => {
     }
   } catch (err) {
     if (err.code === '42P01') {
-      // disputes table not yet created (Phase 11 not deployed) — no disputes possible
+      // disputes table not yet created — no disputes possible
     } else {
       throw err;
     }
@@ -240,7 +240,7 @@ export const createPayout = async (paymentId) => {
       netAmount,
     });
 
-    // DB notification (guaranteed, forward-compat with Phase 13)
+    // DB notification (guaranteed, forward-compatibility)
     try {
       await pool.query(
         `INSERT INTO notifications (id, user_id, type, payload, created_at)
@@ -259,7 +259,7 @@ export const createPayout = async (paymentId) => {
       );
     } catch (notifErr) {
       if (notifErr.code === '42P01') {
-        // notifications table not yet created (Phase 13)
+        // notifications table not yet created
       } else {
         console.error(`[Payout] Failed to insert notification for payment ${paymentId}:`, notifErr.message);
       }

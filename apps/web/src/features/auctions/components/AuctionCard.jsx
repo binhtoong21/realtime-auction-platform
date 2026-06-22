@@ -21,8 +21,6 @@ export function AuctionCard({ auction }) {
     end_at, 
     bidCount,
     bid_count, 
-    status = 'unknown', 
-    seller, 
     images 
   } = auction;
 
@@ -37,17 +35,6 @@ export function AuctionCard({ auction }) {
     currency: 'USD',
   }).format(price / 100);
 
-  // Status Badge mappings
-  const getStatusBadge = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'active':
-        return <span className="status-badge active">Active</span>;
-      case 'ended':
-        return <span className="status-badge ended">Ended</span>;
-      default:
-        return <span className="status-badge other">{status}</span>;
-    }
-  };
 
   return (
     <Link to={`/auctions/${id}`} className="auction-card">

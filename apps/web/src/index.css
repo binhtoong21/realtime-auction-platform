@@ -213,7 +213,7 @@ input[type="password"]::-ms-clear {
 }
 
 /* 
-  TODO (FE Phase 3 - Dashboard/Auctions): 
+  TODO:
   These animation classes (.price-updated, .countdown-critical, .bid-entry-new) 
   will be wired into the Live Auction Room components to reflect price updates, 
   countdown warnings, and new bid entries.
