@@ -49,9 +49,9 @@ export function CreateAuctionPage() {
       if (description.length > 2000) newErrors.description = 'Description must be less than 2000 characters';
       if (!categoryId) newErrors.categoryId = 'Category is required';
     } else if (step === 1) {
-      if (!startingPrice || Number(startingPrice) <= 0) newErrors.startingPrice = 'Starting price must be > 0';
-      if (reservePrice !== '' && Number(reservePrice) < Number(startingPrice)) newErrors.reservePrice = 'Reserve price must be >= starting price';
-      if (!bidIncrement || Number(bidIncrement) <= 0) newErrors.bidIncrement = 'Bid increment must be > 0';
+      if (!startingPrice || Number.isNaN(Number(startingPrice)) || Number(startingPrice) <= 0) newErrors.startingPrice = 'Starting price must be a valid number > 0';
+      if (reservePrice !== '' && (Number.isNaN(Number(reservePrice)) || Number(reservePrice) < Number(startingPrice))) newErrors.reservePrice = 'Reserve price must be >= starting price';
+      if (!bidIncrement || Number.isNaN(Number(bidIncrement)) || Number(bidIncrement) <= 0) newErrors.bidIncrement = 'Bid increment must be a valid number > 0';
       
       if (!startAt) newErrors.startAt = 'Start time is required';
       if (!endAt) newErrors.endAt = 'End time is required';
