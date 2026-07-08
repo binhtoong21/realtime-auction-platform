@@ -46,19 +46,31 @@ export function useCreateAuction() {
       throw new Error('Invalid date values');
     }
 
-    const body = {
-      title: auctionForm.title,
-      description: auctionForm.description,
-      images: auctionForm.images || [],
-      startingPrice,
-      reservePrice,
-      bidIncrement,
-      startAt: startAt.toISOString(),
-      endAt: endAt.toISOString(),
-      categoryId: auctionForm.categoryId,
+    const formData = new FormData();
+    formData.append('title', auctionForm.title);
+    formData.append('description', auctionForm.description);
+    formData.append('startingPrice', startingPrice);
+    if (reservePrice !== null) {
+      formData.append('reservePrice', reservePrice);
+    }
+    formData.append('bidIncrement', bidIncrement);
+    formData.append('startAt', startAt.toISOString());
+    formData.append('endAt', endAt.toISOString());
+    formData.append('categoryId', auctionForm.categoryId);
+
+    if (auctionForm.images && auctionForm.images.length > 0) {
+      auctionForm.images.forEach(image => {
+        formData.append('images[]', image);
+      });
+    }
+
+    const overrideOptions = {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     };
 
-    const response = await mutate(body);
+    const response = await mutate(formData, overrideOptions);
     return response.data; // Unwrapped object containing the actual data payload
   };
 
