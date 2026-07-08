@@ -16,7 +16,7 @@ export function CreateAuctionPage() {
   const navigate = useNavigate();
   const { categories, isLoading: isLoadingCategories, error: categoriesError } = useCategories();
   const { useCreateAuction } = useSellerActions();
-  const { mutate: createAuction, isLoading: isSubmitting } = useCreateAuction();
+  const { createAuction, isLoading: isSubmitting } = useCreateAuction();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [errors, setErrors] = useState({});
@@ -50,7 +50,7 @@ export function CreateAuctionPage() {
       if (!categoryId) newErrors.categoryId = 'Category is required';
     } else if (step === 1) {
       if (!startingPrice || Number(startingPrice) <= 0) newErrors.startingPrice = 'Starting price must be > 0';
-      if (reservePrice && Number(reservePrice) < Number(startingPrice)) newErrors.reservePrice = 'Reserve price must be >= starting price';
+      if (reservePrice !== '' && Number(reservePrice) < Number(startingPrice)) newErrors.reservePrice = 'Reserve price must be >= starting price';
       if (!bidIncrement || Number(bidIncrement) <= 0) newErrors.bidIncrement = 'Bid increment must be > 0';
       
       if (!startAt) newErrors.startAt = 'Start time is required';
@@ -163,23 +163,21 @@ export function CreateAuctionPage() {
         };
 
         const newErrors = {};
-        let targetStep = currentStep;
+        let targetStep = Infinity;
 
         details.forEach(d => {
           const field = d.field;
           newErrors[field] = d.message;
           if (fieldToStep[field] !== undefined) {
             const fieldStep = fieldToStep[field];
-            if (fieldStep < targetStep || targetStep === currentStep) {
-              targetStep = fieldStep; // Tie-break: lowest step index
-            }
+            targetStep = Math.min(targetStep, fieldStep);
           } else {
             showError(`Server error on ${field}: ${d.message}`); // Fallback
           }
         });
 
         setErrors(newErrors);
-        if (targetStep !== currentStep) {
+        if (targetStep !== Infinity && targetStep !== currentStep) {
           setCurrentStep(targetStep);
         }
       } else {
