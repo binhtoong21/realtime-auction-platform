@@ -3,10 +3,17 @@ import { useMutation } from '../../../../core/hooks/useMutation';
 
 /**
  * Retrieve escrow payment history.
- * Backend: GET /payments?role=buyer
+ * Backend: GET /users/me/payments
  */
-export function usePaymentHistory() {
-  const { data, error, isLoading, refetch } = useFetch('/payments?role=buyer');
+export function usePaymentHistory(status, cursor = null) {
+  const queryParams = new URLSearchParams();
+  if (status) queryParams.append('status', status);
+  if (cursor) queryParams.append('cursor', cursor);
+  
+  const queryString = queryParams.toString();
+  const url = `/users/me/payments${queryString ? `?${queryString}` : ''}`;
+
+  const { data, error, isLoading, refetch } = useFetch(url);
 
   const payments = data?.data?.items || [];
   const nextCursor = data?.data?.nextCursor;

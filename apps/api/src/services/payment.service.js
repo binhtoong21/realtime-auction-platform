@@ -952,7 +952,7 @@ export const getPaymentById = async ({ paymentId, userId }) => {
 
 export const getMyPayments = async ({ userId, cursor, limit = 20, status }) => {
   let query = `
-    SELECT p.id, a.title AS "auctionTitle", p.amount, p.status, p.created_at, p.created_at::text AS "cursorTime", a.status AS "auctionStatus"
+    SELECT p.id, p.auction_id AS "auctionId", a.title AS "auctionTitle", p.amount, p.status, p.created_at, p.created_at::text AS "cursorTime", a.status AS "auctionStatus"
     FROM payments p
     JOIN auctions a ON p.auction_id = a.id
     WHERE p.buyer_id = $1
