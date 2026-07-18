@@ -37,7 +37,7 @@ export function PaymentHistoryPage() {
         const waitTime = retryAfter ? `${retryAfter} giây` : '5 phút';
         showError(`Vui lòng chờ ${waitTime} trước khi thử lại.`);
       } else {
-        showError(err.response?.data?.message || 'Có lỗi xảy ra khi thử lại thanh toán');
+        showError(err.response?.data?.error?.message || 'Có lỗi xảy ra khi thử lại thanh toán');
       }
     }
   };
@@ -53,7 +53,7 @@ export function PaymentHistoryPage() {
       showSuccess('Đã xác nhận nhận hàng thành công.');
       refetchPayments();
     } catch (err) {
-      showError(err.response?.data?.message || 'Có lỗi xảy ra khi xác nhận nhận hàng');
+      showError(err.response?.data?.error?.message || 'Có lỗi xảy ra khi xác nhận nhận hàng');
     }
   };
 

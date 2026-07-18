@@ -40,9 +40,9 @@ export function DisputeModal({ payment, onClose, onSuccess }) {
         const formattedDate = new Date(canOpenAt).toLocaleString('vi-VN');
         showError(`Bạn chưa thể mở khiếu nại lúc này. Vui lòng thử lại sau: ${formattedDate}`);
       } else if (err.response?.status === 429) {
-        showError(err.response?.data?.message || 'Bạn thao tác quá nhanh, vui lòng thử lại sau.');
+        showError(err.response?.data?.error?.message || 'Bạn thao tác quá nhanh, vui lòng thử lại sau.');
       } else {
-        showError(err.response?.data?.message || 'Có lỗi xảy ra khi gửi khiếu nại');
+        showError(err.response?.data?.error?.message || 'Có lỗi xảy ra khi gửi khiếu nại');
       }
     }
   };
@@ -58,7 +58,7 @@ export function DisputeModal({ payment, onClose, onSuccess }) {
         <form onSubmit={handleSubmit}>
           {error && (
             <div className="form-error">
-              {error.response?.data?.message || 'Có lỗi xảy ra'}
+              {error.response?.data?.error?.message || 'Có lỗi xảy ra'}
             </div>
           )}
 

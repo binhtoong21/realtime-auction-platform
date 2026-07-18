@@ -36,7 +36,7 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
       showSuccess('Đã cập nhật thông tin giao hàng thành công');
       onSuccess();
     } catch (err) {
-      showError(err.response?.data?.message || 'Có lỗi xảy ra khi cập nhật vận đơn');
+      showError(err.response?.data?.error?.message || 'Có lỗi xảy ra khi cập nhật thông tin giao hàng');
     }
   };
 
@@ -49,7 +49,11 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
         </div>
 
         <form onSubmit={handleSubmit}>
-          {error && <div className="form-error">{error.response?.data?.message || 'Có lỗi xảy ra'}</div>}
+          {error && (
+            <div className="form-error">
+              {error.response?.data?.error?.message || 'Có lỗi xảy ra'}
+            </div>
+          )}
 
           <div className="form-group">
             <label htmlFor="carrier">Đơn vị vận chuyển</label>
