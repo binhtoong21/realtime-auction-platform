@@ -41,11 +41,11 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
   };
 
   return (
-    <div className="ship-modal-overlay" onClick={onClose}>
+    <div className="ship-modal-overlay" onClick={isLoading ? undefined : onClose}>
       <div className="ship-modal-content" onClick={e => e.stopPropagation()}>
         <div className="ship-modal-header">
-          <h2>Cập nhật vận đơn</h2>
-          <button className="close-btn" onClick={onClose}>&times;</button>
+          <h2>Giao hàng</h2>
+          <button className="close-btn" onClick={onClose} disabled={isLoading}>&times;</button>
         </div>
 
         <form onSubmit={handleSubmit}>

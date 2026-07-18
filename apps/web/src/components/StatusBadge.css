@@ -19,7 +19,7 @@
 .status-badge--success {
   color: var(--color-action);
   border-color: var(--color-action);
-  background-color: #F0FDF4; /* light green matching ui_design.md */
+  background-color: var(--color-success-subtle);
 }
 
 .status-badge--brand {
@@ -31,13 +31,13 @@
 .status-badge--danger {
   color: var(--color-danger);
   border-color: var(--color-danger);
-  background-color: #FEF2F2; /* light red matching ui_design.md */
+  background-color: var(--color-danger-subtle);
 }
 
 .status-badge--warning {
   color: var(--color-warning);
   border-color: var(--color-warning);
-  background-color: #FFFBEB; /* light amber matching ui_design.md */
+  background-color: var(--color-warning-subtle);
 }
 
 .status-badge--secondary {

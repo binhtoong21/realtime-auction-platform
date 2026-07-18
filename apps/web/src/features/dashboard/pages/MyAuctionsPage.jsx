@@ -123,8 +123,8 @@ export function MyAuctionsPage() {
                       {(auction.status === 'active' || auction.status === 'draft') && Number(auction.bid_count) === 0 && (
                         <div className="action-buttons">
                           <Link to={`/dashboard/auctions/${auction.id}/edit`} className="btn-link">Sửa</Link>
-                          {/* Cancel logic not fully implemented in API yet, just placeholder */}
-                          <button className="btn-link danger">Hủy</button>
+                          {/* Cancel logic not fully implemented in API yet */}
+                          <button className="btn-link danger" disabled title="Tính năng hủy đang được phát triển">Hủy</button>
                         </div>
                       )}
                       
@@ -150,7 +150,7 @@ export function MyAuctionsPage() {
             </table>
             
             {nextCursor && (
-              <div className="load-more-container" style={{ textAlign: 'center', padding: '16px' }}>
+              <div className="load-more-container">
                 <button 
                   className="btn-secondary" 
                   onClick={() => setCurrentCursor(nextCursor)}

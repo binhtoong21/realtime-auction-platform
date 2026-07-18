@@ -141,7 +141,7 @@
   text-align: center;
 }
 
-.auction-title {
+.my-auctions-page .auction-title {
   font-weight: 500;
   color: var(--color-text-primary);
   display: -webkit-box;
@@ -149,6 +149,12 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   max-width: 250px;
+}
+
+.my-auctions-page .load-more-container {
+  text-align: center;
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
 }
 
 .price-cell {

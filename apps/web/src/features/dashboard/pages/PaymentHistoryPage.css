@@ -95,10 +95,16 @@
   font-size: var(--font-size-sm);
 }
 
-.auction-title {
+.payment-history-page .auction-title {
   font-weight: 500;
   color: var(--color-text-primary);
   display: block;
+}
+
+.payment-history-page .load-more-container {
+  text-align: center;
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
 }
 
 .auction-status-hint {

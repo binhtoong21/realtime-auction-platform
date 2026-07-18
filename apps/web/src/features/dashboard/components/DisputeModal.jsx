@@ -48,11 +48,11 @@ export function DisputeModal({ payment, onClose, onSuccess }) {
   };
 
   return (
-    <div className="dispute-modal-overlay" onClick={onClose}>
+    <div className="dispute-modal-overlay" onClick={isLoading ? undefined : onClose}>
       <div className="dispute-modal-content" onClick={e => e.stopPropagation()}>
         <div className="dispute-modal-header">
           <h2>Mở khiếu nại</h2>
-          <button className="close-btn" onClick={onClose}>&times;</button>
+          <button className="close-btn" onClick={onClose} disabled={isLoading}>&times;</button>
         </div>
 
         <form onSubmit={handleSubmit}>

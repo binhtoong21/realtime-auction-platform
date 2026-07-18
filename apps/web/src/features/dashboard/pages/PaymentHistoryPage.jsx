@@ -154,6 +154,7 @@ export function PaymentHistoryPage() {
                           <button 
                             className="btn-link danger"
                             onClick={() => setDisputePayment(payment)}
+                            disabled={isConfirming}
                           >
                             Khiếu nại
                           </button>
@@ -177,7 +178,7 @@ export function PaymentHistoryPage() {
             </table>
             
             {currentNextCursor && (
-              <div className="load-more-container" style={{ textAlign: 'center', padding: '16px' }}>
+              <div className="load-more-container">
                 <button 
                   className="btn-secondary" 
                   onClick={() => setCurrentCursor(currentNextCursor)}

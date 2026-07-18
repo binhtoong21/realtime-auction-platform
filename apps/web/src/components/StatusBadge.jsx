@@ -1,4 +1,3 @@
-import PropTypes from 'prop-types';
 import './StatusBadge.css';
 
 /**
@@ -73,9 +72,3 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
     </span>
   );
 }
-
-StatusBadge.propTypes = {
-  status: PropTypes.string.isRequired,
-  type: PropTypes.oneOf(['auction', 'payment']),
-  className: PropTypes.string
-};
