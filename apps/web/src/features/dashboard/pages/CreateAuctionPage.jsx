@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../core/context/AuthContext';
 import { useToast } from '../../../core/context/ToastContext';
 import { useCategories } from '../../auctions/hooks/useCategories';
-import { useSellerActions } from '../hooks/useSellerActions';
+import { useCreateAuction } from '../hooks/useSellerActions';
 import { parseLocalToUTC } from '../../../utils/formatters';
 import './CreateAuctionPage.css';
 
@@ -15,7 +15,6 @@ export function CreateAuctionPage() {
   const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
   const { categories, isLoading: isLoadingCategories, error: categoriesError, refetch } = useCategories();
-  const { useCreateAuction } = useSellerActions();
   const { createAuction, isLoading: isSubmitting } = useCreateAuction();
 
   const [currentStep, setCurrentStep] = useState(0);
