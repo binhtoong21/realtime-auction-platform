@@ -30,40 +30,8 @@ export function useSellerAuctions(status) {
 export function useCreateAuction() {
   const { mutate, data, error, isLoading, reset } = useMutation('/auctions', 'post');
 
-  const create = async (auctionForm) => {
-    const startingPrice = Number(auctionForm.startingPrice);
-    const bidIncrement = Number(auctionForm.bidIncrement);
-    const reservePrice = auctionForm.reservePrice ? Number(auctionForm.reservePrice) : null;
-
-    if (isNaN(startingPrice) || isNaN(bidIncrement) || (reservePrice !== null && isNaN(reservePrice))) {
-      throw new Error('Invalid numeric values');
-    }
-
-    const startAt = new Date(auctionForm.startAt);
-    const endAt = new Date(auctionForm.endAt);
-
-    if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
-      throw new Error('Invalid date values');
-    }
-
-    const body = {
-      title: auctionForm.title,
-      description: auctionForm.description,
-      images: auctionForm.images || [],
-      startingPrice,
-      reservePrice,
-      bidIncrement,
-      startAt: startAt.toISOString(),
-      endAt: endAt.toISOString(),
-      categoryId: auctionForm.categoryId,
-    };
-
-    const response = await mutate(body);
-    return response.data; // Unwrapped object containing the actual data payload
-  };
-
   return {
-    create,
+    createAuction: mutate,
     createdData: data?.data,
     isLoading,
     error,

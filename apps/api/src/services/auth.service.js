@@ -202,7 +202,7 @@ const verifyEmail = async (token) => {
 const login = async ({ email, password }) => {
   const result = await pool.query(
     `SELECT id, email, password_hash, display_name, role, status,
-            failed_login_attempts, locked_until
+            failed_login_attempts, locked_until, identity_status
      FROM users WHERE email = $1`,
     [email.toLowerCase()]
   );
@@ -298,6 +298,8 @@ const login = async ({ email, password }) => {
       email: user.email,
       displayName: user.display_name,
       role: user.role,
+      status: user.status,
+      identityStatus: user.identity_status,
     },
   };
 };
@@ -320,7 +322,7 @@ const refresh = async (oldRefreshToken) => {
 
   const result = await pool.query(
     `SELECT rt.id, rt.user_id, rt.expires_at, rt.revoked_at,
-            u.role, u.status
+            u.role, u.status, u.identity_status
      FROM refresh_tokens rt
      JOIN users u ON u.id = rt.user_id
      WHERE rt.token_hash = $1`,
@@ -364,6 +366,12 @@ const refresh = async (oldRefreshToken) => {
   return {
     accessToken: newAccessToken,
     refreshToken: newRefreshTokenRaw,
+    user: {
+      id: record.user_id,
+      role: record.role,
+      status: record.status,
+      identityStatus: record.identity_status,
+    },
   };
 };
 

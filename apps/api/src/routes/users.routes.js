@@ -7,10 +7,12 @@ import {
   createIdentitySession,
   createConnectOnboarding,
 } from '../controllers/kyc.controller.js';
+import { handleGetMyPayments } from '../controllers/payment.controller.js';
 
 const router = Router();
 
 router.get('/me/kyc', requireAuth, getKycStatus);
+router.get('/me/payments', requireAuth, handleGetMyPayments);
 router.post('/me/kyc/identity-session', requireAuth, createIdentitySession);
 router.post(
   '/me/kyc/connect-onboarding',

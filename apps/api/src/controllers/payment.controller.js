@@ -1,4 +1,4 @@
-import { retryPayment, acceptSecondChance, declineSecondChance, getPaymentById } from '../services/payment.service.js';
+import { retryPayment, acceptSecondChance, declineSecondChance, getPaymentById, getMyPayments } from '../services/payment.service.js';
 
 export const handleRetryPayment = async (req, res, next) => {
   try {
@@ -65,6 +65,30 @@ export const handleGetPayment = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: payment
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const handleGetMyPayments = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { cursor, status } = req.query;
+    const rawLimit = req.query.limit;
+    
+    // Parse limit as positive integer and clamp to 100
+    const limit = Math.min(Math.max(parseInt(rawLimit, 10) || 20, 1), 100);
+
+    const result = await getMyPayments({ userId, cursor, limit, status });
+
+    res.status(200).json({
+      success: true,
+      data: result.items,
+      meta: {
+        nextCursor: result.nextCursor,
+        hasMore: !!result.nextCursor
+      }
     });
   } catch (error) {
     next(error);

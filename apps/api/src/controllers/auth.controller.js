@@ -123,7 +123,8 @@ export const refreshToken = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        accessToken: result.accessToken
+        accessToken: result.accessToken,
+        user: result.user
       },
     });
   } catch (error) {

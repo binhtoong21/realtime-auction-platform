@@ -950,4 +950,51 @@ export const getPaymentById = async ({ paymentId, userId }) => {
   };
 };
 
+export const getMyPayments = async ({ userId, cursor, limit = 20, status }) => {
+  let query = `
+    SELECT p.id, a.title AS "auctionTitle", p.amount, p.status, p.created_at, p.created_at::text AS "cursorTime", a.status AS "auctionStatus"
+    FROM payments p
+    JOIN auctions a ON p.auction_id = a.id
+    WHERE p.buyer_id = $1
+  `;
+  const values = [userId];
+  let paramCount = 2;
+
+  if (status) {
+    query += ` AND p.status = $${paramCount}`;
+    values.push(status);
+    paramCount++;
+  }
+
+  if (cursor) {
+    const [cursorTime, cursorId] = cursor.split('_');
+    if (cursorId) {
+      query += ` AND (p.created_at, p.id) < ($${paramCount}::timestamptz, $${paramCount + 1})`;
+      values.push(cursorTime, cursorId);
+      paramCount += 2;
+    } else {
+      query += ` AND p.created_at < $${paramCount}::timestamptz`;
+      values.push(cursorTime);
+      paramCount++;
+    }
+  }
+
+  query += ` ORDER BY p.created_at DESC, p.id DESC LIMIT $${paramCount}`;
+  values.push(limit);
+
+  const result = await pool.query(query, values);
+  const items = result.rows;
+
+  let nextCursor = null;
+  if (items.length > 0 && items.length === Number(limit)) {
+    const lastItem = items[items.length - 1];
+    nextCursor = `${lastItem.cursorTime}_${lastItem.id}`;
+  }
+
+  return {
+    items,
+    nextCursor
+  };
+};
+
 export { writeAuditLog };
