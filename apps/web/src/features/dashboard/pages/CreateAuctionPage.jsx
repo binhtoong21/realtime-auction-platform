@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../core/context/AuthContext';
 import { useToast } from '../../../core/context/ToastContext';
@@ -14,13 +14,22 @@ export function CreateAuctionPage() {
   const user = useAuth();
   const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
-  const { categories, isLoading: isLoadingCategories, error: categoriesError } = useCategories();
+  const { categories, isLoading: isLoadingCategories, error: categoriesError, refetch } = useCategories();
   const { useCreateAuction } = useSellerActions();
   const { createAuction, isLoading: isSubmitting } = useCreateAuction();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [errors, setErrors] = useState({});
   const fileInputRef = useRef(null);
+  const previewUrlsRef = useRef([]);
+
+  useEffect(() => {
+    const urlsToRevoke = previewUrlsRef.current;
+    return () => {
+      // Cleanup all tracked preview URLs to prevent memory leaks
+      urlsToRevoke.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -59,7 +68,7 @@ export function CreateAuctionPage() {
       if (startAt && endAt) {
         const start = new Date(startAt).getTime();
         const end = new Date(endAt).getTime();
-        if (end <= start + 3600000) {
+        if (end < start + 3600000) {
           newErrors.endAt = 'End time must be at least 1 hour after start time';
         }
       }
@@ -102,10 +111,12 @@ export function CreateAuctionPage() {
         newErrors.images = `${file.name} is not a valid JPEG or PNG`;
         continue;
       }
+      const previewUrl = URL.createObjectURL(file);
       validFiles.push({
         file,
-        preview: URL.createObjectURL(file)
+        preview: previewUrl
       });
+      previewUrlsRef.current.push(previewUrl);
     }
 
     setErrors(newErrors);
@@ -154,7 +165,7 @@ export function CreateAuctionPage() {
       navigate('/dashboard/auctions');
     } catch (err) {
       // Handle 422 Validation Error Routing
-      if (err.response?.status === 422 && err.response?.data?.error?.details) {
+      if (err.response?.status === 422 && Array.isArray(err.response?.data?.error?.details)) {
         const details = err.response.data.error.details;
         const fieldToStep = {
           title: 0, description: 0, categoryId: 0,
@@ -217,19 +228,27 @@ export function CreateAuctionPage() {
 
           <div className="form-group">
             <label>Category</label>
-            <select 
-              value={categoryId} 
-              onChange={e => setCategoryId(e.target.value)}
-              disabled={isLoadingCategories || !!categoriesError}
-            >
-              <option value="">
-                {isLoadingCategories ? 'Loading categories...' : 
-                 categoriesError ? 'Failed to load, please refresh' : 'Select a category'}
-              </option>
-              {!isLoadingCategories && !categoriesError && categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
+            {isLoadingCategories ? (
+              <div className="category-status loading">Loading categories...</div>
+            ) : categoriesError ? (
+              <div className="category-status error">
+                Failed to load categories. <button type="button" onClick={refetch} className="btn-link">Retry</button>
+              </div>
+            ) : (!categories || categories.length === 0) ? (
+              <div className="category-status empty">
+                No categories available. <button type="button" onClick={refetch} className="btn-link">Refresh</button>
+              </div>
+            ) : (
+              <select 
+                value={categoryId} 
+                onChange={e => setCategoryId(e.target.value)}
+              >
+                <option value="">Select a category</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            )}
             {errors.categoryId && <span className="field-error">{errors.categoryId}</span>}
           </div>
 

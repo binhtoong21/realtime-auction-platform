@@ -74,7 +74,11 @@ export const handleGetPayment = async (req, res, next) => {
 export const handleGetMyPayments = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { cursor, limit = 20, status } = req.query;
+    const { cursor, status } = req.query;
+    const rawLimit = req.query.limit;
+    
+    // Parse limit as positive integer and clamp to 100
+    const limit = Math.min(Math.max(parseInt(rawLimit, 10) || 20, 1), 100);
 
     const result = await getMyPayments({ userId, cursor, limit, status });
 

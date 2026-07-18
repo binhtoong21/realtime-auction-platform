@@ -952,7 +952,7 @@ export const getPaymentById = async ({ paymentId, userId }) => {
 
 export const getMyPayments = async ({ userId, cursor, limit = 20, status }) => {
   let query = `
-    SELECT p.id, a.title AS "auctionTitle", p.amount, p.status, p.created_at, a.status AS "auctionStatus"
+    SELECT p.id, a.title AS "auctionTitle", p.amount, p.status, p.created_at, p.created_at::text AS "cursorTime", a.status AS "auctionStatus"
     FROM payments p
     JOIN auctions a ON p.auction_id = a.id
     WHERE p.buyer_id = $1
@@ -969,12 +969,12 @@ export const getMyPayments = async ({ userId, cursor, limit = 20, status }) => {
   if (cursor) {
     const [cursorTime, cursorId] = cursor.split('_');
     if (cursorId) {
-      query += ` AND (p.created_at, p.id) < ($${paramCount}, $${paramCount + 1})`;
-      values.push(new Date(cursorTime), cursorId);
+      query += ` AND (p.created_at, p.id) < ($${paramCount}::timestamptz, $${paramCount + 1})`;
+      values.push(cursorTime, cursorId);
       paramCount += 2;
     } else {
-      query += ` AND p.created_at < $${paramCount}`;
-      values.push(new Date(cursor));
+      query += ` AND p.created_at < $${paramCount}::timestamptz`;
+      values.push(cursorTime);
       paramCount++;
     }
   }
@@ -988,7 +988,7 @@ export const getMyPayments = async ({ userId, cursor, limit = 20, status }) => {
   let nextCursor = null;
   if (items.length > 0 && items.length === Number(limit)) {
     const lastItem = items[items.length - 1];
-    nextCursor = `${lastItem.created_at.toISOString()}_${lastItem.id}`;
+    nextCursor = `${lastItem.cursorTime}_${lastItem.id}`;
   }
 
   return {
