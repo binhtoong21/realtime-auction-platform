@@ -19,9 +19,16 @@ const STATUS_TABS = [
 
 export function MyAuctionsPage() {
   const [activeTab, setActiveTab] = useState('');
-  const { auctions, isLoading, error, refetch } = useSellerAuctions(activeTab);
+  const [currentCursor, setCurrentCursor] = useState(null);
+
+  const { auctions, nextCursor, isLoading, error, refetch } = useSellerAuctions(activeTab, currentCursor);
   
   const [shippingAuctionId, setShippingAuctionId] = useState(null);
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setCurrentCursor(null);
+  };
 
   const handleShipSuccess = () => {
     setShippingAuctionId(null);
@@ -53,7 +60,7 @@ export function MyAuctionsPage() {
           <button
             key={tab.value}
             className={`tab-btn ${activeTab === tab.value ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.value)}
+            onClick={() => handleTabChange(tab.value)}
           >
             {tab.label}
           </button>
@@ -141,6 +148,18 @@ export function MyAuctionsPage() {
                 ))}
               </tbody>
             </table>
+            
+            {nextCursor && (
+              <div className="load-more-container" style={{ textAlign: 'center', padding: '16px' }}>
+                <button 
+                  className="btn-secondary" 
+                  onClick={() => setCurrentCursor(nextCursor)}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Đang tải...' : 'Trang tiếp theo'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

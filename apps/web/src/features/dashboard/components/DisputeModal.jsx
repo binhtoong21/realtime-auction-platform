@@ -8,7 +8,7 @@ const REASONS = [
   { value: 'ITEM_NOT_AS_DESCRIBED', label: 'Sản phẩm không đúng mô tả' },
   { value: 'ITEM_DAMAGED', label: 'Sản phẩm bị hư hỏng' },
   { value: 'ITEM_NOT_RECEIVED', label: 'Không nhận được hàng' },
-  { value: 'COUNTERFEIT', label: 'Hàng giả / Hàng nhái' },
+  { value: 'COUNTERFEIT_ITEM', label: 'Hàng giả / Hàng nhái' },
   { value: 'OTHER', label: 'Lý do khác' }
 ];
 
@@ -34,8 +34,12 @@ export function DisputeModal({ payment, onClose, onSuccess }) {
       showSuccess('Đã gửi khiếu nại thành công. Quản trị viên sẽ xem xét.');
       onSuccess();
     } catch (err) {
-      // Handle 429 Cooldown Message
-      if (err.response?.status === 429) {
+      // Handle 403 Cooldown Message
+      if (err.response?.status === 403 && err.response?.data?.error?.code === 'DISPUTE_COOLDOWN') {
+        const canOpenAt = err.response.data.error.canOpenAt;
+        const formattedDate = new Date(canOpenAt).toLocaleString('vi-VN');
+        showError(`Bạn chưa thể mở khiếu nại lúc này. Vui lòng thử lại sau: ${formattedDate}`);
+      } else if (err.response?.status === 429) {
         showError(err.response?.data?.message || 'Bạn thao tác quá nhanh, vui lòng thử lại sau.');
       } else {
         showError(err.response?.data?.message || 'Có lỗi xảy ra khi gửi khiếu nại');

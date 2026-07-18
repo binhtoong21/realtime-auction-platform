@@ -6,10 +6,13 @@ import { useMutation } from '../../../../core/hooks/useMutation';
  * Backend: GET /auctions?sellerId=me
  * Return structure: { items: [...], nextCursor: ... }
  */
-export function useSellerAuctions(status) {
-  const { data, error, isLoading, refetch } = useFetch(
-    status ? `/auctions?sellerId=me&status=${encodeURIComponent(status)}` : '/auctions?sellerId=me'
-  );
+export function useSellerAuctions(status, cursor = null) {
+  const queryParams = new URLSearchParams();
+  queryParams.append('sellerId', 'me');
+  if (status) queryParams.append('status', status);
+  if (cursor) queryParams.append('cursor', cursor);
+  
+  const { data, error, isLoading, refetch } = useFetch(`/auctions?${queryParams.toString()}`);
 
   const auctions = data?.data?.items || [];
   const nextCursor = data?.data?.nextCursor;

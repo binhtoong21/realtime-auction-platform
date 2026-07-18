@@ -80,7 +80,7 @@ export function useOpenDispute() {
 }
 
 /**
- * Retry capture hold on payment failure (buyer action).
+ * Retry payment during GRACE_PERIOD
  * Backend: POST /payments/:id/retry
  */
 export function useRetryPayment() {

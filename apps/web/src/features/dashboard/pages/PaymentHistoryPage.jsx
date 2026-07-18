@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePaymentHistory, useConfirmDelivery } from '../hooks/useBuyerActions';
+import { usePaymentHistory, useConfirmDelivery, useRetryPayment } from '../hooks/useBuyerActions';
 import { DisputeModal } from '../components/DisputeModal';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
@@ -17,10 +17,30 @@ const STATUS_TABS = [
 
 export function PaymentHistoryPage() {
   const [activeTab, setActiveTab] = useState('');
-  const { payments, isLoading, error, refetch } = usePaymentHistory(activeTab);
+  const [currentCursor, setCurrentCursor] = useState(null);
+  
+  // Need to use currentCursor in usePaymentHistory
+  const { payments: currentPayments, nextCursor: currentNextCursor, isLoading: isPaymentsLoading, error: paymentsError, refetch: refetchPayments } = usePaymentHistory(activeTab, currentCursor);
   
   const { confirm, isLoading: isConfirming } = useConfirmDelivery();
+  const { retry, isLoading: isRetrying } = useRetryPayment();
   const { showSuccess, showError } = useToast();
+
+  const handleRetryPayment = async (paymentId) => {
+    try {
+      await retry(paymentId);
+      showSuccess('Đã yêu cầu thử lại thanh toán thành công. Đang chờ xác nhận từ Stripe.');
+      refetchPayments();
+    } catch (err) {
+      if (err.response?.status === 429) {
+        const retryAfter = err.response.headers['retry-after'];
+        const waitTime = retryAfter ? `${retryAfter} giây` : '5 phút';
+        showError(`Vui lòng chờ ${waitTime} trước khi thử lại.`);
+      } else {
+        showError(err.response?.data?.message || 'Có lỗi xảy ra khi thử lại thanh toán');
+      }
+    }
+  };
 
   const [disputePayment, setDisputePayment] = useState(null);
 
@@ -31,7 +51,7 @@ export function PaymentHistoryPage() {
     try {
       await confirm(auctionId);
       showSuccess('Đã xác nhận nhận hàng thành công.');
-      refetch();
+      refetchPayments();
     } catch (err) {
       showError(err.response?.data?.message || 'Có lỗi xảy ra khi xác nhận nhận hàng');
     }
@@ -39,7 +59,12 @@ export function PaymentHistoryPage() {
 
   const handleDisputeSuccess = () => {
     setDisputePayment(null);
-    refetch();
+    refetchPayments();
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setCurrentCursor(null);
   };
 
   const formatDate = (dateString) => {
@@ -64,7 +89,7 @@ export function PaymentHistoryPage() {
           <button
             key={tab.value}
             className={`tab-btn ${activeTab === tab.value ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.value)}
+            onClick={() => handleTabChange(tab.value)}
           >
             {tab.label}
           </button>
@@ -72,14 +97,14 @@ export function PaymentHistoryPage() {
       </div>
 
       <div className="payments-content">
-        {isLoading ? (
+        {isPaymentsLoading && !currentPayments.length ? (
           <div className="loading-state">Đang tải danh sách...</div>
-        ) : error ? (
+        ) : paymentsError ? (
           <div className="error-state">
             <p>Có lỗi xảy ra khi tải dữ liệu.</p>
-            <button className="btn-secondary" onClick={refetch}>Thử lại</button>
+            <button className="btn-secondary" onClick={refetchPayments}>Thử lại</button>
           </div>
-        ) : payments.length === 0 ? (
+        ) : currentPayments.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">💳</div>
             <h3>Không có giao dịch nào</h3>
@@ -99,7 +124,7 @@ export function PaymentHistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {payments.map(payment => (
+                {currentPayments.map(payment => (
                   <tr key={payment.id}>
                     <td><span className="payment-id">#{payment.id.substring(0, 8)}</span></td>
                     <td>
@@ -134,11 +159,34 @@ export function PaymentHistoryPage() {
                           </button>
                         </div>
                       )}
+                      {payment.status === 'grace_period' && (
+                        <div className="action-buttons">
+                          <button 
+                            className="btn-primary btn-sm"
+                            onClick={() => handleRetryPayment(payment.id)}
+                            disabled={isRetrying}
+                          >
+                            Thử lại thanh toán
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            
+            {currentNextCursor && (
+              <div className="load-more-container" style={{ textAlign: 'center', padding: '16px' }}>
+                <button 
+                  className="btn-secondary" 
+                  onClick={() => setCurrentCursor(currentNextCursor)}
+                  disabled={isPaymentsLoading}
+                >
+                  {isPaymentsLoading ? 'Đang tải...' : 'Trang tiếp theo'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

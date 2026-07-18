@@ -2,8 +2,19 @@ import { useState } from 'react';
 import PropTypes from 'prop-types';
 import { useShipAuction } from '../hooks/useSellerActions';
 import { useToast } from '../../../core/context/ToastContext';
-import { CARRIERS } from '@auction/shared-constants';
+import { CARRIERS, CARRIER_TRACKING_REGEX } from '@auction/shared-constants';
 import './ShipModal.css';
+
+const CARRIER_LABELS = {
+  [CARRIERS.VNPOST]: 'VNPost',
+  [CARRIERS.GHN]: 'Giao Hàng Nhanh',
+  [CARRIERS.GHTK]: 'Giao Hàng Tiết Kiệm',
+  [CARRIERS.JT]: 'J&T Express',
+  [CARRIERS.FEDEX]: 'FedEx',
+  [CARRIERS.DHL]: 'DHL',
+  [CARRIERS.UPS]: 'UPS',
+  [CARRIERS.OTHER]: 'Khác'
+};
 
 export function ShipModal({ auctionId, onClose, onSuccess }) {
   const [carrier, setCarrier] = useState('');
@@ -14,6 +25,11 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!carrier || !trackingNumber) return;
+
+    if (CARRIER_TRACKING_REGEX[carrier] && !CARRIER_TRACKING_REGEX[carrier].test(trackingNumber)) {
+      showError('Mã vận đơn không đúng định dạng của đơn vị vận chuyển này');
+      return;
+    }
 
     try {
       await ship(auctionId, carrier, trackingNumber);
@@ -46,7 +62,7 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
             >
               <option value="">Chọn đơn vị vận chuyển</option>
               {Object.values(CARRIERS).map(c => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>{CARRIER_LABELS[c] || c}</option>
               ))}
             </select>
           </div>
