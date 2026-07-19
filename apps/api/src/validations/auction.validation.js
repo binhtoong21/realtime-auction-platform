@@ -18,9 +18,7 @@ export const getAuctionBidsSchema = Joi.object({
 export const createAuctionSchema = Joi.object({
   title: Joi.string().min(3).max(100).required(),
   description: Joi.string().max(2000).required(),
-  // TODO: Replace with multipart/form-data + S3 upload
-  // Currently accepts image URLs directly for development
-  images: Joi.array().items(Joi.string().uri()).max(10).required(),
+  // images are now handled via multipart/form-data and req.files
   startingPrice: Joi.number().integer().positive().required(),
   reservePrice: Joi.number().integer().positive().allow(null).optional(),
   bidIncrement: Joi.number().integer().positive().required(),
@@ -32,7 +30,10 @@ export const createAuctionSchema = Joi.object({
 export const updateAuctionSchema = Joi.object({
   title: Joi.string().min(3).max(100).optional(),
   description: Joi.string().max(2000).optional(),
-  images: Joi.array().items(Joi.string().uri()).max(10).optional(),
+  existingImages: Joi.alternatives().try(
+    Joi.array().items(Joi.string().uri()).max(10),
+    Joi.string().uri().custom((val) => [val]) // Coerce single string to array
+  ).optional(),
   startingPrice: Joi.number().integer().positive().optional(),
   reservePrice: Joi.number().integer().positive().allow(null).optional(),
   bidIncrement: Joi.number().integer().positive().optional(),

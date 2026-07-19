@@ -6,6 +6,7 @@ import validate from '../middleware/validate.js';
 import { checkIdempotency } from '../middleware/idempotency.js';
 import { debounceBid } from '../middleware/debounce.js';
 import { rateLimiter } from '../middleware/rateLimiter.js';
+import { uploadAuctionImages } from '../middleware/upload.js';
 import { placeBid } from '../controllers/bidding.controller.js';
 import { handleAcceptSecondChance, handleDeclineSecondChance } from '../controllers/payment.controller.js';
 
@@ -32,6 +33,7 @@ router.post(
   '/',
   requireAuth,
   requireIdentityVerified,
+  uploadAuctionImages,
   validate(createAuctionSchema),
   createAuction
 );
@@ -39,6 +41,7 @@ router.post(
 router.patch(
   '/:id',
   requireAuth,
+  uploadAuctionImages,
   validate(updateAuctionSchema),
   updateAuction
 );

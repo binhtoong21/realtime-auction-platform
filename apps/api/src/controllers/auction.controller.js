@@ -1,4 +1,6 @@
 import * as auctionService from '../services/auction.service.js';
+import * as s3Service from '../services/s3.service.js';
+import { v7 as uuidv7 } from 'uuid';
 
 export const getAuctions = async (req, res, next) => {
   try {
@@ -64,12 +66,25 @@ export const getAuctionBids = async (req, res, next) => {
 };
 
 export const createAuction = async (req, res, next) => {
+  let uploadedUrls = [];
   try {
     const sellerId = req.user.id;
+    const auctionId = uuidv7();
+
+    if (req.files && req.files.length > 0) {
+      const uploadPromises = req.files.map((file) => {
+        const ext = file.originalname.split('.').pop() || 'bin';
+        const s3Key = `auctions/${auctionId}/${Date.now()}-${uuidv7()}.${ext}`;
+        return s3Service.uploadFile(file.buffer, file.mimetype, s3Key);
+      });
+      uploadedUrls = await Promise.all(uploadPromises);
+    }
+
     const serviceData = {
+      id: auctionId,
       title: req.body.title,
       description: req.body.description,
-      images: req.body.images,
+      images: uploadedUrls,
       starting_price: req.body.startingPrice,
       reserve_price: req.body.reservePrice,
       bid_increment: req.body.bidIncrement,
@@ -88,19 +103,58 @@ export const createAuction = async (req, res, next) => {
       data: auction,
     });
   } catch (error) {
+    if (uploadedUrls.length > 0) {
+      const s3Keys = uploadedUrls.map(url => url.replace(`${process.env.R2_PUBLIC_URL}/`, ''));
+      await s3Service.deleteFiles(s3Keys).catch(console.error);
+    }
     next(error);
   }
 };
 
 export const updateAuction = async (req, res, next) => {
+  let newlyUploadedUrls = [];
   try {
     const { id } = req.params;
     const sellerId = req.user.id;
     
+    let existingImages = req.body.existingImages || [];
+    if (!Array.isArray(existingImages)) {
+      existingImages = [existingImages];
+    }
+    
+    const newFiles = req.files || [];
+    
+    if (existingImages.length + newFiles.length > 10) {
+      const error = new Error('Total images cannot exceed 10');
+      error.statusCode = 400;
+      error.errorCode = 'TOO_MANY_IMAGES';
+      throw error;
+    }
+
+    const oldAuction = await auctionService.getAuctionById(id, sellerId);
+    if (!oldAuction || oldAuction.seller_id !== sellerId) {
+      const error = new Error('Auction not found or unauthorized');
+      error.statusCode = 404;
+      error.errorCode = 'AUCTION_NOT_FOUND';
+      throw error;
+    }
+    const oldImages = oldAuction.images || [];
+
+    if (newFiles.length > 0) {
+      const uploadPromises = newFiles.map((file) => {
+        const ext = file.originalname.split('.').pop() || 'bin';
+        const s3Key = `auctions/${id}/${Date.now()}-${uuidv7()}.${ext}`;
+        return s3Service.uploadFile(file.buffer, file.mimetype, s3Key);
+      });
+      newlyUploadedUrls = await Promise.all(uploadPromises);
+    }
+
+    const finalImages = [...existingImages, ...newlyUploadedUrls];
+    
     const serviceData = {
       title: req.body.title,
       description: req.body.description,
-      images: req.body.images,
+      images: finalImages,
       starting_price: req.body.startingPrice,
       reserve_price: req.body.reservePrice,
       bid_increment: req.body.bidIncrement,
@@ -114,11 +168,22 @@ export const updateAuction = async (req, res, next) => {
 
     const auction = await auctionService.updateAuction(id, sellerId, serviceData);
     
+    // Delete orphaned images from S3
+    const removedImages = oldImages.filter(url => !finalImages.includes(url));
+    if (removedImages.length > 0) {
+      const s3Keys = removedImages.map(url => url.replace(`${process.env.R2_PUBLIC_URL}/`, ''));
+      s3Service.deleteFiles(s3Keys).catch(console.error);
+    }
+    
     res.status(200).json({
       success: true,
       data: auction,
     });
   } catch (error) {
+    if (newlyUploadedUrls.length > 0) {
+      const s3Keys = newlyUploadedUrls.map(url => url.replace(`${process.env.R2_PUBLIC_URL}/`, ''));
+      await s3Service.deleteFiles(s3Keys).catch(console.error);
+    }
     next(error);
   }
 };
