@@ -6,13 +6,7 @@ import { openDisputeSchema, addEvidenceSchema, disputeIdSchema, resolveDisputeSc
 export const handleOpenDispute = async (req, res, next) => {
   let uploadedUrls = [];
   try {
-    const { error, value } = openDisputeSchema.validate(req.body);
-    if (error) {
-      const err = new Error(error.details[0].message);
-      err.statusCode = 400;
-      err.errorCode = 'VALIDATION_ERROR';
-      return next(err);
-    }
+    const value = req.body;
 
     if (!req.files || req.files.length === 0) {
       const err = new Error('Evidence files are required to open a dispute');
@@ -49,15 +43,7 @@ export const handleOpenDispute = async (req, res, next) => {
 
 export const handleGetDisputeById = async (req, res, next) => {
   try {
-    const { error, value } = disputeIdSchema.validate(req.params);
-    if (error) {
-      const err = new Error(error.details[0].message);
-      err.statusCode = 400;
-      err.errorCode = 'VALIDATION_ERROR';
-      return next(err);
-    }
-
-    const disputeId = value.id;
+    const disputeId = req.params.id;
     const result = await disputeService.getDisputeById({
       disputeId,
       userId: req.user.id,
@@ -73,23 +59,7 @@ export const handleGetDisputeById = async (req, res, next) => {
 export const handleAddEvidence = async (req, res, next) => {
   let newlyUploadedUrls = [];
   try {
-    const { error, value } = addEvidenceSchema.validate(req.body);
-    if (error) {
-      const err = new Error(error.details[0].message);
-      err.statusCode = 400;
-      err.errorCode = 'VALIDATION_ERROR';
-      return next(err);
-    }
-
-    const paramValidation = disputeIdSchema.validate(req.params);
-    if (paramValidation.error) {
-      const err = new Error(paramValidation.error.details[0].message);
-      err.statusCode = 400;
-      err.errorCode = 'VALIDATION_ERROR';
-      return next(err);
-    }
-
-    const disputeId = paramValidation.value.id;
+    const disputeId = req.params.id;
 
     if (!req.files || req.files.length === 0) {
       const err = new Error('Evidence files are required');
@@ -133,15 +103,7 @@ export const handleAddEvidence = async (req, res, next) => {
 
 export const handleWithdrawDispute = async (req, res, next) => {
   try {
-    const { error, value } = disputeIdSchema.validate(req.params);
-    if (error) {
-      const err = new Error(error.details[0].message);
-      err.statusCode = 400;
-      err.errorCode = 'VALIDATION_ERROR';
-      return next(err);
-    }
-
-    const disputeId = value.id;
+    const disputeId = req.params.id;
     const result = await disputeService.withdrawDispute({
       disputeId,
       buyerId: req.user.id,
@@ -155,15 +117,7 @@ export const handleWithdrawDispute = async (req, res, next) => {
 
 export const handleReviewDispute = async (req, res, next) => {
   try {
-    const { error, value } = disputeIdSchema.validate(req.params);
-    if (error) {
-      const err = new Error(error.details[0].message);
-      err.statusCode = 400;
-      err.errorCode = 'VALIDATION_ERROR';
-      return next(err);
-    }
-
-    const disputeId = value.id;
+    const disputeId = req.params.id;
     const result = await disputeService.reviewDispute({
       disputeId,
       adminId: req.user.id,
@@ -177,27 +131,11 @@ export const handleReviewDispute = async (req, res, next) => {
 
 export const handleResolveDispute = async (req, res, next) => {
   try {
-    const paramValidation = disputeIdSchema.validate(req.params);
-    if (paramValidation.error) {
-      const err = new Error(paramValidation.error.details[0].message);
-      err.statusCode = 400;
-      err.errorCode = 'VALIDATION_ERROR';
-      return next(err);
-    }
-
-    const bodyValidation = resolveDisputeSchema.validate(req.body);
-    if (bodyValidation.error) {
-      const err = new Error(bodyValidation.error.details[0].message);
-      err.statusCode = 400;
-      err.errorCode = 'VALIDATION_ERROR';
-      return next(err);
-    }
-
-    const disputeId = paramValidation.value.id;
+    const disputeId = req.params.id;
     const result = await disputeService.resolveDispute({
       disputeId,
       adminId: req.user.id,
-      ...bodyValidation.value,
+      ...req.body,
       ipAddress: req.ip || req.connection.remoteAddress,
     });
 
