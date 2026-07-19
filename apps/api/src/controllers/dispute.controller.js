@@ -1,20 +1,42 @@
 import * as disputeService from '../services/dispute.service.js';
+import * as s3Service from '../services/s3.service.js';
+import { v7 as uuidv7 } from 'uuid';
 import { openDisputeSchema, addEvidenceSchema, disputeIdSchema, resolveDisputeSchema } from '../validations/dispute.validation.js';
 
 export const handleOpenDispute = async (req, res, next) => {
+  let uploadedUrls = [];
   try {
     const { error, value } = openDisputeSchema.validate(req.body);
     if (error) {
       return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
-    const result = await disputeService.openDispute({
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: 'Evidence files are required to open a dispute' });
+    }
+
+    const disputeId = uuidv7();
+
+    const uploadPromises = req.files.map((file) => {
+      const ext = file.originalname.split('.').pop() || 'bin';
+      const s3Key = `disputes/${disputeId}/${Date.now()}-${uuidv7()}.${ext}`;
+      return s3Service.uploadFile(file.buffer, file.mimetype, s3Key);
+    });
+    uploadedUrls = await Promise.all(uploadPromises);
+
+    const result = await disputeService.createDisputeFromRequest({
+      id: disputeId,
       ...value,
       buyerId: req.user.id,
+      evidenceUrls: uploadedUrls,
     });
 
     res.status(201).json({ success: true, data: result });
   } catch (err) {
+    if (uploadedUrls.length > 0) {
+      const s3Keys = uploadedUrls.map(url => url.replace(`${process.env.R2_PUBLIC_URL}/`, ''));
+      s3Service.deleteFiles(s3Keys).catch(console.error);
+    }
     next(err);
   }
 };
@@ -40,6 +62,7 @@ export const handleGetDisputeById = async (req, res, next) => {
 };
 
 export const handleAddEvidence = async (req, res, next) => {
+  let newlyUploadedUrls = [];
   try {
     const { error, value } = addEvidenceSchema.validate(req.body);
     if (error) {
@@ -52,14 +75,40 @@ export const handleAddEvidence = async (req, res, next) => {
     }
 
     const disputeId = paramValidation.value.id;
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: 'Evidence files are required' });
+    }
+
+    const oldDispute = await disputeService.getDisputeById({ disputeId, userId: req.user.id, userRole: req.user.role });
+    const currentEvidence = oldDispute.evidence_urls || [];
+    
+    if (currentEvidence.length + req.files.length > 3) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cumulative evidence limit exceeded. You can only upload ${3 - currentEvidence.length} more file(s).` 
+      });
+    }
+
+    const uploadPromises = req.files.map((file) => {
+      const ext = file.originalname.split('.').pop() || 'bin';
+      const s3Key = `disputes/${disputeId}/${Date.now()}-${uuidv7()}.${ext}`;
+      return s3Service.uploadFile(file.buffer, file.mimetype, s3Key);
+    });
+    newlyUploadedUrls = await Promise.all(uploadPromises);
+
     const result = await disputeService.addEvidence({
       disputeId,
       userId: req.user.id,
-      evidenceUrls: value.evidenceUrls,
+      evidenceUrls: newlyUploadedUrls,
     });
 
     res.json({ success: true, data: result });
   } catch (err) {
+    if (newlyUploadedUrls.length > 0) {
+      const s3Keys = newlyUploadedUrls.map(url => url.replace(`${process.env.R2_PUBLIC_URL}/`, ''));
+      s3Service.deleteFiles(s3Keys).catch(console.error);
+    }
     next(err);
   }
 };
