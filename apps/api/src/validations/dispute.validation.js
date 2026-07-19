@@ -5,11 +5,11 @@ export const openDisputeSchema = Joi.object({
   paymentId: Joi.string().uuid().required(),
   reason: Joi.string().valid(...Object.values(DisputeReason)).required(),
   description: Joi.string().max(1000).allow('', null).optional(),
-  evidenceUrls: Joi.array().items(Joi.string().uri()).max(10).default([]),
+  // evidenceUrls are validated in the controller via req.files
 });
 
 export const addEvidenceSchema = Joi.object({
-  evidenceUrls: Joi.array().items(Joi.string().uri()).max(10).required(),
+  // evidenceUrls are validated in the controller via req.files
 });
 
 export const disputeIdSchema = Joi.object({
