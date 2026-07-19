@@ -8,19 +8,25 @@ export const handleOpenDispute = async (req, res, next) => {
   try {
     const { error, value } = openDisputeSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ success: false, message: error.details[0].message });
+      const err = new Error(error.details[0].message);
+      err.statusCode = 400;
+      err.errorCode = 'VALIDATION_ERROR';
+      return next(err);
     }
 
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ success: false, message: 'Evidence files are required to open a dispute' });
+      const err = new Error('Evidence files are required to open a dispute');
+      err.statusCode = 400;
+      err.errorCode = 'EVIDENCE_REQUIRED';
+      return next(err);
     }
 
     const disputeId = uuidv7();
 
     const uploadPromises = req.files.map((file) => {
-      const ext = file.originalname.split('.').pop() || 'bin';
+      const ext = file.detectedExt || 'bin';
       const s3Key = `disputes/${disputeId}/${Date.now()}-${uuidv7()}.${ext}`;
-      return s3Service.uploadFile(file.buffer, file.mimetype, s3Key);
+      return s3Service.uploadFile(file.buffer, file.detectedMime || file.mimetype, s3Key);
     });
     uploadedUrls = await Promise.all(uploadPromises);
 
@@ -45,7 +51,10 @@ export const handleGetDisputeById = async (req, res, next) => {
   try {
     const { error, value } = disputeIdSchema.validate(req.params);
     if (error) {
-      return res.status(400).json({ success: false, message: error.details[0].message });
+      const err = new Error(error.details[0].message);
+      err.statusCode = 400;
+      err.errorCode = 'VALIDATION_ERROR';
+      return next(err);
     }
 
     const disputeId = value.id;
@@ -66,34 +75,43 @@ export const handleAddEvidence = async (req, res, next) => {
   try {
     const { error, value } = addEvidenceSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ success: false, message: error.details[0].message });
+      const err = new Error(error.details[0].message);
+      err.statusCode = 400;
+      err.errorCode = 'VALIDATION_ERROR';
+      return next(err);
     }
 
     const paramValidation = disputeIdSchema.validate(req.params);
     if (paramValidation.error) {
-      return res.status(400).json({ success: false, message: paramValidation.error.details[0].message });
+      const err = new Error(paramValidation.error.details[0].message);
+      err.statusCode = 400;
+      err.errorCode = 'VALIDATION_ERROR';
+      return next(err);
     }
 
     const disputeId = paramValidation.value.id;
 
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ success: false, message: 'Evidence files are required' });
+      const err = new Error('Evidence files are required');
+      err.statusCode = 400;
+      err.errorCode = 'EVIDENCE_REQUIRED';
+      return next(err);
     }
 
     const oldDispute = await disputeService.getDisputeById({ disputeId, userId: req.user.id, userRole: req.user.role });
     const currentEvidence = oldDispute.evidence_urls || [];
     
     if (currentEvidence.length + req.files.length > 3) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Cumulative evidence limit exceeded. You can only upload ${3 - currentEvidence.length} more file(s).` 
-      });
+      const err = new Error(`Cumulative evidence limit exceeded. You can only upload ${3 - currentEvidence.length} more file(s).`);
+      err.statusCode = 400;
+      err.errorCode = 'TOO_MANY_EVIDENCE_FILES';
+      return next(err);
     }
 
     const uploadPromises = req.files.map((file) => {
-      const ext = file.originalname.split('.').pop() || 'bin';
+      const ext = file.detectedExt || 'bin';
       const s3Key = `disputes/${disputeId}/${Date.now()}-${uuidv7()}.${ext}`;
-      return s3Service.uploadFile(file.buffer, file.mimetype, s3Key);
+      return s3Service.uploadFile(file.buffer, file.detectedMime || file.mimetype, s3Key);
     });
     newlyUploadedUrls = await Promise.all(uploadPromises);
 
@@ -117,7 +135,10 @@ export const handleWithdrawDispute = async (req, res, next) => {
   try {
     const { error, value } = disputeIdSchema.validate(req.params);
     if (error) {
-      return res.status(400).json({ success: false, message: error.details[0].message });
+      const err = new Error(error.details[0].message);
+      err.statusCode = 400;
+      err.errorCode = 'VALIDATION_ERROR';
+      return next(err);
     }
 
     const disputeId = value.id;
@@ -136,7 +157,10 @@ export const handleReviewDispute = async (req, res, next) => {
   try {
     const { error, value } = disputeIdSchema.validate(req.params);
     if (error) {
-      return res.status(400).json({ success: false, message: error.details[0].message });
+      const err = new Error(error.details[0].message);
+      err.statusCode = 400;
+      err.errorCode = 'VALIDATION_ERROR';
+      return next(err);
     }
 
     const disputeId = value.id;
@@ -155,12 +179,18 @@ export const handleResolveDispute = async (req, res, next) => {
   try {
     const paramValidation = disputeIdSchema.validate(req.params);
     if (paramValidation.error) {
-      return res.status(400).json({ success: false, message: paramValidation.error.details[0].message });
+      const err = new Error(paramValidation.error.details[0].message);
+      err.statusCode = 400;
+      err.errorCode = 'VALIDATION_ERROR';
+      return next(err);
     }
 
     const bodyValidation = resolveDisputeSchema.validate(req.body);
     if (bodyValidation.error) {
-      return res.status(400).json({ success: false, message: bodyValidation.error.details[0].message });
+      const err = new Error(bodyValidation.error.details[0].message);
+      err.statusCode = 400;
+      err.errorCode = 'VALIDATION_ERROR';
+      return next(err);
     }
 
     const disputeId = paramValidation.value.id;

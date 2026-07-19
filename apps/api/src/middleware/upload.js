@@ -36,17 +36,7 @@ const checkFilesLimitAndMime = async (req, res, next) => {
 
   try {
     for (const file of req.files) {
-      // 1. Custom Size Check
-      const isImage = ALLOWED_MIME_TYPES.image.includes(file.mimetype);
-      if (isImage && file.size > MAX_IMAGE_SIZE) {
-        const error = new multer.MulterError('LIMIT_FILE_SIZE', file.fieldname);
-        error.message = 'Image size should not exceed 5MB';
-        return next(error);
-      }
-      
-      // Video size is up to 25MB, already handled by multer's global limit
-  
-      // 2. Magic Bytes Check
+      // 1. Magic Bytes Check (First to prevent bypass)
       const fileType = await fileTypeFromBuffer(file.buffer);
       if (!fileType) {
         const error = new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname);
@@ -63,10 +53,14 @@ const checkFilesLimitAndMime = async (req, res, next) => {
         return next(error);
       }
       
-      // Ensure that the magic byte mime matches the requested mime type category
-      if (isImage && !isMagicImage) {
-        const error = new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname);
-        error.message = 'Uploaded file is not a valid image';
+      // Attach verified data to file object
+      file.detectedMime = fileType.mime;
+      file.detectedExt = fileType.ext;
+
+      // 2. Custom Size Check (using verified mime)
+      if (isMagicImage && file.size > MAX_IMAGE_SIZE) {
+        const error = new multer.MulterError('LIMIT_FILE_SIZE', file.fieldname);
+        error.message = 'Image size should not exceed 5MB';
         return next(error);
       }
     }

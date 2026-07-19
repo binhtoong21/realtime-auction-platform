@@ -71,14 +71,19 @@ export const createAuction = async (req, res, next) => {
     const sellerId = req.user.id;
     const auctionId = uuidv7();
 
-    if (req.files && req.files.length > 0) {
-      const uploadPromises = req.files.map((file) => {
-        const ext = file.originalname.split('.').pop() || 'bin';
-        const s3Key = `auctions/${auctionId}/${Date.now()}-${uuidv7()}.${ext}`;
-        return s3Service.uploadFile(file.buffer, file.mimetype, s3Key);
-      });
-      uploadedUrls = await Promise.all(uploadPromises);
+    if (!req.files || req.files.length === 0) {
+      const error = new Error('Images are required to create an auction');
+      error.statusCode = 400;
+      error.errorCode = 'IMAGES_REQUIRED';
+      throw error;
     }
+
+    const uploadPromises = req.files.map((file) => {
+      const ext = file.detectedExt || 'bin';
+      const s3Key = `auctions/${auctionId}/${Date.now()}-${uuidv7()}.${ext}`;
+      return s3Service.uploadFile(file.buffer, file.detectedMime || file.mimetype, s3Key);
+    });
+    uploadedUrls = await Promise.all(uploadPromises);
 
     const serviceData = {
       id: auctionId,
@@ -142,9 +147,9 @@ export const updateAuction = async (req, res, next) => {
 
     if (newFiles.length > 0) {
       const uploadPromises = newFiles.map((file) => {
-        const ext = file.originalname.split('.').pop() || 'bin';
+        const ext = file.detectedExt || 'bin';
         const s3Key = `auctions/${id}/${Date.now()}-${uuidv7()}.${ext}`;
-        return s3Service.uploadFile(file.buffer, file.mimetype, s3Key);
+        return s3Service.uploadFile(file.buffer, file.detectedMime || file.mimetype, s3Key);
       });
       newlyUploadedUrls = await Promise.all(uploadPromises);
     }

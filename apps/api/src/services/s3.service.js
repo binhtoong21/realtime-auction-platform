@@ -4,7 +4,14 @@ const accountId = process.env.R2_ACCOUNT_ID;
 const accessKeyId = process.env.R2_ACCESS_KEY_ID;
 const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
 const bucketName = process.env.R2_BUCKET_NAME;
+const publicUrl = process.env.R2_PUBLIC_URL;
 
+if (!accountId || !accessKeyId || !secretAccessKey || !bucketName || !publicUrl) {
+  console.error('CRITICAL: Missing Cloudflare R2 environment variables. File upload will fail.');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Missing Cloudflare R2 environment variables');
+  }
+}
 const s3Client = new S3Client({
   region: 'auto',
   endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
