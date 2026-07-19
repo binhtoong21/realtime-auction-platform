@@ -22,7 +22,11 @@ export const handleOpenDispute = async (req, res, next) => {
       const s3Key = `disputes/${disputeId}/${Date.now()}-${uuidv7()}.${ext}`;
       return s3Service.uploadFile(file.buffer, file.detectedMime || file.mimetype, s3Key);
     });
-    uploadedUrls = await Promise.all(uploadPromises);
+    const results = await Promise.allSettled(uploadPromises);
+    uploadedUrls = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+    
+    const rejected = results.find(r => r.status === 'rejected');
+    if (rejected) throw rejected.reason;
 
     const result = await disputeService.createDisputeFromRequest({
       id: disputeId,
@@ -68,22 +72,16 @@ export const handleAddEvidence = async (req, res, next) => {
       return next(err);
     }
 
-    const oldDispute = await disputeService.getDisputeById({ disputeId, userId: req.user.id, userRole: req.user.role });
-    const currentEvidence = oldDispute.evidence_urls || [];
-    
-    if (currentEvidence.length + req.files.length > 3) {
-      const err = new Error(`Cumulative evidence limit exceeded. You can only upload ${3 - currentEvidence.length} more file(s).`);
-      err.statusCode = 400;
-      err.errorCode = 'TOO_MANY_EVIDENCE_FILES';
-      return next(err);
-    }
-
     const uploadPromises = req.files.map((file) => {
       const ext = file.detectedExt || 'bin';
       const s3Key = `disputes/${disputeId}/${Date.now()}-${uuidv7()}.${ext}`;
       return s3Service.uploadFile(file.buffer, file.detectedMime || file.mimetype, s3Key);
     });
-    newlyUploadedUrls = await Promise.all(uploadPromises);
+    const results = await Promise.allSettled(uploadPromises);
+    newlyUploadedUrls = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+    
+    const rejected = results.find(r => r.status === 'rejected');
+    if (rejected) throw rejected.reason;
 
     const result = await disputeService.addEvidence({
       disputeId,

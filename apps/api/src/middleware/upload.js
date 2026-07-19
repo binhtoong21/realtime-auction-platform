@@ -2,6 +2,7 @@ import multer from 'multer';
 import { fileTypeFromBuffer } from 'file-type';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+export const MAX_EVIDENCE_COUNT = 3;
 
 const storage = multer.memoryStorage();
 
@@ -76,6 +77,6 @@ export const uploadAuctionImages = [
 ];
 
 export const uploadDisputeEvidence = [
-  upload.array('evidence', 3),
+  upload.array('evidence', MAX_EVIDENCE_COUNT),
   checkFilesLimitAndMime,
 ];

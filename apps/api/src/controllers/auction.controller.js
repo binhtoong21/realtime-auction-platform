@@ -83,7 +83,11 @@ export const createAuction = async (req, res, next) => {
       const s3Key = `auctions/${auctionId}/${Date.now()}-${uuidv7()}.${ext}`;
       return s3Service.uploadFile(file.buffer, file.detectedMime || file.mimetype, s3Key);
     });
-    uploadedUrls = await Promise.all(uploadPromises);
+    const results = await Promise.allSettled(uploadPromises);
+    uploadedUrls = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+    
+    const rejected = results.find(r => r.status === 'rejected');
+    if (rejected) throw rejected.reason;
 
     const serviceData = {
       id: auctionId,
@@ -145,13 +149,25 @@ export const updateAuction = async (req, res, next) => {
     }
     const oldImages = oldAuction.images || [];
 
+    const invalidImages = existingImages.filter(url => !oldImages.includes(url));
+    if (invalidImages.length > 0) {
+      const error = new Error('Invalid existing images provided');
+      error.statusCode = 400;
+      error.errorCode = 'INVALID_EXISTING_IMAGES';
+      throw error;
+    }
+
     if (newFiles.length > 0) {
       const uploadPromises = newFiles.map((file) => {
         const ext = file.detectedExt || 'bin';
         const s3Key = `auctions/${id}/${Date.now()}-${uuidv7()}.${ext}`;
         return s3Service.uploadFile(file.buffer, file.detectedMime || file.mimetype, s3Key);
       });
-      newlyUploadedUrls = await Promise.all(uploadPromises);
+      const results = await Promise.allSettled(uploadPromises);
+      newlyUploadedUrls = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+      
+      const rejected = results.find(r => r.status === 'rejected');
+      if (rejected) throw rejected.reason;
     }
 
     const finalImages = [...existingImages, ...newlyUploadedUrls];

@@ -1,4 +1,5 @@
 import { pool } from '../config/database.js';
+import { MAX_EVIDENCE_COUNT } from '../middleware/upload.js';
 import { v7 as uuidv7 } from 'uuid';
 import { EventNames, DisputeStatus, PaymentStatus } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
@@ -146,7 +147,10 @@ export const createSystemDispute = async ({ id, paymentId, reason, description }
     );
 
     if (paymentRes.rowCount === 0) {
-      throw new Error('Payment not found');
+      const error = new Error('Payment not found');
+      error.statusCode = 404;
+      error.errorCode = 'PAYMENT_NOT_FOUND';
+      throw error;
     }
 
     const payment = paymentRes.rows[0];
@@ -163,7 +167,10 @@ export const createSystemDispute = async ({ id, paymentId, reason, description }
       createdDispute = disputeRes.rows[0];
     } catch (dbErr) {
       if (dbErr.code === '23505') {
-        throw new Error('A dispute already exists for this payment');
+        const error = new Error('A dispute already exists for this payment');
+        error.statusCode = 409;
+        error.errorCode = 'DISPUTE_ALREADY_EXISTS';
+        throw error;
       }
       throw dbErr;
     }
@@ -280,11 +287,11 @@ export const addEvidence = async ({ disputeId, userId, evidenceUrls }) => {
       throw err;
     }
 
-    // Limit array size to 10
     const currentUrls = dispute.evidence_urls || [];
-    if (currentUrls.length + evidenceUrls.length > 10) {
-      const err = new Error('Cannot exceed maximum of 10 evidence URLs per dispute');
+    if (currentUrls.length + evidenceUrls.length > MAX_EVIDENCE_COUNT) {
+      const err = new Error(`Cumulative evidence limit exceeded. You can only upload ${MAX_EVIDENCE_COUNT - currentUrls.length} more file(s).`);
       err.statusCode = 400;
+      err.errorCode = 'TOO_MANY_EVIDENCE_FILES';
       throw err;
     }
 
