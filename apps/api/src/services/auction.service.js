@@ -164,7 +164,7 @@ export const createAuction = async (sellerId, data) => {
     throw error;
   }
 
-  const id = uuidv7();
+  const id = data.id || uuidv7();
 
   const query = `
     INSERT INTO auctions (

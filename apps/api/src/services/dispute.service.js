@@ -1,4 +1,5 @@
 import { pool } from '../config/database.js';
+import { MAX_EVIDENCE_COUNT } from '../middleware/upload.js';
 import { v7 as uuidv7 } from 'uuid';
 import { EventNames, DisputeStatus, PaymentStatus } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
@@ -18,7 +19,7 @@ const writeAuditLog = async ({ referenceId, referenceType, action, deltaState, a
   );
 };
 
-export const openDispute = async ({ buyerId, paymentId, reason, description, evidenceUrls }) => {
+export const createDisputeFromRequest = async ({ id, buyerId, paymentId, reason, description, evidenceUrls }) => {
   const client = await pool.connect();
   let createdDispute;
   let auctionId;
@@ -76,7 +77,7 @@ export const openDispute = async ({ buyerId, paymentId, reason, description, evi
            id, payment_id, auction_id, opened_by, reason, description, evidence_urls, status, deadline_at, seller_evidence_deadline_at
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + INTERVAL '7 days', NOW() + INTERVAL '72 hours')
          RETURNING *`,
-        [uuidv7(), paymentId, auctionId, buyerId, reason, description, evidenceUrls || [], DisputeStatus.OPEN]
+        [id, paymentId, auctionId, buyerId, reason, description, evidenceUrls, DisputeStatus.OPEN]
       );
       createdDispute = disputeRes.rows[0];
     } catch (dbErr) {
@@ -126,6 +127,82 @@ export const openDispute = async ({ buyerId, paymentId, reason, description, evi
     reason: createdDispute.reason,
     deadlineAt: createdDispute.deadline_at,
   };
+};
+
+export const createSystemDispute = async ({ id, paymentId, reason, description }) => {
+  const client = await pool.connect();
+  let createdDispute;
+  let auctionId;
+
+  try {
+    await client.query('BEGIN');
+
+    const paymentRes = await client.query(
+      `SELECT p.id, p.buyer_id, p.status as payment_status, 
+              a.id as auction_id, a.shipped_at 
+       FROM payments p
+       JOIN auctions a ON p.auction_id = a.id
+       WHERE p.id = $1 FOR UPDATE`,
+      [paymentId]
+    );
+
+    if (paymentRes.rowCount === 0) {
+      const error = new Error('Payment not found');
+      error.statusCode = 404;
+      error.errorCode = 'PAYMENT_NOT_FOUND';
+      throw error;
+    }
+
+    const payment = paymentRes.rows[0];
+    auctionId = payment.auction_id;
+
+    try {
+      const disputeRes = await client.query(
+        `INSERT INTO disputes (
+           id, payment_id, auction_id, opened_by, reason, description, evidence_urls, status, deadline_at, seller_evidence_deadline_at
+         ) VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, NOW() + INTERVAL '7 days', NOW() + INTERVAL '72 hours')
+         RETURNING *`,
+        [id, paymentId, auctionId, reason, description, [], DisputeStatus.OPEN]
+      );
+      createdDispute = disputeRes.rows[0];
+    } catch (dbErr) {
+      if (dbErr.code === '23505') {
+        const error = new Error('A dispute already exists for this payment');
+        error.statusCode = 409;
+        error.errorCode = 'DISPUTE_ALREADY_EXISTS';
+        throw error;
+      }
+      throw dbErr;
+    }
+
+    await client.query(
+      `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [PaymentStatus.FROZEN, paymentId]
+    );
+
+    await writeAuditLog({
+      referenceId: createdDispute.id,
+      referenceType: 'dispute',
+      action: 'dispute_opened_by_system',
+      deltaState: { reason, status: DisputeStatus.OPEN },
+      actorId: 'system',
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  try {
+    await removeDeliveryJobs(auctionId);
+  } catch (sideErr) {
+    console.error('Failed to execute side effects for createSystemDispute:', sideErr);
+  }
+  
+  return createdDispute;
 };
 
 export const getDisputeById = async ({ disputeId, userId, userRole }) => {
@@ -210,11 +287,11 @@ export const addEvidence = async ({ disputeId, userId, evidenceUrls }) => {
       throw err;
     }
 
-    // Limit array size to 10
     const currentUrls = dispute.evidence_urls || [];
-    if (currentUrls.length + evidenceUrls.length > 10) {
-      const err = new Error('Cannot exceed maximum of 10 evidence URLs per dispute');
+    if (currentUrls.length + evidenceUrls.length > MAX_EVIDENCE_COUNT) {
+      const err = new Error(`Cumulative evidence limit exceeded. You can only upload ${MAX_EVIDENCE_COUNT - currentUrls.length} more file(s).`);
       err.statusCode = 400;
+      err.errorCode = 'TOO_MANY_EVIDENCE_FILES';
       throw err;
     }
 
