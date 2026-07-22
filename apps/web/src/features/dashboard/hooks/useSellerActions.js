@@ -1,5 +1,5 @@
-import { useFetch } from '../../../../core/hooks/useFetch';
-import { useMutation } from '../../../../core/hooks/useMutation';
+import { useFetch } from '../../../core/hooks/useFetch';
+import { useMutation } from '../../../core/hooks/useMutation';
 
 /**
  * Fetch seller's own auctions list.

@@ -10,7 +10,7 @@ import paymentWorker from './jobs/payment.worker.js';
 import webhookReaperWorker from './jobs/webhook-reaper.worker.js';
 import fulfillmentWorker from './jobs/fulfillment.worker.js';
 import { disputeWorker } from './jobs/dispute.worker.js';
-import { startWebhookReaper, startPaymentSweeper, startFulfillmentSweeper, startDisputeExpirySweeper } from './jobs/queue.js';
+import { startWebhookReaper, startPaymentSweeper, startGracePeriodSweeper, startFulfillmentSweeper, startDisputeExpirySweeper } from './jobs/queue.js';
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
@@ -75,6 +75,7 @@ server.listen(PORT, async () => {
   while (retries > 0) {
     try {
       await startPaymentSweeper();
+      await startGracePeriodSweeper();
       await startWebhookReaper();
       await startFulfillmentSweeper();
       await startDisputeExpirySweeper();

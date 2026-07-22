@@ -191,9 +191,11 @@ const FIVE_MINUTES_MS = 5 * 60 * 1000;
  * Call once at server startup.
  */
 export const startWebhookReaper = async () => {
-  await webhookQueue.add('webhook-reaper', {}, {
-    repeat: { every: FIVE_MINUTES_MS },
-    jobId: 'webhook-reaper-singleton',
+  await webhookQueue.upsertJobScheduler('webhook-reaper-scheduler', {
+    every: FIVE_MINUTES_MS
+  }, {
+    name: 'webhook-reaper',
+    data: {}
   });
 
   console.log('[Queue] Webhook reaper registered (every 5 minutes)');
@@ -210,10 +212,27 @@ export const startWebhookReaper = async () => {
  * so calling this on every server restart is safe (no-op if already registered).
  */
 export const startPaymentSweeper = async () => {
-  await paymentQueue.add('payment-sweeper', {}, {
-    repeat: { every: 10 * 60 * 1000 },
+  await paymentQueue.upsertJobScheduler('payment-sweeper-scheduler', {
+    every: 10 * 60 * 1000
+  }, {
+    name: 'payment-sweeper',
+    data: {}
   });
   console.log('[Queue] Payment sweeper registered (every 10 min)');
+};
+
+/**
+ * Register a repeatable grace period sweeper job.
+ * Runs every 60 minutes to catch any payments stuck in grace_period.
+ */
+export const startGracePeriodSweeper = async () => {
+  await paymentQueue.upsertJobScheduler('grace-period-sweeper-scheduler', {
+    every: 60 * 60 * 1000
+  }, {
+    name: 'grace-period-sweeper',
+    data: {}
+  });
+  console.log('[Queue] Grace period sweeper registered (every 1 hour)');
 };
 
 // ============================================================
@@ -289,8 +308,11 @@ export const rescheduleDeliveryJobs = async (auctionId, newDeadlineAt, originalS
 };
 
 export const startFulfillmentSweeper = async () => {
-  await fulfillmentQueue.add('fulfillment-sweeper', {}, {
-    repeat: { every: 15 * 60 * 1000 },
+  await fulfillmentQueue.upsertJobScheduler('fulfillment-sweeper-scheduler', {
+    every: 15 * 60 * 1000
+  }, {
+    name: 'fulfillment-sweeper',
+    data: {}
   });
   console.log('[Queue] Fulfillment sweeper registered (every 15 min)');
 };
@@ -320,9 +342,11 @@ export async function ensureJobScheduled(jobName, auctionId, runAt, extraData = 
 }
 
 export const startDisputeExpirySweeper = async () => {
-  await disputeQueue.add('dispute-expiry-sweeper', null, {
-    jobId: 'dispute-expiry-sweeper-job',
-    repeat: { every: 60 * 60 * 1000 }, // Every 1 hour
+  await disputeQueue.upsertJobScheduler('dispute-expiry-sweeper-scheduler', {
+    every: 60 * 60 * 1000 // Every 1 hour
+  }, {
+    name: 'dispute-expiry-sweeper',
+    data: null
   });
   console.log('[Queue] Dispute expiry sweeper registered (every 1 hour)');
 };

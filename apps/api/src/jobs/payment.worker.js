@@ -5,7 +5,7 @@ import stripe from '../config/stripe.js';
 import { writeAuditLog } from '../services/payment.service.js';
 import { createPayout } from '../services/payout.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
-import { scheduleSecondChanceExpiry, scheduleGracePeriodExpiry } from './queue.js';
+import { scheduleSecondChanceExpiry } from './queue.js';
 
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null
@@ -34,6 +34,9 @@ const paymentWorker = new Worker('payment', async (job) => {
       break;
     case 'payment-sweeper':
       await processPaymentSweeper();
+      break;
+    case 'grace-period-sweeper':
+      await processGracePeriodSweeper();
       break;
     case 'payout':
       await processPayout(job.data);
@@ -628,32 +631,6 @@ async function processPaymentSweeper() {
     console.log('[PaymentWorker] Sweeper: No stuck payments found.');
   }
 
-  // 2. Fallback for stuck grace_period payments
-  const stuckGraceResult = await pool.query(
-    `SELECT id, auction_id FROM payments
-     WHERE status = 'grace_period' AND grace_expires_at < NOW()`
-  );
-  if (stuckGraceResult.rows.length > 0) {
-    for (const payment of stuckGraceResult.rows) {
-      try {
-        const claim = await pool.query(
-          `UPDATE payments SET updated_at = NOW() WHERE id = $1 AND status = 'grace_period' AND grace_expires_at < NOW() RETURNING id`,
-          [payment.id]
-        );
-        if (claim.rowCount > 0) {
-          try {
-            await scheduleGracePeriodExpiry(payment.id, payment.auction_id);
-            console.log(`[PaymentWorker] Sweeper: Rescheduled stuck grace-period-expiry for ${payment.id}`);
-          } catch (enqueueErr) {
-            console.error(`[PaymentWorker] Sweeper: Failed to reschedule grace_period for ${payment.id}:`, enqueueErr.message);
-          }
-        }
-      } catch (err) {
-        console.error(`[PaymentWorker] Sweeper: Failed to sweep grace_period for ${payment.id}:`, err.message);
-      }
-    }
-  }
-
   // 3. Payout sweep: captured payments that should have been transferred
   try {
     await sweepPendingPayouts();
@@ -1189,6 +1166,35 @@ async function sweepPendingPayouts() {
   }
 }
 
+/**
+ * Grace Period Sweeper — Periodically sweeps stuck grace_period payments.
+ * Runs every hour to transition expired grace_period payments to second_chance or no_sale.
+ */
+async function processGracePeriodSweeper() {
+  console.log('[PaymentWorker] Running grace period sweeper...');
+
+  const stuckGraceResult = await pool.query(
+    `SELECT id, auction_id FROM payments
+     WHERE status = 'grace_period' AND grace_expires_at < NOW()`
+  );
+
+  if (stuckGraceResult.rows.length === 0) {
+    console.log('[PaymentWorker] GraceSweeper: No stuck grace_period payments found.');
+    return;
+  }
+
+  console.log(`[PaymentWorker] GraceSweeper: Found ${stuckGraceResult.rows.length} stuck grace_period payment(s).`);
+  for (const payment of stuckGraceResult.rows) {
+    try {
+      // processGracePeriodExpiry has its own atomic DB guard
+      await processGracePeriodExpiry({ paymentId: payment.id, auctionId: payment.auction_id });
+      console.log(`[PaymentWorker] GraceSweeper: Processed stuck grace_period for payment ${payment.id}`);
+    } catch (err) {
+      console.error(`[PaymentWorker] GraceSweeper: Failed to process payment ${payment.id}:`, err.message);
+    }
+  }
+}
+
 paymentWorker.on('completed', (job) => {
   console.log(`[PaymentWorker] Job ${job.id} (${job.name}) completed.`);
 });
@@ -1197,4 +1203,5 @@ paymentWorker.on('failed', (job, err) => {
   console.error(`[PaymentWorker] Job ${job?.id} (${job?.name}) failed:`, err.message);
 });
 
+export { processGracePeriodSweeper };
 export default paymentWorker;
