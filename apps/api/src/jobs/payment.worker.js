@@ -5,7 +5,7 @@ import stripe from '../config/stripe.js';
 import { writeAuditLog } from '../services/payment.service.js';
 import { createPayout } from '../services/payout.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
-import { scheduleSecondChanceExpiry, scheduleGracePeriodExpiry } from './queue.js';
+import { scheduleSecondChanceExpiry } from './queue.js';
 
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null
@@ -630,7 +630,6 @@ async function processPaymentSweeper() {
   } else {
     console.log('[PaymentWorker] Sweeper: No stuck payments found.');
   }
-
 
   // 3. Payout sweep: captured payments that should have been transferred
   try {
