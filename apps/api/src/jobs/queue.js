@@ -216,6 +216,18 @@ export const startPaymentSweeper = async () => {
   console.log('[Queue] Payment sweeper registered (every 10 min)');
 };
 
+/**
+ * Register a repeatable grace period sweeper job.
+ * Runs every 60 minutes to catch any payments stuck in grace_period.
+ */
+export const startGracePeriodSweeper = async () => {
+  await paymentQueue.add('grace-period-sweeper', {}, {
+    repeat: { every: 60 * 60 * 1000 },
+    jobId: 'grace-period-sweeper-job'
+  });
+  console.log('[Queue] Grace period sweeper registered (every 1 hour)');
+};
+
 // ============================================================
 // Fulfillment Lifecycle Queue
 // ============================================================
