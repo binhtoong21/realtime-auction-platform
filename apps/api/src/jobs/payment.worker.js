@@ -428,7 +428,7 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
           second_chance_expires_at: scExpiresAt.toISOString(),
         },
         actorId: null,
-      });
+      }, client);
 
       await client.query('COMMIT');
 
@@ -483,7 +483,7 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
           reason: 'no_runner_up',
         },
         actorId: null,
-      });
+      }, client);
 
       await client.query('COMMIT');
 
@@ -564,7 +564,7 @@ async function processSecondChanceExpiry({ paymentId, auctionId }) {
         reason: 'timeout_48h',
       },
       actorId: null,
-    });
+    }, client);
 
     await client.query('COMMIT');
 

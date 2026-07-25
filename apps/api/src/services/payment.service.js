@@ -843,7 +843,7 @@ export const declineSecondChance = async ({ auctionId, userId }) => {
     console.error(`[Payment] Decline notification failed for auction ${auctionId}:`, notifyErr);
   }
 
-  return { status: AuctionStatus.NO_SALE };
+  return { status: PaymentStatus.NO_SALE };
 };
 
 /**
