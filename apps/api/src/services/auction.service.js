@@ -3,10 +3,10 @@ import { v7 as uuidv7 } from 'uuid';
 import { scheduleAuctionStart, scheduleAuctionEnd, removeAuctionJobs } from '../jobs/queue.js';
 import stripe from '../config/stripe.js';
 import { ensureStripeCustomer } from './kyc.service.js';
+import { encodeCursor, decodeCursor } from '../utils/cursor.util.js';
 /**
- * Lấy danh sách auctions với Cursor-based Pagination
- * Lấy danh sách auctions với Cursor-based Pagination
- * Cursor dựa trên created_at để tránh duplicate/skip khi có auction mới.
+ * Lấy danh sách auctions với Cursor-based Pagination.
+ * Cursor là opaque token (base64url-encoded JSON) chứa sort mode + tie-breaker fields.
  */
 export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit = 20, sort = 'newest', minPrice, maxPrice }) => {
   let query = `
@@ -52,36 +52,46 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
   }
 
   if (cursor) {
-    // Note: To properly support cursors with dynamic sort, the cursor logic needs to match the sort field.
-    // For MVP, we only apply cursor logic if sorting by newest (created_at DESC).
-    if (sort === 'newest') {
-      const [cursorTime, cursorId] = cursor.split('_');
-      if (cursorId) {
-        query += ` AND (a.created_at, a.id) < ($${paramCount}, $${paramCount + 1})`;
-        values.push(new Date(cursorTime), cursorId);
+    const decoded = decodeCursor(cursor, sort);
+
+    switch (sort) {
+      case 'ending_soon':
+        query += ` AND (a.end_at, a.id) > ($${paramCount}, $${paramCount + 1})`;
+        values.push(new Date(decoded.end_at), decoded.id);
         paramCount += 2;
-      } else {
-        query += ` AND a.created_at < $${paramCount}`;
-        values.push(new Date(cursor));
+        break;
+      case 'price_asc':
+        query += ` AND (a.current_price, a.id) > ($${paramCount}, $${paramCount + 1})`;
+        values.push(decoded.current_price, decoded.id);
+        paramCount += 2;
+        break;
+      case 'price_desc':
+        query += ` AND (a.current_price, a.id) < ($${paramCount}, $${paramCount + 1})`;
+        values.push(decoded.current_price, decoded.id);
+        paramCount += 2;
+        break;
+      case 'newest':
+      default:
+        query += ` AND a.id < $${paramCount}`;
+        values.push(decoded.id);
         paramCount++;
-      }
+        break;
     }
   }
 
-  // Sắp xếp
   switch (sort) {
     case 'ending_soon':
-      query += ` ORDER BY a.end_at ASC LIMIT $${paramCount}`;
+      query += ` ORDER BY a.end_at ASC, a.id ASC LIMIT $${paramCount}`;
       break;
     case 'price_asc':
-      query += ` ORDER BY a.current_price ASC, a.created_at DESC LIMIT $${paramCount}`;
+      query += ` ORDER BY a.current_price ASC, a.id ASC LIMIT $${paramCount}`;
       break;
     case 'price_desc':
-      query += ` ORDER BY a.current_price DESC, a.created_at DESC LIMIT $${paramCount}`;
+      query += ` ORDER BY a.current_price DESC, a.id DESC LIMIT $${paramCount}`;
       break;
     case 'newest':
     default:
-      query += ` ORDER BY a.created_at DESC, a.id DESC LIMIT $${paramCount}`;
+      query += ` ORDER BY a.id DESC LIMIT $${paramCount}`;
       break;
   }
   
@@ -91,9 +101,22 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
   const items = result.rows;
 
   let nextCursor = null;
-  if (items.length > 0 && items.length === Number(limit) && sort === 'newest') {
+  if (items.length > 0 && items.length === Number(limit)) {
     const lastItem = items[items.length - 1];
-    nextCursor = `${lastItem.created_at.toISOString()}_${lastItem.id}`;
+
+    switch (sort) {
+      case 'ending_soon':
+        nextCursor = encodeCursor({ sort, end_at: lastItem.end_at.toISOString(), id: lastItem.id });
+        break;
+      case 'price_asc':
+      case 'price_desc':
+        nextCursor = encodeCursor({ sort, current_price: lastItem.current_price, id: lastItem.id });
+        break;
+      case 'newest':
+      default:
+        nextCursor = encodeCursor({ sort: 'newest', id: lastItem.id });
+        break;
+    }
   }
 
   return {
