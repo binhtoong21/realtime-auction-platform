@@ -2,6 +2,7 @@ import stripe from '../config/stripe.js';
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './payment.service.js';
+import { PaymentStatus } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
 import { EventNames } from '@auction/shared-constants';
 
@@ -30,7 +31,7 @@ export const createPayout = async (paymentId) => {
     [paymentId]
   );
 
-  if (paymentResult.rows.length === 0 || paymentResult.rows[0].status !== 'captured') {
+  if (paymentResult.rows.length === 0 || paymentResult.rows[0].status !== PaymentStatus.CAPTURED) {
     const currentStatus = paymentResult.rows[0]?.status || 'not_found';
     console.log(`[Payout] Payment ${paymentId} is '${currentStatus}', not captured. Skipping.`);
     return { transferred: false, reason: 'not_capturable', retry: false };
@@ -217,8 +218,8 @@ export const createPayout = async (paymentId) => {
     referenceType: 'payment',
     action: 'payout_completed',
     deltaState: {
-      from_status: 'captured',
-      to_status: 'transferred',
+      from_status: PaymentStatus.CAPTURED,
+      to_status: PaymentStatus.TRANSFERRED,
       stripe_transfer_id: transfer.id,
       transfer_amount: netAmount,
       platform_fee: feeAmount,
@@ -234,7 +235,7 @@ export const createPayout = async (paymentId) => {
     // WS notification (best-effort, seller may be offline)
     await emitToUser(payment.seller_id, EventNames.PAYMENT_STATUS, {
       auctionId: payment.auction_id,
-      status: 'transferred',
+      status: PaymentStatus.TRANSFERRED,
       amount: grossAmount,
       platformFee: feeAmount,
       netAmount,
