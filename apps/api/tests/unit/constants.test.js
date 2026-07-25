@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AuctionStatus, PaymentStatus } from '@auction/shared-constants';
+import { VALID_AUCTION_STATUSES } from '../../src/validations/auction.validation.js';
 
 describe('shared-constants value lock', () => {
   describe('AuctionStatus', () => {
@@ -82,8 +83,8 @@ describe('shared-constants value lock', () => {
 
   describe('Joi validation set-equality check', () => {
     it('should verify getAuctionsSchema status list vs AuctionStatus values', () => {
-      // Hardcoded list from auction.validation.js line 4
-      const joiStatusList = ['draft', 'active', 'ended', 'pending_payment', 'paid', 'shipped', 'completed', 'no_sale'];
+      // Use exported list from auction.validation.js
+      const joiStatusList = VALID_AUCTION_STATUSES;
       const constantValues = new Set(Object.values(AuctionStatus));
       const joiSet = new Set(joiStatusList);
 

@@ -2,7 +2,7 @@ import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './payment.service.js';
 import { emitToUser, emitToAdmin } from './socket.service.js';
-import { paymentQueue, schedulePayoutJob, scheduleEmergencyCapture } from '../jobs/queue.js';
+import { paymentQueue, schedulePayoutJob } from '../jobs/queue.js';
 import { PaymentStatus, AuctionStatus } from '@auction/shared-constants';
 import {
   handleIdentityVerified,

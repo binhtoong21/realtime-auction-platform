@@ -2,9 +2,8 @@ import stripe from '../config/stripe.js';
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './payment.service.js';
-import { PaymentStatus } from '@auction/shared-constants';
+import { PaymentStatus, EventNames } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
-import { EventNames } from '@auction/shared-constants';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
 

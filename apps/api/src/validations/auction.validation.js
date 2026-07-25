@@ -1,7 +1,9 @@
 import Joi from 'joi';
 
+export const VALID_AUCTION_STATUSES = ['draft', 'active', 'ended', 'pending_payment', 'paid', 'shipped', 'completed', 'no_sale'];
+
 export const getAuctionsSchema = Joi.object({
-  status: Joi.string().valid('draft', 'active', 'ended', 'pending_payment', 'paid', 'shipped', 'completed', 'no_sale').optional(),
+  status: Joi.string().valid(...VALID_AUCTION_STATUSES).optional(),
   categoryId: Joi.string().uuid().optional(),
   sellerId: Joi.alternatives().try(Joi.string().uuid(), Joi.string().valid('me')).optional(),
   cursor: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})(?:_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$/).optional(),
