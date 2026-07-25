@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
+import { PaymentStatus } from '@auction/shared-constants';
 import { writeAuditLog } from '../services/payment.service.js';
 import { createPayout } from '../services/payout.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
@@ -82,14 +83,14 @@ async function processEmergencyCapture({ paymentId, auctionId }) {
   const payment = result.rows[0];
 
   // Handle capture_pending (BullMQ retry after crash between Stripe call and DB update)
-  if (payment.status === 'capture_pending') {
+  if (payment.status === PaymentStatus.CAPTURE_PENDING) {
     console.log(`[PaymentWorker] Payment ${paymentId} stuck in capture_pending. Reconciling with Stripe...`);
     await reconcileCaptureState(payment, auctionId);
     return;
   }
 
   // Only process if authorized
-  if (payment.status !== 'authorized') {
+  if (payment.status !== PaymentStatus.AUTHORIZED) {
     console.log(`[PaymentWorker] Payment ${paymentId} is '${payment.status}', not authorized. Skipping emergency capture.`);
     return;
   }
@@ -282,7 +283,7 @@ async function reconcileCaptureState(payment, auctionId) {
       // Unexpected PI state (canceled, requires_payment_method, etc.)
       // Map terminal states appropriately
       const isTerminal = ['canceled', 'requires_payment_method', 'requires_action'].includes(pi.status);
-      const newStatus = isTerminal ? 'hold_failed' : 'frozen';
+      const newStatus = isTerminal ? PaymentStatus.HOLD_FAILED : PaymentStatus.FROZEN;
 
       const client = await pool.connect();
       try {
@@ -356,13 +357,13 @@ async function processGracePeriodExpiry({ paymentId, auctionId }) {
   const payment = result.rows[0];
 
   // Skip if buyer already retried successfully
-  if (payment.status === 'authorized') {
+  if (payment.status === PaymentStatus.AUTHORIZED) {
     console.log(`[PaymentWorker] Payment ${paymentId} already authorized. Buyer retried OK. Skipping.`);
     return;
   }
 
   // Only process if still in grace_period
-  if (payment.status !== 'grace_period') {
+  if (payment.status !== PaymentStatus.GRACE_PERIOD) {
     console.log(`[PaymentWorker] Payment ${paymentId} is '${payment.status}', not grace_period. Skipping.`);
     return;
   }
@@ -526,7 +527,7 @@ async function processSecondChanceExpiry({ paymentId, auctionId }) {
   const payment = result.rows[0];
 
   // Skip if already resolved (accepted → authorized, declined → no_sale, etc.)
-  if (payment.status !== 'second_chance') {
+  if (payment.status !== PaymentStatus.SECOND_CHANCE) {
     console.log(`[PaymentWorker] Payment ${paymentId} is '${payment.status}', not second_chance. Skipping.`);
     return;
   }
@@ -681,11 +682,11 @@ async function sweepSinglePayment(payment) {
   // Retrieve actual state from Stripe
   const pi = await stripe.paymentIntents.retrieve(payment.stripe_pi_id);
 
-  if (payment.status === 'capture_pending') {
+  if (payment.status === PaymentStatus.CAPTURE_PENDING) {
     await sweepCapturePending(payment, pi);
-  } else if (payment.status === 'hold_pending') {
+  } else if (payment.status === PaymentStatus.HOLD_PENDING) {
     await sweepHoldPending(payment, pi);
-  } else if (payment.status === 'releasing') {
+  } else if (payment.status === PaymentStatus.RELEASING) {
     await sweepReleasing(payment, pi);
   }
 }
@@ -731,7 +732,7 @@ async function sweepCapturePending(payment, pi) {
         deltaState: {
           stripe_pi_id: payment.stripe_pi_id,
           stripe_pi_status: 'requires_capture',
-          synced_to: 'captured',
+          synced_to: PaymentStatus.CAPTURED,
           auction_id: payment.auction_id,
         },
         actorId: null,
@@ -777,7 +778,7 @@ async function sweepCapturePending(payment, pi) {
       referenceType: 'payment',
       action: 'sweeper_admin_alert',
       deltaState: {
-        stuck_status: 'capture_pending',
+        stuck_status: PaymentStatus.CAPTURE_PENDING,
         stripe_pi_id: payment.stripe_pi_id,
         stripe_pi_status: pi.status,
         auction_id: payment.auction_id,
@@ -816,7 +817,7 @@ async function sweepReleasing(payment, pi) {
         referenceId: payment.id,
         referenceType: 'payment',
         action: 'sweeper_releasing_synced',
-        deltaState: { stripe_pi_status: 'canceled', synced_to: 'refunded' },
+        deltaState: { stripe_pi_status: 'canceled', synced_to: PaymentStatus.REFUNDED },
         actorId: null,
       }, client);
       await client.query('COMMIT');
@@ -848,7 +849,7 @@ async function sweepReleasing(payment, pi) {
           referenceId: payment.id,
           referenceType: 'payment',
           action: 'sweeper_releasing_synced',
-          deltaState: { stripe_pi_status: 'succeeded', refund_id: succeededRefund.id, synced_to: 'refunded' },
+          deltaState: { stripe_pi_status: 'succeeded', refund_id: succeededRefund.id, synced_to: PaymentStatus.REFUNDED },
           actorId: null,
         }, client);
         await client.query('COMMIT');
@@ -890,7 +891,7 @@ async function sweepReleasing(payment, pi) {
             referenceId: payment.id,
             referenceType: 'payment',
             action: 'sweeper_releasing_synced',
-            deltaState: { stripe_pi_status: 'succeeded', refund_id: refund.id, synced_to: 'refunded' },
+            deltaState: { stripe_pi_status: 'succeeded', refund_id: refund.id, synced_to: PaymentStatus.REFUNDED },
             actorId: null,
           }, client);
           await client.query('COMMIT');
@@ -930,7 +931,7 @@ async function sweepReleasing(payment, pi) {
         referenceId: payment.id,
         referenceType: 'payment',
         action: 'sweeper_releasing_synced',
-        deltaState: { stripe_pi_status: 'requires_capture', canceled: true, synced_to: 'refunded' },
+        deltaState: { stripe_pi_status: 'requires_capture', canceled: true, synced_to: PaymentStatus.REFUNDED },
         actorId: null,
       }, client);
       await client.query('COMMIT');
@@ -947,7 +948,7 @@ async function sweepReleasing(payment, pi) {
       referenceId: payment.id,
       referenceType: 'payment',
       action: 'sweeper_admin_alert',
-      deltaState: { stuck_status: 'releasing', stripe_pi_id: payment.stripe_pi_id, stripe_pi_status: pi.status, auction_id: payment.auction_id },
+      deltaState: { stuck_status: PaymentStatus.RELEASING, stripe_pi_id: payment.stripe_pi_id, stripe_pi_status: pi.status, auction_id: payment.auction_id },
       actorId: null,
     });
     await emitToAdmin('payment:reconciliation-alert', {
@@ -989,7 +990,7 @@ async function sweepHoldPending(payment, pi) {
         deltaState: {
           stripe_pi_id: payment.stripe_pi_id,
           stripe_pi_status: 'requires_capture',
-          synced_to: 'authorized',
+          synced_to: PaymentStatus.AUTHORIZED,
           auction_id: payment.auction_id,
         },
         actorId: null,
@@ -1030,7 +1031,7 @@ async function sweepHoldPending(payment, pi) {
         deltaState: {
           stripe_pi_id: payment.stripe_pi_id,
           stripe_pi_status: pi.status,
-          reverted_to: 'grace_period',
+          reverted_to: PaymentStatus.GRACE_PERIOD,
           grace_expires_at: graceExpiresAt.toISOString(),
           auction_id: payment.auction_id,
         },
@@ -1064,7 +1065,7 @@ async function sweepHoldPending(payment, pi) {
       referenceType: 'payment',
       action: 'sweeper_admin_alert',
       deltaState: {
-        stuck_status: 'hold_pending',
+        stuck_status: PaymentStatus.HOLD_PENDING,
         stripe_pi_id: payment.stripe_pi_id,
         stripe_pi_status: pi.status,
         auction_id: payment.auction_id,
