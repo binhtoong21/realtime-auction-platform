@@ -7,7 +7,7 @@ import {
   scheduleGracePeriodExpiry,
 } from '../jobs/queue.js';
 import { emitToUser } from './socket.service.js';
-import { EventNames } from '@auction/shared-constants';
+import { EventNames, PaymentStatus, AuctionStatus } from '@auction/shared-constants';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
 const SHIPPING_DEADLINE_DAYS = 5;
@@ -299,7 +299,7 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     throw { status: 403, message: 'Forbidden' };
   }
 
-  if (payment.status !== 'grace_period') {
+  if (payment.status !== PaymentStatus.GRACE_PERIOD) {
     throw { status: 422, message: `Cannot retry payment in state: ${payment.status}` };
   }
 
@@ -498,7 +498,7 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
 
   const payment = paymentResult.rows[0];
 
-  if (payment.status !== 'second_chance') {
+  if (payment.status !== PaymentStatus.SECOND_CHANCE) {
     throw { status: 422, code: 'INVALID_PAYMENT_STATE', message: `Cannot accept second chance in state: ${payment.status}` };
   }
 
@@ -700,7 +700,7 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
       await emitToUser(userId, 'auction:won', {
         auctionId,
         finalPrice: Number(payment.second_chance_amount),
-        paymentStatus: 'authorized',
+        paymentStatus: PaymentStatus.AUTHORIZED,
         paymentId: payment.id,
       });
 
@@ -709,7 +709,7 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
         amount: Number(payment.second_chance_amount),
         platformFee: feeAmount,
         sellerReceives,
-        status: 'awaiting_ship',
+        status: AuctionStatus.AWAITING_SHIP,
         message: 'A new buyer has accepted the offer. Please prepare for shipping.',
       });
     } catch (sideEffectErr) {
@@ -718,7 +718,7 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
 
     return {
       paymentId: payment.id,
-      status: 'authorized',
+      status: PaymentStatus.AUTHORIZED,
       amount: Number(payment.second_chance_amount),
     };
 
@@ -843,7 +843,7 @@ export const declineSecondChance = async ({ auctionId, userId }) => {
     console.error(`[Payment] Decline notification failed for auction ${auctionId}:`, notifyErr);
   }
 
-  return { status: 'no_sale' };
+  return { status: AuctionStatus.NO_SALE };
 };
 
 /**
