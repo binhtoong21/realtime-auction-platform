@@ -18,6 +18,9 @@ export const shorthands = undefined;
  * @param pgm {import('node-pg-migrate').MigrationBuilder}
  */
 export const up = async (pgm) => {
+  // Drop the existing 1-column index if it exists (e.g. created manually or in a previous missed migration)
+  pgm.dropIndex('auctions', [], { name: 'idx_auctions_active_ending', ifExists: true });
+
   // For sort=ending_soon: ORDER BY end_at ASC, id ASC
   pgm.createIndex('auctions', [{ name: 'end_at', sort: 'ASC' }, { name: 'id', sort: 'ASC' }], {
     name: 'idx_auctions_active_ending',
@@ -39,4 +42,10 @@ export const up = async (pgm) => {
 export const down = async (pgm) => {
   pgm.dropIndex('auctions', [], { name: 'idx_auctions_active_price' });
   pgm.dropIndex('auctions', [], { name: 'idx_auctions_active_ending' });
+  
+  // Recreate the original 1-column index for rollback safety
+  pgm.createIndex('auctions', ['end_at'], {
+    name: 'idx_auctions_active_ending',
+    where: "status = 'active'",
+  });
 };

@@ -103,5 +103,29 @@ describe('cursor.util', () => {
     it('should throw INVALID_CURSOR for empty string cursor', () => {
       expect(() => decodeCursor('', 'newest')).toThrow();
     });
+
+    it('should throw INVALID_CURSOR when ending_soon cursor is missing end_at', () => {
+      const cursor = encodeCursor({ sort: 'ending_soon', id: '123' });
+      expect(() => decodeCursor(cursor, 'ending_soon'))
+        .toThrow('Cursor is missing or has invalid field: end_at');
+    });
+
+    it('should throw INVALID_CURSOR when ending_soon cursor has invalid date end_at', () => {
+      const cursor = encodeCursor({ sort: 'ending_soon', id: '123', end_at: 'not-a-date' });
+      expect(() => decodeCursor(cursor, 'ending_soon'))
+        .toThrow('Cursor is missing or has invalid field: end_at');
+    });
+
+    it('should throw INVALID_CURSOR when price_asc cursor is missing current_price', () => {
+      const cursor = encodeCursor({ sort: 'price_asc', id: '123' });
+      expect(() => decodeCursor(cursor, 'price_asc'))
+        .toThrow('Cursor is missing or has invalid field: current_price');
+    });
+
+    it('should throw INVALID_CURSOR when price_desc cursor has non-numeric current_price', () => {
+      const cursor = encodeCursor({ sort: 'price_desc', id: '123', current_price: 'abc' });
+      expect(() => decodeCursor(cursor, 'price_desc'))
+        .toThrow('Cursor is missing or has invalid field: current_price');
+    });
   });
 });

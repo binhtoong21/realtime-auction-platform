@@ -61,5 +61,26 @@ export function decodeCursor(cursorString, currentSort) {
     throw error;
   }
 
+  // Validate sort-specific fields to prevent SQL execution errors
+  switch (currentSort) {
+    case 'ending_soon':
+      if (!payload.end_at || isNaN(new Date(payload.end_at).getTime())) {
+        const error = new Error('Cursor is missing or has invalid field: end_at');
+        error.statusCode = 400;
+        error.errorCode = 'INVALID_CURSOR';
+        throw error;
+      }
+      break;
+    case 'price_asc':
+    case 'price_desc':
+      if (payload.current_price === undefined || isNaN(Number(payload.current_price))) {
+        const error = new Error('Cursor is missing or has invalid field: current_price');
+        error.statusCode = 400;
+        error.errorCode = 'INVALID_CURSOR';
+        throw error;
+      }
+      break;
+  }
+
   return payload;
 }
