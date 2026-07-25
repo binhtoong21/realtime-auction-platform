@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { pool } from '../config/database.js';
 import { scheduleAuctionEnd } from './queue.js';
+import { AuctionStatus, PaymentStatus } from '@auction/shared-constants';
 import { emitToAuctionRoom, emitToUser } from '../services/socket.service.js';
 import { createAuthHold, schedulePostHoldJobs } from '../services/payment.service.js';
 
@@ -40,8 +41,8 @@ const auctionEndWorker = new Worker('auction', async (job) => {
   const auction = auctionResult.rows[0];
 
   // Skip if already ended (idempotent)
-  if (auction.status !== 'active') {
-    if (auction.status === 'ended' && auction.winner_id) {
+  if (auction.status !== AuctionStatus.ACTIVE) {
+    if (auction.status === AuctionStatus.ENDED && auction.winner_id) {
       // Check if payment exists
       const existingPayment = await pool.query(
         'SELECT id FROM payments WHERE auction_id = $1', [auctionId]
@@ -121,7 +122,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
         auctionId,
         winnerId: null,
         finalPrice: auction.current_price,
-        status: 'no_sale'
+        status: AuctionStatus.NO_SALE
       });
       return;
     }
@@ -167,7 +168,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
       auctionId,
       winnerId: winner.bidder_id,
       finalPrice: winner.amount,
-      status: 'ended'
+      status: AuctionStatus.ENDED
     });
 
     if (holdResult.holdSuccess) {
@@ -175,7 +176,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
       await emitToUser(winner.bidder_id, 'auction:won', {
         auctionId,
         finalPrice: winner.amount,
-        paymentStatus: 'authorized',
+        paymentStatus: PaymentStatus.AUTHORIZED,
         paymentId: holdResult.paymentId,
       });
     } else {
@@ -183,7 +184,7 @@ const auctionEndWorker = new Worker('auction', async (job) => {
       await emitToUser(winner.bidder_id, 'auction:won', {
         auctionId,
         finalPrice: winner.amount,
-        paymentStatus: 'grace_period',
+        paymentStatus: PaymentStatus.GRACE_PERIOD,
         paymentId: holdResult.paymentId,
         graceExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         message: 'Payment hold failed. Please update your payment method within 24 hours.',

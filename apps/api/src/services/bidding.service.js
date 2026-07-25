@@ -1,5 +1,5 @@
 import { pool, withTransaction } from '../config/database.js';
-import { ErrorCodes } from '@auction/shared-constants';
+import { ErrorCodes, AuctionStatus } from '@auction/shared-constants';
 import { v7 as uuidv7 } from 'uuid';
 import { emitToAuctionRoom, emitToUser } from './socket.service.js';
 
@@ -47,7 +47,7 @@ export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) 
       
       const auction = auctionCheck.rows[0];
       
-      if (auction.status !== 'active' || new Date() >= new Date(auction.end_at)) {
+      if (auction.status !== AuctionStatus.ACTIVE || new Date() >= new Date(auction.end_at)) {
         throw { code: ErrorCodes.AUCTION_ENDED, message: 'Auction is already ended or not active' };
       }
       

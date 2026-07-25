@@ -1,6 +1,6 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
-import { CARRIER_TRACKING_URLS, EventNames } from '@auction/shared-constants';
+import { ErrorCodes, EventNames, AuctionStatus, PaymentStatus, CARRIER_TRACKING_URLS } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
 import stripe from '../config/stripe.js';
 import { rescheduleShippingDeadline, schedulePayoutJob, removeDeliveryJobs, rescheduleDeliveryJobs } from '../jobs/queue.js';
@@ -72,8 +72,8 @@ export const shipAuction = async ({ auctionId, sellerId, carrier, trackingNumber
       referenceType: 'auction',
       action: 'auction_shipped',
       deltaState: {
-        from: 'awaiting_ship',
-        to: 'shipped',
+        from: AuctionStatus.AWAITING_SHIP,
+        to: AuctionStatus.SHIPPED,
         carrier,
         trackingNumber,
       },
@@ -107,14 +107,14 @@ export const shipAuction = async ({ auctionId, sellerId, carrier, trackingNumber
 
     emitToUser(sellerId, EventNames.AUCTION_SHIPPED, {
       auctionId,
-      status: 'shipped',
+      status: AuctionStatus.SHIPPED,
     });
   } catch (wsErr) {
     console.error(`[Fulfillment] WS emit failed for auction ${auctionId}:`, wsErr);
   }
 
   return {
-    status: 'shipped',
+    status: AuctionStatus.SHIPPED,
     shippedAt: updatedAuction.shipped_at,
     deliveryDeadlineAt: updatedAuction.delivery_deadline_at,
     trackingUrl,
@@ -295,7 +295,7 @@ export const extendShipping = async ({ auctionId, sellerId, reason, ipAddress })
       throw err;
     }
 
-    if (auction.status !== 'awaiting_ship') {
+    if (auction.status !== AuctionStatus.AWAITING_SHIP) {
       const err = new Error('Auction cannot be extended in its current state');
       err.statusCode = 409;
       err.errorCode = 'INVALID_AUCTION_STATE';
@@ -421,11 +421,11 @@ export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
     // Fallback: Sweeper will retry later. Emit WS to both parties.
     Promise.allSettled([
       emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
-        status: 'capture_pending',
+        status: PaymentStatus.CAPTURE_PENDING,
         message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
       }),
       emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
-        status: 'capture_pending',
+        status: PaymentStatus.CAPTURE_PENDING,
         message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
       })
     ]).catch(e => console.error('[Fulfillment] WS emit fallback failed:', e));
@@ -475,7 +475,7 @@ export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
     schedulePayoutJob(paymentId, auctionId),
     removeDeliveryJobs(auctionId),
     emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
-      status: 'captured',
+      status: PaymentStatus.CAPTURED,
       message: 'Buyer đã xác nhận nhận hàng. Tiền đang được chuyển.',
     })
   ]).then(results => {
@@ -558,11 +558,11 @@ export const autoConfirmDelivery = async (auctionId) => {
     // Ensure both parties know the system attempted auto-confirm but is waiting on payment processing.
     Promise.allSettled([
       emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
-        status: 'capture_pending',
+        status: PaymentStatus.CAPTURE_PENDING,
         message: 'Hệ thống đang tự động xác nhận thanh toán do quá hạn. Xin vui lòng chờ giây lát.',
       }),
       emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
-        status: 'capture_pending',
+        status: PaymentStatus.CAPTURE_PENDING,
         message: 'Hệ thống đang tự động xác nhận thanh toán do quá hạn. Đang chờ xử lý từ Stripe.',
       }),
       writeAuditLog({
@@ -612,7 +612,7 @@ export const autoConfirmDelivery = async (auctionId) => {
       referenceId: paymentId,
       referenceType: 'payment',
       action: 'auto_confirm_delivery',
-      deltaState: { status: 'captured', auctionStatus: 'completed' },
+      deltaState: { status: PaymentStatus.CAPTURED, auctionStatus: AuctionStatus.COMPLETED },
       actorId: null, // System action
     }, client2);
 
@@ -682,7 +682,7 @@ export const extendDelivery = async ({ auctionId, buyerId, reason, ipAddress }) 
       throw err;
     }
 
-    if (auction.status !== 'shipped') {
+    if (auction.status !== AuctionStatus.SHIPPED) {
       const err = new Error('Auction cannot be extended in its current state');
       err.statusCode = 409;
       err.errorCode = 'INVALID_AUCTION_STATE';

@@ -4,6 +4,7 @@ import { scheduleAuctionStart, scheduleAuctionEnd, removeAuctionJobs } from '../
 import stripe from '../config/stripe.js';
 import { ensureStripeCustomer } from './kyc.service.js';
 import { encodeCursor, decodeCursor } from '../utils/cursor.util.js';
+import { AuctionStatus } from '@auction/shared-constants';
 /**
  * Lấy danh sách auctions với Cursor-based Pagination.
  * Cursor là opaque token (base64url-encoded JSON) chứa sort mode + tie-breaker fields.
@@ -389,7 +390,7 @@ export const joinAuction = async (userId, auctionId) => {
 
   const auction = auctionResult.rows[0];
 
-  if (auction.status !== 'active') {
+  if (auction.status !== AuctionStatus.ACTIVE) {
     const error = new Error('Auction is not active');
     error.statusCode = 400;
     error.errorCode = 'AUCTION_NOT_ACTIVE';

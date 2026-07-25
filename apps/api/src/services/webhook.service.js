@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './payment.service.js';
 import { emitToUser, emitToAdmin } from './socket.service.js';
 import { paymentQueue, schedulePayoutJob } from '../jobs/queue.js';
+import { PaymentStatus, AuctionStatus } from '@auction/shared-constants';
 import {
   handleIdentityVerified,
   handleIdentityFailed,
@@ -71,13 +72,13 @@ export const processWebhookEvent = async (stripeEvent) => {
 
 // Terminal/post-failure states where payment_failed webhook should skip
 const PAYMENT_FAILED_SKIP_STATES = [
-  'grace_period', 'hold_failed', 'second_chance', 'no_sale',
-  'authorized', 'captured', 'released', 'refunded',
+  PaymentStatus.GRACE_PERIOD, PaymentStatus.HOLD_FAILED, PaymentStatus.SECOND_CHANCE, PaymentStatus.NO_SALE,
+  PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED, PaymentStatus.RELEASED, PaymentStatus.REFUNDED,
 ];
 
 // Terminal states where payment_canceled webhook should skip
 const PAYMENT_TERMINAL_STATES = [
-  'captured', 'refunded', 'no_sale', 'released',
+  PaymentStatus.CAPTURED, PaymentStatus.REFUNDED, PaymentStatus.NO_SALE, PaymentStatus.RELEASED,
 ];
 
 /**
@@ -104,7 +105,7 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
   const payment = lookupResult.rows[0];
 
   // Skip if already captured or transferred (idempotent)
-  if (payment.status === 'captured' || payment.status === 'transferred') {
+  if (payment.status === PaymentStatus.CAPTURED || payment.status === PaymentStatus.TRANSFERRED) {
     console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} already '${payment.status}'. Skipping.`);
     return;
   }
