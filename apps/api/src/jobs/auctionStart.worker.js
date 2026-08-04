@@ -51,8 +51,8 @@ const auctionStartWorker = new Worker('auction-start', async (job) => {
 
     // Update status to active
     await client.query(
-      `UPDATE auctions SET status = '${AuctionStatus.ACTIVE}' WHERE id = $1`,
-      [auctionId]
+      `UPDATE auctions SET status = $2 WHERE id = $1`,
+      [auctionId, AuctionStatus.ACTIVE]
     );
 
     await client.query('COMMIT');

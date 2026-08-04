@@ -11,6 +11,10 @@ exports.shorthands = undefined;
 exports.up = (pgm) => {
   // Update existing data
   pgm.sql(`UPDATE auctions SET status = 'scheduled' WHERE status = 'draft'`);
+  // Clean up illogical state where active auctions have future start times
+  pgm.sql(`UPDATE auctions SET status = 'scheduled' WHERE status = 'active' AND start_at > NOW()`);
+  // Update the default value for the status column
+  pgm.alterColumn('auctions', 'status', { default: 'scheduled' });
 };
 
 /**
@@ -20,4 +24,5 @@ exports.up = (pgm) => {
  */
 exports.down = (pgm) => {
   pgm.sql(`UPDATE auctions SET status = 'draft' WHERE status = 'scheduled'`);
+  pgm.alterColumn('auctions', 'status', { default: 'active' });
 };

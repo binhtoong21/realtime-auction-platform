@@ -286,7 +286,20 @@ export function AuctionDetailPage() {
             </div>
           ) : isScheduled ? (
             <div className="auction-detail-ended-notice">
-              <p>This auction has not started yet. Stay tuned!</p>
+              {isJoined ? (
+                <p>You have successfully joined. This auction has not started yet. Stay tuned!</p>
+              ) : (
+                <>
+                  <p>This auction has not started yet.</p>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={handleJoinClick}
+                    style={{ marginTop: '1rem' }}
+                  >
+                    Join Now to Prepare
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <div className="auction-detail-ended-notice">
