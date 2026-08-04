@@ -77,6 +77,10 @@ export function AuctionBrowsePage() {
     handleFilterChange({ ...filters, categoryId });
   };
 
+  const handleStatusChange = (status) => {
+    handleFilterChange({ ...filters, status });
+  };
+
   return (
     <div className="auction-browse-page">
       <div className="browse-layout">
@@ -86,6 +90,27 @@ export function AuctionBrowsePage() {
         />
 
         <main className="browse-main">
+          <div className="status-tabs">
+            <button 
+              className={`status-tab ${filters.status === 'active' ? 'active' : ''}`}
+              onClick={() => handleStatusChange('active')}
+            >
+              Active Auctions
+            </button>
+            <button 
+              className={`status-tab ${filters.status === 'draft' ? 'active' : ''}`}
+              onClick={() => handleStatusChange('draft')}
+            >
+              Upcoming
+            </button>
+            <button 
+              className={`status-tab ${filters.status === 'ended' ? 'active' : ''}`}
+              onClick={() => handleStatusChange('ended')}
+            >
+              Ended
+            </button>
+          </div>
+
           {error && (
             <div className="error-state">
               <p>Failed to load auctions. Please try again.</p>

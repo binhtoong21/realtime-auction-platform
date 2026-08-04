@@ -34,7 +34,9 @@ export function useCreateAuction() {
   const { mutate, data, error, isLoading, reset } = useMutation('/auctions', 'post');
 
   return {
-    createAuction: mutate,
+    createAuction: (formData) => mutate(formData, {
+      headers: { 'Content-Type': undefined } // Let browser set multipart with boundary
+    }),
     createdData: data?.data,
     isLoading,
     error,

@@ -12,14 +12,14 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
   const CONFIG = {
     auction: {
       LABELS: {
-        ACTIVE: 'Đang diễn ra',
-        DRAFT: 'Bản nháp',
-        ENDED: 'Đã kết thúc',
-        AWAITING_SHIP: 'Chờ giao hàng',
-        SHIPPED: 'Đang giao hàng',
-        COMPLETED: 'Hoàn thành',
-        NO_SALE: 'Không bán được',
-        CANCELLED: 'Đã hủy',
+        ACTIVE: 'Active',
+        DRAFT: 'Draft',
+        ENDED: 'Ended',
+        AWAITING_SHIP: 'Awaiting Ship',
+        SHIPPED: 'Shipped',
+        COMPLETED: 'Completed',
+        NO_SALE: 'No Sale',
+        CANCELLED: 'Cancelled',
       },
       TOKENS: {
         ACTIVE: 'status-badge--success',       // --color-action, #F0FDF4
@@ -34,17 +34,17 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
     },
     payment: {
       LABELS: {
-        AUTHORIZED: 'Đang giữ tiền',
-        CAPTURED: 'Đã thanh toán',
-        TRANSFERRED: 'Đã chuyển tiền',
-        REFUNDED: 'Đã hoàn tiền',
-        HOLD_FAILED: 'Giữ tiền thất bại',
-        GRACE_PERIOD: 'Chờ thanh toán lại',
-        SECOND_CHANCE: 'Chờ người hạng 2',
-        FROZEN: 'Đang tranh chấp',
-        HOLD_PENDING: 'Đang xử lý',
-        CAPTURE_PENDING: 'Đang xử lý',
-        RELEASED: 'Đã giải phóng'
+        AUTHORIZED: 'Authorized',
+        CAPTURED: 'Captured',
+        TRANSFERRED: 'Transferred',
+        REFUNDED: 'Refunded',
+        HOLD_FAILED: 'Hold Failed',
+        GRACE_PERIOD: 'Grace Period',
+        SECOND_CHANCE: 'Second Chance',
+        FROZEN: 'Disputed',
+        HOLD_PENDING: 'Hold Pending',
+        CAPTURE_PENDING: 'Capture Pending',
+        RELEASED: 'Released'
       },
       TOKENS: {
         AUTHORIZED: 'status-badge--brand',     // Extrapolated: active hold = brand

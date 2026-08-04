@@ -52,7 +52,7 @@ export function Header() {
             {user && (
               <>
                 <NavLink
-                  to="/dashboard"
+                  to="/dashboard/bids"
                   className={({ isActive }) =>
                     `header__nav-link${isActive ? ' header__nav-link--active' : ''}`
                   }
@@ -74,7 +74,7 @@ export function Header() {
 
         <div className="header__right">
           {user && (
-            <Link to="/auctions/new" className="header__create-btn">
+            <Link to="/dashboard/auctions/create" className="header__create-btn">
               + Create auction
             </Link>
           )}

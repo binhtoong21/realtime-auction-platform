@@ -1,4 +1,6 @@
 import express from 'express';
+import path from 'path';
+import url from 'url';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -35,7 +37,9 @@ const pingRedisWithTimeout = async () => {
 const app = express();
 
 // Security Middlewares
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(cors());
 
 // Webhook route MUST be before express.json() — Stripe requires raw body
@@ -59,6 +63,12 @@ app.use('/admin', adminRoutes);
 
 if (process.env.NODE_ENV === 'test') {
   app.use('/api/test', testRoutes);
+}
+
+// Serve mock S3 files in development synchronously
+if (process.env.NODE_ENV !== 'production') {
+  const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+  app.use('/mock-s3', express.static(path.join(__dirname, '..', 'uploads')));
 }
 
 app.get('/health', async (req, res, next) => {

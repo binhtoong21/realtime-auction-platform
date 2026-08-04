@@ -15,6 +15,7 @@ export function AuctionDetailPage() {
   const { showError } = useToast();
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const bidRefetchTimerRef = useRef(null);
 
   const {
@@ -46,7 +47,7 @@ export function AuctionDetailPage() {
   const onOutbid = useCallback((currentPrice) => {
     const minBidCents = Number(currentPrice) + Number(bidIncrementRef.current);
     setBidAmount(String(minBidCents / 100));
-    showError(`Bạn đã bị vượt giá! Giá tối thiểu: $${(minBidCents / 100).toFixed(2)}`);
+    showError(`You have been outbid! Minimum bid is now $${(minBidCents / 100).toFixed(2)}`);
   }, [showError]);
 
   const { connectionStatus, timeOffset } = useAuctionSocket(id, setAuctionData, onOutbid);
@@ -153,7 +154,11 @@ export function AuctionDetailPage() {
 
   const currentPrice = Number(auction.current_price || 0);
   const bidIncrement = Number(auction.bid_increment || 0);
+  
+  const isDraft = auction.status === 'draft';
   const isActive = auction.status === 'active';
+  const isEnded = ['ended', 'pending_payment', 'no_sale', 'cancelled'].includes(auction.status);
+  
   const isJoined = auction.is_joined || false;
 
   return (
@@ -163,11 +168,54 @@ export function AuctionDetailPage() {
         <div className="auction-detail-left">
           <div className="auction-detail-gallery">
             {auction.images && auction.images.length > 0 ? (
-              <img
-                src={auction.images[0]}
-                alt={auction.title}
-                className="auction-detail-main-image"
-              />
+              <>
+                <div className="auction-detail-main-image-container">
+                  {auction.images.length > 1 && (
+                    <button 
+                      className="gallery-nav-btn prev"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedImageIndex(prev => prev === 0 ? auction.images.length - 1 : prev - 1);
+                      }}
+                      aria-label="Previous image"
+                    >
+                      &#10094;
+                    </button>
+                  )}
+                  
+                  <img
+                    src={auction.images[selectedImageIndex] || auction.images[0]}
+                    alt={auction.title}
+                    className="auction-detail-main-image"
+                  />
+
+                  {auction.images.length > 1 && (
+                    <button 
+                      className="gallery-nav-btn next"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedImageIndex(prev => prev === auction.images.length - 1 ? 0 : prev + 1);
+                      }}
+                      aria-label="Next image"
+                    >
+                      &#10095;
+                    </button>
+                  )}
+                </div>
+                {auction.images.length > 1 && (
+                  <div className="auction-detail-thumbnails">
+                    {auction.images.map((imgUrl, index) => (
+                      <button
+                        key={index}
+                        className={`thumbnail-btn ${selectedImageIndex === index ? 'active' : ''}`}
+                        onClick={() => setSelectedImageIndex(index)}
+                      >
+                        <img src={imgUrl} alt={`${auction.title} - ${index + 1}`} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               <div className="auction-detail-no-image">No Image Available</div>
             )}
@@ -204,10 +252,16 @@ export function AuctionDetailPage() {
             </div>
             <div className="auction-detail-countdown-section">
               <span className="auction-detail-countdown-label">
-                {isActive ? 'Time Left' : 'Ended'}
+                {isDraft ? 'Starts In' : isActive ? 'Time Left' : 'Ended'}
               </span>
               <div className="auction-detail-countdown">
-                <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
+                {isDraft ? (
+                  <CountdownTimer endAt={auction.start_at} timeOffset={timeOffset} endedText="Starting..." onEnd={refetchAuction} />
+                ) : isActive ? (
+                  <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
+                ) : (
+                  <span>00:00:00</span>
+                )}
               </div>
             </div>
           </div>
@@ -229,6 +283,10 @@ export function AuctionDetailPage() {
                 resetState={resetState}
                 isSubmitting={isSubmitting}
               />
+            </div>
+          ) : isDraft ? (
+            <div className="auction-detail-ended-notice">
+              <p>This auction has not started yet. Stay tuned!</p>
             </div>
           ) : (
             <div className="auction-detail-ended-notice">

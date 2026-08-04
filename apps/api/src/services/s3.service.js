@@ -34,6 +34,25 @@ const s3Client = new S3Client({
  * @returns {Promise<string>} Public URL of the uploaded file
  */
 export const uploadFile = async (buffer, mimeType, s3Key) => {
+  if (!bucketName) {
+    if (process.env.NODE_ENV === 'production') throw new Error('Missing R2 configuration');
+    // Mock upload for local development
+    console.warn(`[Mock] S3 Upload skipped for ${s3Key}`);
+    
+    // Save to local uploads folder so the frontend can actually display it
+    const fs = await import('fs');
+    const path = await import('path');
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    // s3Key might have folders in it (e.g. 'auctions/abc/xyz.jpg'), we just replace / with - for simplicity in mock
+    const safeFilename = s3Key.replace(/\//g, '-');
+    fs.writeFileSync(path.join(uploadDir, safeFilename), buffer);
+
+    return `http://localhost:3000/mock-s3/${safeFilename}`;
+  }
+
   const command = new PutObjectCommand({
     Bucket: bucketName,
     Key: s3Key,
@@ -53,6 +72,12 @@ export const uploadFile = async (buffer, mimeType, s3Key) => {
  */
 export const deleteFiles = async (s3Keys) => {
   if (!s3Keys || s3Keys.length === 0) return;
+
+  if (!bucketName) {
+    if (process.env.NODE_ENV === 'production') throw new Error('Missing R2 configuration');
+    console.warn(`[Mock] S3 Delete skipped for ${s3Keys.length} files`);
+    return;
+  }
 
   const command = new DeleteObjectsCommand({
     Bucket: bucketName,

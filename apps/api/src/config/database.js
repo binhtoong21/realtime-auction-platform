@@ -10,6 +10,14 @@ export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// Force the session timezone to UTC so that Postgres doesn't shift timestamps
+// when casting UTC strings to 'timestamp without time zone' columns.
+pool.on('connect', (client) => {
+  client.query("SET TIME ZONE 'UTC'").catch(err => {
+    console.error('Failed to set timezone on connect', err);
+  });
+});
+
 pool.on('error', (err, client) => {
   console.error('Unexpected error on idle client', err);
   process.exit(-1);
