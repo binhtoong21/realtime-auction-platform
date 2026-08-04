@@ -13,7 +13,7 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
     auction: {
       LABELS: {
         ACTIVE: 'Active',
-        DRAFT: 'Draft',
+        SCHEDULED: 'Scheduled',
         ENDED: 'Ended',
         AWAITING_SHIP: 'Awaiting Ship',
         SHIPPED: 'Shipped',
@@ -23,7 +23,7 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
       },
       TOKENS: {
         ACTIVE: 'status-badge--success',       // --color-action, #F0FDF4
-        DRAFT: 'status-badge--secondary',      // --color-text-secondary
+        SCHEDULED: 'status-badge--secondary',      // --color-text-secondary
         ENDED: 'status-badge--disabled',       // --color-text-disabled
         AWAITING_SHIP: 'status-badge--brand',  // --color-brand
         SHIPPED: 'status-badge--brand',        // --color-brand

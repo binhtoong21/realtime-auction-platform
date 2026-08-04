@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { pool } from '../config/database.js';
+import { AuctionStatus } from '@auction/shared-constants';
 
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null
@@ -8,7 +9,7 @@ const connection = new IORedis(process.env.REDIS_URL, {
 
 /**
  * Auction Start Worker
- * Changes auction status from 'draft' to 'active' when start_at is reached.
+ * Changes auction status from 'scheduled' to 'active' when start_at is reached.
  */
 const auctionStartWorker = new Worker('auction-start', async (job) => {
   const { auctionId } = job.data;
@@ -32,7 +33,7 @@ const auctionStartWorker = new Worker('auction-start', async (job) => {
     const auction = auctionResult.rows[0];
 
     // If it's already active or ended or cancelled, skip
-    if (auction.status !== 'draft') {
+    if (auction.status !== AuctionStatus.SCHEDULED) {
       console.log(`[Worker] Auction ${auctionId} is already '${auction.status}'. Skipping.`);
       await client.query('ROLLBACK');
       return;
@@ -50,7 +51,7 @@ const auctionStartWorker = new Worker('auction-start', async (job) => {
 
     // Update status to active
     await client.query(
-      `UPDATE auctions SET status = 'active' WHERE id = $1`,
+      `UPDATE auctions SET status = '${AuctionStatus.ACTIVE}' WHERE id = $1`,
       [auctionId]
     );
 

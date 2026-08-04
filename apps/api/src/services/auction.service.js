@@ -1,6 +1,6 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
-import { scheduleAuctionStart, scheduleAuctionEnd, removeAuctionJobs } from '../jobs/queue.js';
+import { scheduleAuctionStart, scheduleAuctionEnd, removeAuctionJobs, removeAuctionStartJob, removeAuctionEndJob } from '../jobs/queue.js';
 import stripe from '../config/stripe.js';
 import { ensureStripeCustomer } from './kyc.service.js';
 import { encodeCursor, decodeCursor } from '../utils/cursor.util.js';
@@ -195,7 +195,7 @@ export const createAuction = async (sellerId, data) => {
       id, title, description, images, current_price, reserve_price, bid_increment,
       start_at, end_at, category_id, seller_id, status
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft'
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '${AuctionStatus.SCHEDULED}'
     ) RETURNING *
   `;
 
@@ -269,7 +269,7 @@ export const updateAuction = async (id, sellerId, data) => {
       SET ${updates.join(', ')} 
       WHERE id = $${paramCount} 
         AND seller_id = $${paramCount + 1}
-        AND status IN ('draft', 'active')
+        AND status IN ('${AuctionStatus.SCHEDULED}', '${AuctionStatus.ACTIVE}')
         AND NOT EXISTS (SELECT 1 FROM bids WHERE auction_id = a.id)
       RETURNING *
     `;
@@ -301,10 +301,29 @@ export const updateAuction = async (id, sellerId, data) => {
     const updatedAuction = result.rows[0];
     
     // Reschedule jobs if time changed
-    if (data.start_at || data.end_at) {
-      await removeAuctionJobs(id);
+    // Reschedule jobs individually — only recreate the job whose time actually changed
+    if (data.start_at) {
+      await removeAuctionStartJob(id);
       await scheduleAuctionStart(id, updatedAuction.start_at);
+    }
+    if (data.end_at) {
+      await removeAuctionEndJob(id);
       await scheduleAuctionEnd(id, updatedAuction.end_at);
+    }
+
+    // Revert to 'scheduled' if start_at is now in the future while auction is active.
+    // This closes the bidding-window vulnerability: bidding atomic UPDATE requires
+    // status='active', and secondary SELECT throws AUCTION_ENDED when status !== 'active'.
+    //
+    // updatedAuction.start_at always reflects the current DB value after UPDATE
+    // (whether or not start_at was in this request's payload), so this check is correct
+    // even when seller only changed end_at but start_at was already in the future.
+    if (updatedAuction.status === AuctionStatus.ACTIVE && new Date(updatedAuction.start_at) > new Date()) {
+      await client.query(
+        `UPDATE auctions SET status = $1 WHERE id = $2`,
+        [AuctionStatus.SCHEDULED, id]
+      );
+      updatedAuction.status = AuctionStatus.SCHEDULED;
     }
 
     await client.query('COMMIT');
@@ -393,8 +412,8 @@ export const joinAuction = async (userId, auctionId) => {
 
   const auction = auctionResult.rows[0];
 
-  if (auction.status !== AuctionStatus.ACTIVE) {
-    const error = new Error('Auction is not active');
+  if (auction.status !== AuctionStatus.ACTIVE && auction.status !== AuctionStatus.SCHEDULED) {
+    const error = new Error('Auction is not available for joining');
     error.statusCode = 400;
     error.errorCode = 'AUCTION_NOT_ACTIVE';
     throw error;

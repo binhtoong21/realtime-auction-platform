@@ -98,6 +98,16 @@ export const removeAuctionJobs = async (auctionId) => {
   console.log(`[Queue] Removed scheduled jobs for auction ${auctionId}`);
 };
 
+export const removeAuctionStartJob = async (auctionId) => {
+  const startJob = await auctionStartQueue.getJob(`auction_start_${auctionId}`);
+  if (startJob) await startJob.remove();
+};
+
+export const removeAuctionEndJob = async (auctionId) => {
+  const endJob = await auctionQueue.getJob(`auction_end_${auctionId}`);
+  if (endJob) await endJob.remove();
+};
+
 // ============================================================
 // Payment Lifecycle Queue
 // ============================================================

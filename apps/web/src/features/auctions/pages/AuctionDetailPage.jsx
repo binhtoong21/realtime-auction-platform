@@ -155,7 +155,7 @@ export function AuctionDetailPage() {
   const currentPrice = Number(auction.current_price || 0);
   const bidIncrement = Number(auction.bid_increment || 0);
   
-  const isDraft = auction.status === 'draft';
+  const isScheduled = auction.status === 'scheduled';
   const isActive = auction.status === 'active';
   const isEnded = ['ended', 'pending_payment', 'no_sale', 'cancelled'].includes(auction.status);
   
@@ -252,10 +252,10 @@ export function AuctionDetailPage() {
             </div>
             <div className="auction-detail-countdown-section">
               <span className="auction-detail-countdown-label">
-                {isDraft ? 'Starts In' : isActive ? 'Time Left' : 'Ended'}
+                {isScheduled ? 'Starts In' : isActive ? 'Time Left' : 'Ended'}
               </span>
               <div className="auction-detail-countdown">
-                {isDraft ? (
+                {isScheduled ? (
                   <CountdownTimer endAt={auction.start_at} timeOffset={timeOffset} endedText="Starting..." onEnd={refetchAuction} />
                 ) : isActive ? (
                   <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
@@ -284,7 +284,7 @@ export function AuctionDetailPage() {
                 isSubmitting={isSubmitting}
               />
             </div>
-          ) : isDraft ? (
+          ) : isScheduled ? (
             <div className="auction-detail-ended-notice">
               <p>This auction has not started yet. Stay tuned!</p>
             </div>
