@@ -1,6 +1,6 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
-import { scheduleAuctionStart, scheduleAuctionEnd, removeAuctionJobs } from '../jobs/queue.js';
+import { scheduleAuctionStart, scheduleAuctionEnd, removeAuctionJobs, removeAuctionStartJob, removeAuctionEndJob } from '../jobs/queue.js';
 import stripe from '../config/stripe.js';
 import { ensureStripeCustomer } from './kyc.service.js';
 import { encodeCursor, decodeCursor } from '../utils/cursor.util.js';
@@ -195,13 +195,13 @@ export const createAuction = async (sellerId, data) => {
       id, title, description, images, current_price, reserve_price, bid_increment,
       start_at, end_at, category_id, seller_id, status
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft'
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
     ) RETURNING *
   `;
 
   const values = [
     id, title, description, JSON.stringify(images), starting_price, reserve_price || 0, bid_increment,
-    start_at, end_at, category_id, sellerId
+    start_at, end_at, category_id, sellerId, AuctionStatus.SCHEDULED
   ];
 
   const result = await pool.query(query, values);
@@ -262,14 +262,14 @@ export const updateAuction = async (id, sellerId, data) => {
     }
 
     updates.push(`updated_at = NOW()`);
-    values.push(id, sellerId);
+    values.push(id, sellerId, AuctionStatus.SCHEDULED, AuctionStatus.ACTIVE);
 
     const updateQuery = `
       UPDATE auctions a
       SET ${updates.join(', ')} 
       WHERE id = $${paramCount} 
         AND seller_id = $${paramCount + 1}
-        AND status IN ('draft', 'active')
+        AND status IN ($${paramCount + 2}, $${paramCount + 3})
         AND NOT EXISTS (SELECT 1 FROM bids WHERE auction_id = a.id)
       RETURNING *
     `;
@@ -299,15 +299,40 @@ export const updateAuction = async (id, sellerId, data) => {
     }
 
     const updatedAuction = result.rows[0];
+    let statusReverted = false;
     
-    // Reschedule jobs if time changed
-    if (data.start_at || data.end_at) {
-      await removeAuctionJobs(id);
-      await scheduleAuctionStart(id, updatedAuction.start_at);
-      await scheduleAuctionEnd(id, updatedAuction.end_at);
+    // Revert to 'scheduled' if start_at is now in the future while auction is active.
+    // This closes the bidding-window vulnerability: bidding atomic UPDATE requires
+    // status='active', and secondary SELECT throws AUCTION_ENDED when status !== 'active'.
+    //
+    // updatedAuction.start_at always reflects the current DB value after UPDATE
+    // (whether or not start_at was in this request's payload), so this check is correct
+    // even when seller only changed end_at but start_at was already in the future.
+    if (updatedAuction.status === AuctionStatus.ACTIVE && new Date(updatedAuction.start_at) > new Date()) {
+      await client.query(
+        `UPDATE auctions SET status = $1 WHERE id = $2`,
+        [AuctionStatus.SCHEDULED, id]
+      );
+      updatedAuction.status = AuctionStatus.SCHEDULED;
+      statusReverted = true;
     }
 
     await client.query('COMMIT');
+
+    // Reschedule jobs if time changed
+    // Reschedule jobs individually — only recreate the job whose time actually changed
+    // These BullMQ calls must run AFTER Postgres commit to avoid divergence if Redis fails.
+    // We also must recreate the start job if the status was forcefully reverted to SCHEDULED,
+    // otherwise the auction might get stuck forever if data.start_at wasn't in the payload.
+    if (data.start_at || statusReverted) {
+      await removeAuctionStartJob(id);
+      await scheduleAuctionStart(id, updatedAuction.start_at);
+    }
+    if (data.end_at) {
+      await removeAuctionEndJob(id);
+      await scheduleAuctionEnd(id, updatedAuction.end_at);
+    }
+
     return updatedAuction;
 
   } catch (err) {
@@ -393,8 +418,8 @@ export const joinAuction = async (userId, auctionId) => {
 
   const auction = auctionResult.rows[0];
 
-  if (auction.status !== AuctionStatus.ACTIVE) {
-    const error = new Error('Auction is not active');
+  if (auction.status !== AuctionStatus.ACTIVE && auction.status !== AuctionStatus.SCHEDULED) {
+    const error = new Error('Auction is not available for joining');
     error.statusCode = 400;
     error.errorCode = 'AUCTION_NOT_ACTIVE';
     throw error;

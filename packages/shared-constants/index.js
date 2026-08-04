@@ -1,5 +1,5 @@
 export const AuctionStatus = {
-    DRAFT: 'draft',
+    SCHEDULED: 'scheduled',
     ACTIVE: 'active',
     ENDED: 'ended',
     PENDING_PAYMENT: 'pending_payment',

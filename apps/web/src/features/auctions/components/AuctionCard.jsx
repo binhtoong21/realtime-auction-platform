@@ -52,7 +52,7 @@ export function AuctionCard({ auction }) {
 
         <div className="auction-card-footer">
           <div className="auction-card-countdown">
-            {auction.status === 'draft' ? (
+            {auction.status === 'scheduled' ? (
               <>
                 <span className="text-xs text-neutral-400 mr-1">Starts in:</span>
                 <CountdownTimer endAt={auction.start_at || auction.startAt} endedText="Starting..." />

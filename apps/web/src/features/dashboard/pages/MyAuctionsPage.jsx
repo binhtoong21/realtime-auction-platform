@@ -8,7 +8,7 @@ import './MyAuctionsPage.css';
 
 const STATUS_TABS = [
   { value: '', label: 'All' },
-  { value: 'draft', label: 'Draft' },
+  { value: 'scheduled', label: 'Scheduled' },
   { value: 'active', label: 'Active' },
   { value: 'awaiting_ship', label: 'Awaiting Ship' },
   { value: 'shipped', label: 'Shipped' },
@@ -119,8 +119,8 @@ export function MyAuctionsPage() {
                     <td>{auction.bid_count || 0}</td>
                     <td className="date-cell">{formatDate(auction.end_at)}</td>
                     <td className="actions-cell">
-                      {/* Active/Draft actions */}
-                      {(auction.status === 'active' || auction.status === 'draft') && Number(auction.bid_count) === 0 && (
+                      {/* Active/Scheduled actions */}
+                      {(auction.status === 'active' || auction.status === 'scheduled') && Number(auction.bid_count) === 0 && (
                         <div className="action-buttons">
                           <Link to={`/dashboard/auctions/${auction.id}/edit`} className="btn-link">Edit</Link>
                           {/* Cancel logic not fully implemented in API yet */}
