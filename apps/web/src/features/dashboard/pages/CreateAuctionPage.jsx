@@ -146,9 +146,9 @@ export function CreateAuctionPage() {
     formData.append('title', title);
     formData.append('description', description);
     formData.append('categoryId', categoryId);
-    formData.append('startingPrice', startingPrice);
-    if (reservePrice) formData.append('reservePrice', reservePrice);
-    formData.append('bidIncrement', bidIncrement);
+    formData.append('startingPrice', Math.round(Number(startingPrice) * 100));
+    if (reservePrice) formData.append('reservePrice', Math.round(Number(reservePrice) * 100));
+    formData.append('bidIncrement', Math.round(Number(bidIncrement) * 100));
     
     // Convert to UTC safely
     formData.append('startAt', parseLocalToUTC(startAt));
@@ -274,8 +274,9 @@ export function CreateAuctionPage() {
                 value={startingPrice} 
                 onChange={e => setStartingPrice(e.target.value)} 
                 min="1"
+                step="0.01"
               />
-              <span className="suffix-text">VND</span>
+              <span className="suffix-text">USD</span>
             </div>
             {errors.startingPrice && <span className="field-error">{errors.startingPrice}</span>}
           </div>
@@ -288,8 +289,9 @@ export function CreateAuctionPage() {
                 value={reservePrice} 
                 onChange={e => setReservePrice(e.target.value)} 
                 min={startingPrice || '1'}
+                step="0.01"
               />
-              <span className="suffix-text">VND</span>
+              <span className="suffix-text">USD</span>
             </div>
             {errors.reservePrice && <span className="field-error">{errors.reservePrice}</span>}
           </div>
@@ -302,8 +304,9 @@ export function CreateAuctionPage() {
                 value={bidIncrement} 
                 onChange={e => setBidIncrement(e.target.value)} 
                 min="1"
+                step="0.01"
               />
-              <span className="suffix-text">VND</span>
+              <span className="suffix-text">USD</span>
             </div>
             {errors.bidIncrement && <span className="field-error">{errors.bidIncrement}</span>}
           </div>

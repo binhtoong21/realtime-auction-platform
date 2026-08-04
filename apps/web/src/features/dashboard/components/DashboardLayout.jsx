@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-
+import './DashboardLayout.css';
 export function DashboardLayout() {
   return (
     <div className="dashboard-layout">

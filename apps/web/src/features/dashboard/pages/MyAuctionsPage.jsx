@@ -7,14 +7,14 @@ import { formatCurrency } from '../../../utils/formatters';
 import './MyAuctionsPage.css';
 
 const STATUS_TABS = [
-  { value: '', label: 'Tất cả' },
-  { value: 'draft', label: 'Bản nháp' },
-  { value: 'active', label: 'Đang diễn ra' },
-  { value: 'awaiting_ship', label: 'Chờ giao hàng' },
-  { value: 'shipped', label: 'Đang giao hàng' },
-  { value: 'completed', label: 'Hoàn thành' },
-  { value: 'ended', label: 'Đã kết thúc' },
-  { value: 'no_sale', label: 'Không bán được' }
+  { value: '', label: 'All' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'active', label: 'Active' },
+  { value: 'awaiting_ship', label: 'Awaiting Ship' },
+  { value: 'shipped', label: 'Shipped' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'ended', label: 'Ended' },
+  { value: 'no_sale', label: 'No Sale' }
 ];
 
 export function MyAuctionsPage() {
@@ -37,8 +37,8 @@ export function MyAuctionsPage() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    return new Date(dateString).toLocaleString('vi-VN', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
+    return new Date(dateString).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit'
     });
   };
@@ -47,11 +47,11 @@ export function MyAuctionsPage() {
     <div className="my-auctions-page">
       <div className="page-header">
         <div>
-          <h1>Đơn hàng & Đấu giá của tôi</h1>
-          <p className="subtitle">Quản lý các sản phẩm bạn đang bán và giao hàng.</p>
+          <h1>My Auctions & Orders</h1>
+          <p className="subtitle">Manage the items you are selling and shipping.</p>
         </div>
         <Link to="/dashboard/auctions/create" className="btn-primary">
-          + Tạo phiên đấu giá
+          + Create Auction
         </Link>
       </div>
 
@@ -69,20 +69,20 @@ export function MyAuctionsPage() {
 
       <div className="auctions-content">
         {isLoading ? (
-          <div className="loading-state">Đang tải danh sách...</div>
+          <div className="loading-state">Loading auctions...</div>
         ) : error ? (
           <div className="error-state">
-            <p>Có lỗi xảy ra khi tải dữ liệu.</p>
-            <button className="btn-secondary" onClick={refetch}>Thử lại</button>
+            <p>An error occurred while loading data.</p>
+            <button className="btn-secondary" onClick={refetch}>Retry</button>
           </div>
         ) : auctions.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">📦</div>
-            <h3>Chưa có sản phẩm nào</h3>
-            <p>Bạn chưa có phiên đấu giá nào trong trạng thái này.</p>
+            <h3>No items found</h3>
+            <p>You do not have any auctions in this status.</p>
             {activeTab === '' && (
               <Link to="/dashboard/auctions/create" className="btn-primary mt-4">
-                Bắt đầu bán hàng
+                Start Selling
               </Link>
             )}
           </div>
@@ -91,12 +91,12 @@ export function MyAuctionsPage() {
             <table className="auctions-table">
               <thead>
                 <tr>
-                  <th>Sản phẩm</th>
-                  <th>Trạng thái</th>
-                  <th>Giá hiện tại</th>
-                  <th>Lượt đặt giá</th>
-                  <th>Kết thúc lúc</th>
-                  <th className="text-right">Hành động</th>
+                  <th>Product</th>
+                  <th>Status</th>
+                  <th>Current Price</th>
+                  <th>Bids</th>
+                  <th>Ends At</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -122,9 +122,9 @@ export function MyAuctionsPage() {
                       {/* Active/Draft actions */}
                       {(auction.status === 'active' || auction.status === 'draft') && Number(auction.bid_count) === 0 && (
                         <div className="action-buttons">
-                          <Link to={`/dashboard/auctions/${auction.id}/edit`} className="btn-link">Sửa</Link>
+                          <Link to={`/dashboard/auctions/${auction.id}/edit`} className="btn-link">Edit</Link>
                           {/* Cancel logic not fully implemented in API yet */}
-                          <button className="btn-link danger" disabled title="Tính năng hủy đang được phát triển">Hủy</button>
+                          <button className="btn-link danger" disabled title="Cancel feature is under development">Cancel</button>
                         </div>
                       )}
                       
@@ -134,7 +134,7 @@ export function MyAuctionsPage() {
                           className="btn-primary btn-sm"
                           onClick={() => setShippingAuctionId(auction.id)}
                         >
-                          Giao hàng
+                          Ship Now
                         </button>
                       )}
 
@@ -156,7 +156,7 @@ export function MyAuctionsPage() {
                   onClick={() => setCurrentCursor(nextCursor)}
                   disabled={isLoading}
                 >
-                  {isLoading ? 'Đang tải...' : 'Trang tiếp theo'}
+                  {isLoading ? 'Loading...' : 'Load More'}
                 </button>
               </div>
             )}

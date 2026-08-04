@@ -7,12 +7,12 @@ import { useToast } from '../../../core/context/ToastContext';
 import './PaymentHistoryPage.css';
 
 const STATUS_TABS = [
-  { value: '', label: 'Tất cả' },
-  { value: 'authorized', label: 'Đang giữ tiền' },
-  { value: 'captured', label: 'Đã thanh toán' },
-  { value: 'transferred', label: 'Đã chuyển tiền' },
-  { value: 'frozen', label: 'Đang tranh chấp' },
-  { value: 'refunded', label: 'Đã hoàn tiền' }
+  { value: '', label: 'All' },
+  { value: 'authorized', label: 'Authorized' },
+  { value: 'captured', label: 'Captured' },
+  { value: 'transferred', label: 'Transferred' },
+  { value: 'frozen', label: 'Disputed' },
+  { value: 'refunded', label: 'Refunded' }
 ];
 
 export function PaymentHistoryPage() {
@@ -29,15 +29,15 @@ export function PaymentHistoryPage() {
   const handleRetryPayment = async (paymentId) => {
     try {
       await retry(paymentId);
-      showSuccess('Đã yêu cầu thử lại thanh toán thành công. Đang chờ xác nhận từ Stripe.');
+      showSuccess('Payment retry requested successfully. Waiting for Stripe confirmation.');
       refetchPayments();
     } catch (err) {
       if (err.response?.status === 429) {
         const retryAfter = err.response.headers['retry-after'];
-        const waitTime = retryAfter ? `${retryAfter} giây` : '5 phút';
-        showError(`Vui lòng chờ ${waitTime} trước khi thử lại.`);
+        const waitTime = retryAfter ? `${retryAfter} seconds` : '5 minutes';
+        showError(`Please wait ${waitTime} before trying again.`);
       } else {
-        showError(err.response?.data?.error?.message || 'Có lỗi xảy ra khi thử lại thanh toán');
+        showError(err.response?.data?.error?.message || 'Error occurred while retrying payment');
       }
     }
   };
@@ -45,15 +45,15 @@ export function PaymentHistoryPage() {
   const [disputePayment, setDisputePayment] = useState(null);
 
   const handleConfirmDelivery = async (auctionId) => {
-    if (!window.confirm('Bạn có chắc chắn đã nhận được hàng và muốn giải phóng tiền cho người bán? Hành động này không thể hoàn tác.')) {
+    if (!window.confirm('Are you sure you have received the item and want to release funds to the seller? This action cannot be undone.')) {
       return;
     }
     try {
       await confirm(auctionId);
-      showSuccess('Đã xác nhận nhận hàng thành công.');
+      showSuccess('Delivery confirmed successfully.');
       refetchPayments();
     } catch (err) {
-      showError(err.response?.data?.error?.message || 'Có lỗi xảy ra khi xác nhận nhận hàng');
+      showError(err.response?.data?.error?.message || 'Error occurred while confirming delivery');
     }
   };
 
@@ -69,8 +69,8 @@ export function PaymentHistoryPage() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    return new Date(dateString).toLocaleString('vi-VN', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
+    return new Date(dateString).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit'
     });
   };
@@ -79,8 +79,8 @@ export function PaymentHistoryPage() {
     <div className="payment-history-page">
       <div className="page-header">
         <div>
-          <h1>Lịch sử Thanh toán & Đơn hàng</h1>
-          <p className="subtitle">Quản lý các khoản thanh toán ký quỹ và xác nhận nhận hàng.</p>
+          <h1>Payment & Order History</h1>
+          <p className="subtitle">Manage escrow payments and confirm deliveries.</p>
         </div>
       </div>
 
@@ -98,29 +98,29 @@ export function PaymentHistoryPage() {
 
       <div className="payments-content">
         {isPaymentsLoading && !currentPayments.length ? (
-          <div className="loading-state">Đang tải danh sách...</div>
+          <div className="loading-state">Loading payments...</div>
         ) : paymentsError ? (
           <div className="error-state">
-            <p>Có lỗi xảy ra khi tải dữ liệu.</p>
-            <button className="btn-secondary" onClick={refetchPayments}>Thử lại</button>
+            <p>An error occurred while loading data.</p>
+            <button className="btn-secondary" onClick={refetchPayments}>Retry</button>
           </div>
         ) : currentPayments.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">💳</div>
-            <h3>Không có giao dịch nào</h3>
-            <p>Bạn chưa có khoản thanh toán nào trong trạng thái này.</p>
+            <h3>No transactions found</h3>
+            <p>You do not have any payments in this status.</p>
           </div>
         ) : (
           <div className="table-responsive">
             <table className="payments-table">
               <thead>
                 <tr>
-                  <th>Mã GD</th>
-                  <th>Sản phẩm</th>
-                  <th>Số tiền</th>
-                  <th>Trạng thái thanh toán</th>
-                  <th>Ngày tạo</th>
-                  <th className="text-right">Hành động</th>
+                  <th>Tx ID</th>
+                  <th>Product</th>
+                  <th>Amount</th>
+                  <th>Payment Status</th>
+                  <th>Date</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -131,7 +131,7 @@ export function PaymentHistoryPage() {
                       <span className="auction-title">{payment.auctionTitle}</span>
                       {payment.auctionStatus && (
                         <div className="auction-status-hint">
-                          Trạng thái ĐG: {payment.auctionStatus.toUpperCase()}
+                          Auction: {payment.auctionStatus.toUpperCase()}
                         </div>
                       )}
                     </td>
@@ -147,7 +147,7 @@ export function PaymentHistoryPage() {
                               onClick={() => handleConfirmDelivery(payment.auctionId)}
                               disabled={isConfirming}
                             >
-                              Đã nhận hàng
+                              Confirm Delivery
                             </button>
                           ) : null}
                           
@@ -156,7 +156,7 @@ export function PaymentHistoryPage() {
                             onClick={() => setDisputePayment(payment)}
                             disabled={isConfirming}
                           >
-                            Khiếu nại
+                            Dispute
                           </button>
                         </div>
                       )}
@@ -167,7 +167,7 @@ export function PaymentHistoryPage() {
                             onClick={() => handleRetryPayment(payment.id)}
                             disabled={isRetrying}
                           >
-                            Thử lại thanh toán
+                            Retry Payment
                           </button>
                         </div>
                       )}
@@ -184,7 +184,7 @@ export function PaymentHistoryPage() {
                   onClick={() => setCurrentCursor(currentNextCursor)}
                   disabled={isPaymentsLoading}
                 >
-                  {isPaymentsLoading ? 'Đang tải...' : 'Trang tiếp theo'}
+                  {isPaymentsLoading ? 'Loading...' : 'Load More'}
                 </button>
               </div>
             )}

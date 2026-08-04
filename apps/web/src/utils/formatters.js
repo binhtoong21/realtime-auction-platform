@@ -1,14 +1,14 @@
 /**
- * Format a number as VND currency.
- * @param {number} amount
+ * Format a number of cents as USD currency.
+ * @param {number} amountInCents
  * @returns {string} Formatted string
  */
-export function formatCurrency(amount) {
-  if (amount == null) return '';
-  return new Intl.NumberFormat('vi-VN', {
+export function formatCurrency(amountInCents) {
+  if (amountInCents == null) return '';
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'VND',
-  }).format(amount);
+    currency: 'USD',
+  }).format(amountInCents / 100);
 }
 
 /**

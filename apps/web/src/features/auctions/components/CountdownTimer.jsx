@@ -6,7 +6,7 @@ import './CountdownTimer.css';
  * Formats time as HH:MM:SS or DD days HH:MM:SS.
  * Adds warning styles if less than 2 minutes remain.
  */
-export function CountdownTimer({ endAt, timeOffset = 0 }) {
+export function CountdownTimer({ endAt, timeOffset = 0, endedText = 'Ended', onEnd }) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isEnded, setIsEnded] = useState(false);
 
@@ -40,6 +40,7 @@ export function CountdownTimer({ endAt, timeOffset = 0 }) {
       setTimeLeft(remaining);
       if (remaining <= 0) {
         clearInterval(intervalId);
+        if (onEnd) onEnd();
       }
     }, 1000);
 
@@ -47,7 +48,7 @@ export function CountdownTimer({ endAt, timeOffset = 0 }) {
   }, [endAt, timeOffset]);
 
   if (isEnded) {
-    return <span className="countdown-ended" style={{ color: 'var(--color-text-disabled)' }}>Ended</span>;
+    return <span className="countdown-ended" style={{ color: 'var(--color-text-disabled)' }}>{endedText}</span>;
   }
 
   const isCritical = timeLeft > 0 && timeLeft <= 2 * 60 * 1000;
