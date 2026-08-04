@@ -299,13 +299,22 @@ export const updateAuction = async (id, sellerId, data) => {
     }
 
     const updatedAuction = result.rows[0];
+    let statusReverted = false;
     
+    // Revert to 'scheduled' if start_at is now in the future while auction is active.
+    // This closes the bidding-window vulnerability: bidding atomic UPDATE requires
+    // status='active', and secondary SELECT throws AUCTION_ENDED when status !== 'active'.
+    //
+    // updatedAuction.start_at always reflects the current DB value after UPDATE
+    // (whether or not start_at was in this request's payload), so this check is correct
+    // even when seller only changed end_at but start_at was already in the future.
     if (updatedAuction.status === AuctionStatus.ACTIVE && new Date(updatedAuction.start_at) > new Date()) {
       await client.query(
         `UPDATE auctions SET status = $1 WHERE id = $2`,
         [AuctionStatus.SCHEDULED, id]
       );
       updatedAuction.status = AuctionStatus.SCHEDULED;
+      statusReverted = true;
     }
 
     await client.query('COMMIT');
@@ -313,7 +322,9 @@ export const updateAuction = async (id, sellerId, data) => {
     // Reschedule jobs if time changed
     // Reschedule jobs individually — only recreate the job whose time actually changed
     // These BullMQ calls must run AFTER Postgres commit to avoid divergence if Redis fails.
-    if (data.start_at) {
+    // We also must recreate the start job if the status was forcefully reverted to SCHEDULED,
+    // otherwise the auction might get stuck forever if data.start_at wasn't in the payload.
+    if (data.start_at || statusReverted) {
       await removeAuctionStartJob(id);
       await scheduleAuctionStart(id, updatedAuction.start_at);
     }
