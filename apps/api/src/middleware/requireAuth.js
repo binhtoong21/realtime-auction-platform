@@ -52,7 +52,7 @@ const requireAuth = async (req, res, next) => {
       email: userRow.email,
       displayName: userRow.display_name,
       role: userRow.role,
-      identity_status: userRow.identity_status,
+      identityStatus: userRow.identity_status,
     };
     next();
   } catch (error) {

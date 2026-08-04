@@ -4,7 +4,7 @@
  * @param {'body' | 'query' | 'params'} target - The part of the request to validate (default: 'body')
  */
 const validate = (schema, target = 'body') => (req, res, next) => {
-  const { error, value } = schema.validate(req[target], { abortEarly: false });
+  const { error, value } = schema.validate(req[target], { abortEarly: false, stripUnknown: true });
   
   if (error) {
     const details = error.details.map(err => ({
@@ -12,7 +12,7 @@ const validate = (schema, target = 'body') => (req, res, next) => {
       message: err.message
     }));
 
-    return res.status(400).json({
+    return res.status(422).json({
       success: false,
       error: {
         code: 'VALIDATION_ERROR',

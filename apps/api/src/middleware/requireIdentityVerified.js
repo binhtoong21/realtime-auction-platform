@@ -1,5 +1,5 @@
 const requireIdentityVerified = (req, res, next) => {
-  if (req.user.identity_status !== 'verified') {
+  if (req.user.identityStatus !== 'verified') {
     return res.status(403).json({
       success: false,
       error: {

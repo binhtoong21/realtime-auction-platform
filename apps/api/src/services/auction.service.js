@@ -11,7 +11,7 @@ import { AuctionStatus } from '@auction/shared-constants';
  */
 export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit = 20, sort = 'newest', minPrice, maxPrice }) => {
   let query = `
-    SELECT a.id, a.title, a.current_price, a.status, a.end_at, a.images, a.created_at,
+    SELECT a.id, a.title, a.current_price, a.status, a.start_at, a.end_at, a.images, a.created_at,
            c.name as category_name
     FROM auctions a
     LEFT JOIN categories c ON a.category_id = c.id
@@ -200,7 +200,7 @@ export const createAuction = async (sellerId, data) => {
   `;
 
   const values = [
-    id, title, description, JSON.stringify(images), starting_price, reserve_price, bid_increment,
+    id, title, description, JSON.stringify(images), starting_price, reserve_price || 0, bid_increment,
     start_at, end_at, category_id, sellerId
   ];
 
@@ -242,7 +242,10 @@ export const updateAuction = async (id, sellerId, data) => {
     for (const field of fields) {
       if (data[field] !== undefined) {
         updates.push(`${field} = $${paramCount}`);
-        values.push(field === 'images' ? JSON.stringify(data[field]) : data[field]);
+        let val = data[field];
+        if (field === 'images') val = JSON.stringify(val);
+        if (field === 'reserve_price' && val === null) val = 0;
+        values.push(val);
         paramCount++;
       }
     }
