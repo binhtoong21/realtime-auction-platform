@@ -11,6 +11,7 @@ import Redis from 'ioredis';
  */
 const BASE_OPTIONS = {
   maxRetriesPerRequest: null,
+  retryStrategy: (times) => Math.min(times * 100, 10000),
 };
 
 /**
@@ -22,10 +23,25 @@ const BASE_OPTIONS = {
  * @param {object} [overrides] - Optional ioredis option overrides.
  * @returns {Redis} Configured IORedis instance.
  */
+let suppressedCount = 0;
+let lastErrorLoggedAt = 0;
+
 export function createRedisConnection(name, overrides = {}) {
   const client = new Redis(process.env.REDIS_URL, { ...BASE_OPTIONS, ...overrides });
+  
   client.on('connect', () => console.log(`[Redis:${name}] connected`));
-  client.on('error', (err) => console.error(`[Redis:${name}] error:`, err.message));
+  
+  client.on('error', (err) => {
+    const now = Date.now();
+    if (now - lastErrorLoggedAt > 5000) {
+      console.error(`[Redis:${name}] error: ${err.message}${suppressedCount > 0 ? ` (+${suppressedCount} suppressed)` : ''}`);
+      lastErrorLoggedAt = now;
+      suppressedCount = 0;
+    } else {
+      suppressedCount++;
+    }
+  });
+
   return client;
 }
 

@@ -14,6 +14,21 @@ import { startWebhookReaper, startPaymentSweeper, startGracePeriodSweeper, start
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
+async function withTimeout(promise, ms, label) {
+  let timeoutId;
+  promise.catch(() => {}); // Swallow late rejection to avoid unhandled rejection
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // Initialize Socket.IO
 const io = initSocket(server);
 console.log('🔌 Socket.IO initialized');
@@ -65,31 +80,18 @@ const shutdown = async (signal) => {
   }, 10000);
 };
 
-// Start server
 server.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
 
-  // Register repeatable background jobs with exponential backoff retry
-  let retries = 5;
-  let delay = 1000;
-  while (retries > 0) {
-    try {
-      await startPaymentSweeper();
-      await startGracePeriodSweeper();
-      await startWebhookReaper();
-      await startFulfillmentSweeper();
-      await startDisputeExpirySweeper();
-      break; // Success
-    } catch (err) {
-      console.error(`Failed to register repeatable jobs (sweeper/reaper). Retries left: ${retries - 1}`, err);
-      retries--;
-      if (retries === 0) {
-        console.error('CRITICAL: Exhausted all retries for repeatable jobs. Shutting down process.');
-        process.exit(1);
-      }
-      await new Promise(resolve => setTimeout(resolve, delay));
-      delay *= 2; // Exponential backoff
-    }
+  try {
+    // Start repeatable jobs with a timeout so they don't block startup forever if Redis is down
+    await withTimeout(startPaymentSweeper(), 5000, 'startPaymentSweeper');
+    await withTimeout(startGracePeriodSweeper(), 5000, 'startGracePeriodSweeper');
+    await withTimeout(startWebhookReaper(), 5000, 'startWebhookReaper');
+    await withTimeout(startFulfillmentSweeper(), 5000, 'startFulfillmentSweeper');
+    await withTimeout(startDisputeExpirySweeper(), 5000, 'startDisputeExpirySweeper');
+  } catch (err) {
+    console.error('Sweeper init failed/timeout, server is still running:', err.message);
   }
 });
 
