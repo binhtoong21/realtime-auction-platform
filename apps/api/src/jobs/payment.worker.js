@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { PaymentStatus } from '@auction/shared-constants';
@@ -8,9 +8,8 @@ import { createPayout } from '../services/payout.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
 import { scheduleSecondChanceExpiry } from './queue.js';
 
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null
-});
+const connection = createRedisConnection('payment-worker');
+
 
 /**
  * Payment Lifecycle Worker — Processes delayed payment jobs.

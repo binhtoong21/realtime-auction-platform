@@ -1,14 +1,13 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
 import { scheduleAuctionEnd } from './queue.js';
 import { AuctionStatus, PaymentStatus } from '@auction/shared-constants';
 import { emitToAuctionRoom, emitToUser } from '../services/socket.service.js';
 import { createAuthHold, schedulePostHoldJobs } from '../services/payment.service.js';
 
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null
-});
+const connection = createRedisConnection('auction-end-worker');
+
 
 /**
  * Auction End Worker — Lazy Evaluation pattern.

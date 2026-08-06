@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { EventNames } from '@auction/shared-constants';
@@ -8,9 +8,8 @@ import { writeAuditLog } from '../services/auditLogger.js';
 import { ensureJobScheduled } from './queue.js';
 import { autoConfirmDelivery } from '../services/fulfillment.service.js';
 
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null
-});
+const connection = createRedisConnection('fulfillment-worker');
+
 
 const fulfillmentWorker = new Worker('fulfillment', async (job) => {
   const { name, data } = job;

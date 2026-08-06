@@ -96,3 +96,13 @@ server.listen(PORT, async () => {
 // Listen for termination signals
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Safety net: prevent unhandled promise rejections from crashing the process.
+// In production, these should be investigated; here we log and continue.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Process] Unhandled Promise Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Process] Uncaught Exception:', err);
+});

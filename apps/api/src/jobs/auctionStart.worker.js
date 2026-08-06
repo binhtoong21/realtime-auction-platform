@@ -1,11 +1,10 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
 import { AuctionStatus } from '@auction/shared-constants';
 
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null
-});
+const connection = createRedisConnection('auction-start-worker');
+
 
 /**
  * Auction Start Worker

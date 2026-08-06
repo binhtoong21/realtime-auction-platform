@@ -1,8 +1,9 @@
 import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { redisClient } from '../config/redis.js';
+import { redisClient, createRedisConnection } from '../config/redis.js';
 import { verifyToken } from '../utils/jwt.js';
 import { pool } from '../config/database.js';
+
 
 let io;
 
@@ -18,9 +19,11 @@ export const initSocket = (httpServer) => {
   });
 
   // --- Redis Adapter for Horizontal Scaling ---
-  const pubClient = redisClient.duplicate();
-  const subClient = redisClient.duplicate();
+  // pub/sub clients must be separate connections from the main cache client.
+  const pubClient = createRedisConnection('socket-pub');
+  const subClient = createRedisConnection('socket-sub');
   io.adapter(createAdapter(pubClient, subClient));
+
 
   // --- Auth Middleware ---
   io.use((socket, next) => {
