@@ -23,10 +23,10 @@ const BASE_OPTIONS = {
  * @param {object} [overrides] - Optional ioredis option overrides.
  * @returns {Redis} Configured IORedis instance.
  */
-let suppressedCount = 0;
-let lastErrorLoggedAt = 0;
-
 export function createRedisConnection(name, overrides = {}) {
+  let suppressedCount = 0;
+  let lastErrorLoggedAt = 0;
+
   const client = new Redis(process.env.REDIS_URL, { ...BASE_OPTIONS, ...overrides });
   
   client.on('connect', () => console.log(`[Redis:${name}] connected`));

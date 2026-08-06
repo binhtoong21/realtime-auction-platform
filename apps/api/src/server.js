@@ -83,15 +83,20 @@ const shutdown = async (signal) => {
 server.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
 
-  try {
-    // Start repeatable jobs with a timeout so they don't block startup forever if Redis is down
-    await withTimeout(startPaymentSweeper(), 5000, 'startPaymentSweeper');
-    await withTimeout(startGracePeriodSweeper(), 5000, 'startGracePeriodSweeper');
-    await withTimeout(startWebhookReaper(), 5000, 'startWebhookReaper');
-    await withTimeout(startFulfillmentSweeper(), 5000, 'startFulfillmentSweeper');
-    await withTimeout(startDisputeExpirySweeper(), 5000, 'startDisputeExpirySweeper');
-  } catch (err) {
-    console.error('Sweeper init failed/timeout, server is still running:', err.message);
+  const sweepers = [
+    { name: 'startPaymentSweeper', fn: startPaymentSweeper },
+    { name: 'startGracePeriodSweeper', fn: startGracePeriodSweeper },
+    { name: 'startWebhookReaper', fn: startWebhookReaper },
+    { name: 'startFulfillmentSweeper', fn: startFulfillmentSweeper },
+    { name: 'startDisputeExpirySweeper', fn: startDisputeExpirySweeper }
+  ];
+
+  for (const { name, fn } of sweepers) {
+    try {
+      await withTimeout(fn(), 5000, name);
+    } catch (err) {
+      console.error(`[SweeperInit] ${name} failed/timeout:`, err.message);
+    }
   }
 });
 
@@ -107,4 +112,5 @@ process.on('unhandledRejection', (reason, promise) => {
 
 process.on('uncaughtException', (err) => {
   console.error('[Process] Uncaught Exception:', err);
+  shutdown('uncaughtException');
 });
