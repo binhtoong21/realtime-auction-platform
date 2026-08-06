@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { v7 as uuidv7 } from 'uuid';
@@ -7,9 +7,8 @@ import { DisputeStatus, PaymentStatus, EventNames } from '@auction/shared-consta
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
 import { schedulePayoutJob } from './queue.js';
 
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null,
-});
+const connection = createRedisConnection('dispute-worker');
+
 
 /**
  * Write an immutable financial audit log entry.

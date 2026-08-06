@@ -1,12 +1,11 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
 import { processWebhookEvent } from '../services/webhook.service.js';
 import { emitToAdmin } from '../services/socket.service.js';
 
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null,
-});
+const connection = createRedisConnection('webhook-reaper-worker');
+
 
 const MAX_RETRIES = 3;
 

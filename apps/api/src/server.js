@@ -14,6 +14,21 @@ import { startWebhookReaper, startPaymentSweeper, startGracePeriodSweeper, start
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
+async function withTimeout(promise, ms, label) {
+  let timeoutId;
+  promise.catch(() => {}); // Swallow late rejection to avoid unhandled rejection
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // Initialize Socket.IO
 const io = initSocket(server);
 console.log('🔌 Socket.IO initialized');
@@ -65,30 +80,22 @@ const shutdown = async (signal) => {
   }, 10000);
 };
 
-// Start server
 server.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
 
-  // Register repeatable background jobs with exponential backoff retry
-  let retries = 5;
-  let delay = 1000;
-  while (retries > 0) {
+  const sweepers = [
+    { name: 'startPaymentSweeper', fn: startPaymentSweeper },
+    { name: 'startGracePeriodSweeper', fn: startGracePeriodSweeper },
+    { name: 'startWebhookReaper', fn: startWebhookReaper },
+    { name: 'startFulfillmentSweeper', fn: startFulfillmentSweeper },
+    { name: 'startDisputeExpirySweeper', fn: startDisputeExpirySweeper }
+  ];
+
+  for (const { name, fn } of sweepers) {
     try {
-      await startPaymentSweeper();
-      await startGracePeriodSweeper();
-      await startWebhookReaper();
-      await startFulfillmentSweeper();
-      await startDisputeExpirySweeper();
-      break; // Success
+      await withTimeout(fn(), 5000, name);
     } catch (err) {
-      console.error(`Failed to register repeatable jobs (sweeper/reaper). Retries left: ${retries - 1}`, err);
-      retries--;
-      if (retries === 0) {
-        console.error('CRITICAL: Exhausted all retries for repeatable jobs. Shutting down process.');
-        process.exit(1);
-      }
-      await new Promise(resolve => setTimeout(resolve, delay));
-      delay *= 2; // Exponential backoff
+      console.error(`[SweeperInit] ${name} failed/timeout:`, err.message);
     }
   }
 });
@@ -96,3 +103,14 @@ server.listen(PORT, async () => {
 // Listen for termination signals
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Safety net: prevent unhandled promise rejections from crashing the process.
+// In production, these should be investigated; here we log and continue.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Process] Unhandled Promise Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Process] Uncaught Exception:', err);
+  shutdown('uncaughtException');
+});

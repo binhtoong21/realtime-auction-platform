@@ -1,12 +1,10 @@
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
+import { createRedisConnection } from '../config/redis.js';
 
 /**
- * BullMQ requires a separate IORedis connection (not shared with cache/pub-sub).
+ * BullMQ requires a dedicated IORedis connection (not shared with cache/pub-sub).
  */
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null // Required by BullMQ
-});
+const connection = createRedisConnection('bullmq');
 
 export const auctionQueue = new Queue('auction', {
   connection,
