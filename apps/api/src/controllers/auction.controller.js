@@ -5,7 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 export const getAuctions = async (req, res, next) => {
   try {
     const { status, categoryId, cursor, limit, sort, minPrice, maxPrice } = req.query;
-    let { sellerId } = req.query;
+    let { sellerId, bidderId } = req.query;
 
     if (sellerId === 'me') {
       if (!req.user) {
@@ -14,10 +14,18 @@ export const getAuctions = async (req, res, next) => {
       sellerId = req.user.id;
     }
 
+    if (bidderId === 'me') {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'You must be logged in to use bidderId=me' } });
+      }
+      bidderId = req.user.id;
+    }
+
     const result = await auctionService.getAuctions({
       status,
       categoryId,
       sellerId,
+      bidderId,
       cursor,
       limit: limit ? parseInt(limit, 10) : 20,
       sort,

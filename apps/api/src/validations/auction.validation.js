@@ -6,6 +6,7 @@ export const getAuctionsSchema = Joi.object({
   status: Joi.string().valid(...VALID_AUCTION_STATUSES).optional(),
   categoryId: Joi.string().uuid().optional(),
   sellerId: Joi.alternatives().try(Joi.string().uuid(), Joi.string().valid('me')).optional(),
+  bidderId: Joi.alternatives().try(Joi.string().uuid(), Joi.string().valid('me')).optional(),
   cursor: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})(?:_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$/).optional(),
   limit: Joi.number().integer().min(1).max(100).default(20).optional(),
   sort: Joi.string().valid('ending_soon', 'newest', 'price_asc', 'price_desc').optional(),

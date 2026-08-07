@@ -1,25 +1,23 @@
 import { useFetch } from '../../../core/hooks/useFetch';
 import { useAuth } from '../../../core/context/AuthContext';
 import { Link } from 'react-router-dom';
+import { AlertCircle, Flag, Trophy, Bell } from 'lucide-react';
 import './DashboardHome.css';
 
 export function DashboardHome() {
   const { user } = useAuth();
 
   // Fetch summary data
-  const { data: activeBidsRes, isLoading: loadingActive } = useFetch('/auctions?bidder_id=me&status=active');
-  const { data: winningBidsRes, isLoading: loadingWinning } = useFetch('/bids?user_id=me&is_winning=true');
-  const { data: wonAuctionsRes, isLoading: loadingWon } = useFetch('/auctions?winner_id=me'); // Assuming winner_id exists based on pattern
-  const { data: openDisputesRes, isLoading: loadingDisputes } = useFetch('/disputes?user_id=me&status=open'); // Assuming this exists
+  const { data: activeBidsRes, isLoading: loadingActive, error: errorActive } = useFetch('/auctions?bidder_id=me&status=active');
+  const { data: winningBidsRes, isLoading: loadingWinning, error: errorWinning } = useFetch('/bids?user_id=me&is_winning=true');
+  const { data: notificationsRes, isLoading: loadingNotifs, error: errorNotifs } = useFetch('/notifications?limit=8');
 
-  // Fetch recent activity (notifications)
-  const { data: notificationsRes, isLoading: loadingNotifs } = useFetch('/notifications?limit=8');
+  const isLoading = loadingActive || loadingWinning || loadingNotifs;
+  const hasError = errorActive || errorWinning || errorNotifs;
 
-  const isLoading = loadingActive || loadingWinning || loadingWon || loadingDisputes || loadingNotifs;
-  const isNewUser = !isLoading && 
+  const isNewUser = !isLoading && !hasError &&
     activeBidsRes?.data?.items?.length === 0 && 
     winningBidsRes?.data?.length === 0 && 
-    wonAuctionsRes?.data?.items?.length === 0 && 
     (!notificationsRes?.data || notificationsRes?.data?.length === 0);
 
   const formatRelativeTime = (isoString) => {
@@ -32,18 +30,45 @@ export function DashboardHome() {
 
   const getActivityIcon = (type) => {
     switch (type) {
-      case 'bid:outbid': return '🔴'; // Fallback icon, actual icon should be CSS/SVG
-      case 'auction:ended': return '🏁';
-      case 'auction:won': return '🏆';
-      default: return '🔔';
+      case 'outbid':
+      case 'lost':
+        return <AlertCircle size={16} />;
+      case 'ended': 
+        return <Flag size={16} />;
+      case 'won': 
+        return <Trophy size={16} />;
+      default: 
+        return <Bell size={16} />;
     }
   };
+
+  const getActivityText = (notif) => {
+    // Backend returns JSON payload, we attempt to read message or fallback
+    if (notif.payload && notif.payload.message) return notif.payload.message;
+    switch (notif.type) {
+      case 'outbid': return 'Someone placed a higher bid on an auction you joined.';
+      case 'won': return 'You won an auction! Please complete payment.';
+      case 'lost': return 'An auction you participated in has ended.';
+      default: return 'You have a new notification.';
+    }
+  };
+
+  if (hasError) {
+    return (
+      <div className="dashboard-home-page">
+        <div className="empty-state">
+          <AlertCircle size={48} color="var(--color-danger)" />
+          <p>Lỗi tải dữ liệu. Vui lòng thử lại sau.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
       <div className="dashboard-home-page">
         <div className="metric-cards-grid">
-          {[1, 2, 3, 4].map(i => <div key={i} className="skeleton-card"></div>)}
+          {[1, 2].map(i => <div key={i} className="skeleton-card"></div>)}
         </div>
         <div className="recent-activity-panel">
           <div className="skeleton-line"></div>
@@ -65,10 +90,10 @@ export function DashboardHome() {
     );
   }
 
+  // getAuctions cursor paginated returns data: { items, nextCursor }
   const activeBidsCount = activeBidsRes?.data?.items?.length || 0;
+  // getBids by user returns array directly in data
   const winningBidsCount = winningBidsRes?.data?.length || 0;
-  const wonAuctionsCount = wonAuctionsRes?.data?.items?.length || 0;
-  const openDisputesCount = openDisputesRes?.data?.length || 0;
   const notifications = notificationsRes?.data || [];
 
   return (
@@ -82,14 +107,6 @@ export function DashboardHome() {
           <span className="metric-label">Winning Bids</span>
           <span className="metric-value">{winningBidsCount}</span>
         </div>
-        <div className="metric-card">
-          <span className="metric-label">Won Auctions</span>
-          <span className="metric-value">{wonAuctionsCount}</span>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Open Disputes</span>
-          <span className="metric-value">{openDisputesCount}</span>
-        </div>
       </div>
 
       <div className="recent-activity-panel">
@@ -97,8 +114,10 @@ export function DashboardHome() {
         <ul className="activity-list">
           {notifications.map((notif) => (
             <li key={notif.id} className="activity-item">
-              <span className="activity-icon">{getActivityIcon(notif.type)}</span>
-              <span className="activity-text">{notif.message}</span>
+              <span className="activity-icon" style={{ display: 'flex', alignItems: 'center', color: 'var(--color-text-secondary)' }}>
+                {getActivityIcon(notif.type)}
+              </span>
+              <span className="activity-text">{getActivityText(notif)}</span>
               <span className="activity-time">{formatRelativeTime(notif.created_at)}</span>
             </li>
           ))}

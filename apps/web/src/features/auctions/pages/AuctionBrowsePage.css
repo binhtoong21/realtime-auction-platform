@@ -24,7 +24,7 @@
 .status-tabs {
   display: flex;
   flex-direction: row;
-  gap: 20px;
+  gap: var(--space-5);
   margin-bottom: var(--space-6);
   border-bottom: 1px solid var(--color-border);
 }
@@ -32,7 +32,7 @@
 .status-tab {
   background: none;
   border: none;
-  padding: 0 0 10px 0;
+  padding: 0 0 var(--space-2) 0;
   margin-bottom: -1px;
   color: var(--color-text-secondary);
   font-family: var(--font-body);

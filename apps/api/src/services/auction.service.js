@@ -9,7 +9,7 @@ import { AuctionStatus } from '@auction/shared-constants';
  * Lấy danh sách auctions với Cursor-based Pagination.
  * Cursor là opaque token (base64url-encoded JSON) chứa sort mode + tie-breaker fields.
  */
-export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit = 20, sort = 'newest', minPrice, maxPrice }) => {
+export const getAuctions = async ({ status, categoryId, sellerId, bidderId, cursor, limit = 20, sort = 'newest', minPrice, maxPrice }) => {
   let query = `
     SELECT a.id, a.title, a.current_price, a.status, a.start_at, a.end_at, a.images, a.created_at,
            c.name as category_name
@@ -37,6 +37,12 @@ export const getAuctions = async ({ status, categoryId, sellerId, cursor, limit 
     // Tạm thời ở layer DB chỉ nhận UUID hợp lệ.
     query += ` AND a.seller_id = $${paramCount}`;
     values.push(sellerId);
+    paramCount++;
+  }
+
+  if (bidderId) {
+    query += ` AND a.id IN (SELECT auction_id FROM bids WHERE bidder_id = $${paramCount})`;
+    values.push(bidderId);
     paramCount++;
   }
 
