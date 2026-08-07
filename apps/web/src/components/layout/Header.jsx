@@ -59,14 +59,6 @@ export function Header() {
                 >
                   My Bids
                 </NavLink>
-                <NavLink
-                  to="/watchlist"
-                  className={({ isActive }) =>
-                    `header__nav-link${isActive ? ' header__nav-link--active' : ''}`
-                  }
-                >
-                  Watchlist
-                </NavLink>
               </>
             )}
           </nav>

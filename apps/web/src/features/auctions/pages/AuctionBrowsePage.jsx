@@ -98,8 +98,8 @@ export function AuctionBrowsePage() {
               Active Auctions
             </button>
             <button 
-              className={`status-tab ${filters.status === 'draft' ? 'active' : ''}`}
-              onClick={() => handleStatusChange('draft')}
+              className={`status-tab ${filters.status === 'scheduled' ? 'active' : ''}`}
+              onClick={() => handleStatusChange('scheduled')}
             >
               Upcoming
             </button>
