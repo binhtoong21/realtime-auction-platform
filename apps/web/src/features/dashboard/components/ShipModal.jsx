@@ -7,13 +7,24 @@ import './ShipModal.css';
 
 const CARRIER_LABELS = {
   [CARRIERS.VNPOST]: 'VNPost',
-  [CARRIERS.GHN]: 'Giao Hàng Nhanh',
-  [CARRIERS.GHTK]: 'Giao Hàng Tiết Kiệm',
+  [CARRIERS.GHN]: 'GHN (Giao Hang Nhanh)',
+  [CARRIERS.GHTK]: 'GHTK (Giao Hang Tiet Kiem)',
   [CARRIERS.JT]: 'J&T Express',
   [CARRIERS.FEDEX]: 'FedEx',
   [CARRIERS.DHL]: 'DHL',
   [CARRIERS.UPS]: 'UPS',
-  [CARRIERS.OTHER]: 'Khác'
+  [CARRIERS.OTHER]: 'Other'
+};
+
+const TRACKING_HINTS = {
+  [CARRIERS.VNPOST]: '2 letters + 9 digits + 2 letters (e.g., EA123456789VN)',
+  [CARRIERS.GHN]: '10-15 digits',
+  [CARRIERS.GHTK]: '10-20 alphanumeric characters',
+  [CARRIERS.JT]: '9-12 digits',
+  [CARRIERS.FEDEX]: '12, 15, or 22 digits',
+  [CARRIERS.DHL]: '10 digits',
+  [CARRIERS.UPS]: 'Starts with 1Z, followed by 16 alphanumeric characters',
+  [CARRIERS.OTHER]: 'Enter a valid tracking number'
 };
 
 export function ShipModal({ auctionId, onClose, onSuccess }) {
@@ -27,16 +38,16 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
     if (!carrier || !trackingNumber) return;
 
     if (CARRIER_TRACKING_REGEX[carrier] && !CARRIER_TRACKING_REGEX[carrier].test(trackingNumber)) {
-      showError('Mã vận đơn không đúng định dạng của đơn vị vận chuyển này');
+      showError('Tracking number format does not match the selected carrier');
       return;
     }
 
     try {
       await ship(auctionId, carrier, trackingNumber);
-      showSuccess('Đã cập nhật thông tin giao hàng thành công');
+      showSuccess('Shipping information updated successfully');
       onSuccess();
     } catch (err) {
-      showError(err.response?.data?.error?.message || 'Có lỗi xảy ra khi cập nhật thông tin giao hàng');
+      showError(err.response?.data?.error?.message || 'An error occurred while updating shipping info');
     }
   };
 
@@ -44,27 +55,32 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
     <div className="ship-modal-overlay" onClick={isLoading ? undefined : onClose}>
       <div className="ship-modal-content" onClick={e => e.stopPropagation()}>
         <div className="ship-modal-header">
-          <h2>Giao hàng</h2>
-          <button className="close-btn" onClick={onClose} disabled={isLoading}>&times;</button>
+          <h2>Ship item</h2>
+          <button className="close-btn" type="button" onClick={onClose} disabled={isLoading}>&times;</button>
+        </div>
+        
+        <div className="modal-subtitle">
+          Enter carrier and tracking info for the buyer.
         </div>
 
         <form onSubmit={handleSubmit}>
           {error && (
             <div className="form-error">
-              {error.response?.data?.error?.message || 'Có lỗi xảy ra'}
+              {error.response?.data?.error?.message || 'An error occurred'}
             </div>
           )}
 
           <div className="form-group">
-            <label htmlFor="carrier">Đơn vị vận chuyển</label>
+            <label htmlFor="carrier">Carrier</label>
             <select
               id="carrier"
+              className="custom-select"
               value={carrier}
               onChange={e => setCarrier(e.target.value)}
               required
               disabled={isLoading}
             >
-              <option value="">Chọn đơn vị vận chuyển</option>
+              <option value="">Select a carrier</option>
               {Object.values(CARRIERS).map(c => (
                 <option key={c} value={c}>{CARRIER_LABELS[c] || c}</option>
               ))}
@@ -72,24 +88,27 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="trackingNumber">Mã vận đơn</label>
+            <label htmlFor="trackingNumber">Tracking Number</label>
             <input
               type="text"
               id="trackingNumber"
               value={trackingNumber}
               onChange={e => setTrackingNumber(e.target.value)}
-              placeholder="Ví dụ: SPX123456789"
+              placeholder="e.g. 1234567890"
               required
               disabled={isLoading}
             />
+            <span className="help-text">
+              {carrier ? TRACKING_HINTS[carrier] : 'Select a carrier first'}
+            </span>
           </div>
 
           <div className="ship-modal-footer">
             <button type="button" className="btn-secondary" onClick={onClose} disabled={isLoading}>
-              Hủy
+              Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={isLoading || !carrier || !trackingNumber}>
-              {isLoading ? 'Đang cập nhật...' : 'Xác nhận giao hàng'}
+              {isLoading ? 'Saving...' : 'Mark as shipped'}
             </button>
           </div>
         </form>

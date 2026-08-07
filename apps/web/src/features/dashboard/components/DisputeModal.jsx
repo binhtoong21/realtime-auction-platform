@@ -5,17 +5,17 @@ import { useToast } from '../../../core/context/ToastContext';
 import './DisputeModal.css';
 
 const REASONS = [
-  { value: 'ITEM_NOT_AS_DESCRIBED', label: 'Sản phẩm không đúng mô tả' },
-  { value: 'ITEM_DAMAGED', label: 'Sản phẩm bị hư hỏng' },
-  { value: 'ITEM_NOT_RECEIVED', label: 'Không nhận được hàng' },
-  { value: 'COUNTERFEIT_ITEM', label: 'Hàng giả / Hàng nhái' },
-  { value: 'OTHER', label: 'Lý do khác' }
+  { value: 'ITEM_NOT_AS_DESCRIBED', label: 'Item not as described' },
+  { value: 'ITEM_DAMAGED', label: 'Item damaged' },
+  { value: 'ITEM_NOT_RECEIVED', label: 'Item not received' },
+  { value: 'COUNTERFEIT_ITEM', label: 'Counterfeit item' },
+  { value: 'OTHER', label: 'Other reason' }
 ];
 
 export function DisputeModal({ payment, onClose, onSuccess }) {
   const [reason, setReason] = useState('');
   const [description, setDescription] = useState('');
-  const [evidenceUrl, setEvidenceUrl] = useState(''); // Simple text input bypass for now
+  const [evidenceUrls, setEvidenceUrls] = useState(['']);
 
   const { open, isLoading, error } = useOpenDispute();
   const { showSuccess, showError } = useToast();
@@ -25,24 +25,25 @@ export function DisputeModal({ payment, onClose, onSuccess }) {
     if (!reason || !description) return;
 
     try {
+      const filteredUrls = evidenceUrls.filter(url => url.trim() !== '');
       await open({
         paymentId: payment.id,
         reason,
         description,
-        evidenceUrls: evidenceUrl ? [evidenceUrl] : [] // Backend gap: Accepts []
+        evidenceUrls: filteredUrls
       });
-      showSuccess('Đã gửi khiếu nại thành công. Quản trị viên sẽ xem xét.');
+      showSuccess('Dispute submitted successfully. An admin will review it.');
       onSuccess();
     } catch (err) {
       // Handle 403 Cooldown Message
       if (err.response?.status === 403 && err.response?.data?.error?.code === 'DISPUTE_COOLDOWN') {
         const canOpenAt = err.response.data.error.canOpenAt;
-        const formattedDate = new Date(canOpenAt).toLocaleString('vi-VN');
-        showError(`Bạn chưa thể mở khiếu nại lúc này. Vui lòng thử lại sau: ${formattedDate}`);
+        const formattedDate = new Date(canOpenAt).toLocaleString('en-US');
+        showError(`You cannot open a dispute yet. Please try again after: ${formattedDate}`);
       } else if (err.response?.status === 429) {
-        showError(err.response?.data?.error?.message || 'Bạn thao tác quá nhanh, vui lòng thử lại sau.');
+        showError(err.response?.data?.error?.message || 'Too many requests. Please try again later.');
       } else {
-        showError(err.response?.data?.error?.message || 'Có lỗi xảy ra khi gửi khiếu nại');
+        showError(err.response?.data?.error?.message || 'An error occurred while submitting the dispute');
       }
     }
   };
@@ -51,31 +52,37 @@ export function DisputeModal({ payment, onClose, onSuccess }) {
     <div className="dispute-modal-overlay" onClick={isLoading ? undefined : onClose}>
       <div className="dispute-modal-content" onClick={e => e.stopPropagation()}>
         <div className="dispute-modal-header">
-          <h2>Mở khiếu nại</h2>
-          <button className="close-btn" onClick={onClose} disabled={isLoading}>&times;</button>
+          <h2>File a dispute</h2>
+          <button className="close-btn" type="button" onClick={onClose} disabled={isLoading}>&times;</button>
+        </div>
+
+        <div className="modal-subtitle">
+          Auction: {payment.auctionTitle} · ${parseFloat(payment.amount / 100).toFixed(2)}
         </div>
 
         <form onSubmit={handleSubmit}>
           {error && (
             <div className="form-error">
-              {error.response?.data?.error?.message || 'Có lỗi xảy ra'}
+              {error.response?.data?.error?.message || 'An error occurred'}
             </div>
           )}
 
-          <div className="dispute-warning">
-            Lưu ý: Khoản thanh toán của bạn sẽ bị đóng băng cho đến khi quản trị viên giải quyết xong khiếu nại này.
+          <div className="warning-banner">
+            <span className="warning-icon">!</span>
+            <span className="warning-text">Opening a dispute freezes escrow funds until an admin resolves it.</span>
           </div>
 
           <div className="form-group">
-            <label htmlFor="reason">Lý do khiếu nại</label>
+            <label htmlFor="reason">Reason</label>
             <select
               id="reason"
+              className="custom-select"
               value={reason}
               onChange={e => setReason(e.target.value)}
               required
               disabled={isLoading}
             >
-              <option value="">Chọn lý do</option>
+              <option value="">Select a reason</option>
               {REASONS.map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
@@ -83,12 +90,12 @@ export function DisputeModal({ payment, onClose, onSuccess }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="description">Mô tả chi tiết</label>
+            <label htmlFor="description">Description</label>
             <textarea
               id="description"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Cung cấp thông tin chi tiết về vấn đề bạn gặp phải..."
+              placeholder="Provide details about the issue you encountered..."
               required
               rows={4}
               disabled={isLoading}
@@ -96,24 +103,50 @@ export function DisputeModal({ payment, onClose, onSuccess }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="evidence">Link bằng chứng (Không bắt buộc)</label>
-            <input
-              type="url"
-              id="evidence"
-              value={evidenceUrl}
-              onChange={e => setEvidenceUrl(e.target.value)}
-              placeholder="https://..."
-              disabled={isLoading}
-            />
-            <span className="help-text">Tính năng tải ảnh trực tiếp đang được bảo trì. Bạn có thể dán link ảnh/video từ Google Drive.</span>
+            <label>Evidence URLs</label>
+            {evidenceUrls.map((url, index) => (
+              <div key={index} className="evidence-url-row">
+                <input
+                  type="url"
+                  value={url}
+                  onChange={e => {
+                    const newUrls = [...evidenceUrls];
+                    newUrls[index] = e.target.value;
+                    setEvidenceUrls(newUrls);
+                  }}
+                  placeholder="https://..."
+                  disabled={isLoading}
+                />
+                {evidenceUrls.length > 1 && (
+                  <button 
+                    type="button" 
+                    className="remove-url-btn"
+                    onClick={() => setEvidenceUrls(evidenceUrls.filter((_, i) => i !== index))}
+                    disabled={isLoading}
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+            ))}
+            {evidenceUrls.length < 5 && (
+              <button 
+                type="button" 
+                className="add-url-link"
+                onClick={() => setEvidenceUrls([...evidenceUrls, ''])}
+                disabled={isLoading}
+              >
+                + Add another URL
+              </button>
+            )}
           </div>
 
           <div className="dispute-modal-footer">
             <button type="button" className="btn-secondary" onClick={onClose} disabled={isLoading}>
-              Hủy
+              Cancel
             </button>
-            <button type="submit" className="btn-primary danger" disabled={isLoading || !reason || !description}>
-              {isLoading ? 'Đang gửi...' : 'Gửi khiếu nại'}
+            <button type="submit" className="btn-primary" disabled={isLoading || !reason || !description}>
+              {isLoading ? 'Submitting...' : 'Submit dispute'}
             </button>
           </div>
         </form>

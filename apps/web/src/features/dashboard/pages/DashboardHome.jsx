@@ -8,16 +8,16 @@ export function DashboardHome() {
   const { user } = useAuth();
 
   // Fetch summary data
-  const { data: activeBidsRes, isLoading: loadingActive, error: errorActive } = useFetch('/auctions?bidder_id=me&status=active');
-  const { data: winningBidsRes, isLoading: loadingWinning, error: errorWinning } = useFetch('/bids?user_id=me&is_winning=true');
+  // Note: Using limit=100 as a temporary approximation to get total count.
+  // Ideally, backend should return meta.totalCount to avoid counting by items.length.
+  const { data: activeBidsRes, isLoading: loadingActive, error: errorActive } = useFetch('/auctions?bidderId=me&status=active&limit=100');
   const { data: notificationsRes, isLoading: loadingNotifs, error: errorNotifs } = useFetch('/notifications?limit=8');
 
-  const isLoading = loadingActive || loadingWinning || loadingNotifs;
-  const hasError = errorActive || errorWinning || errorNotifs;
+  const isLoading = loadingActive || loadingNotifs;
+  const hasError = errorActive || errorNotifs;
 
   const isNewUser = !isLoading && !hasError &&
     activeBidsRes?.data?.items?.length === 0 && 
-    winningBidsRes?.data?.length === 0 && 
     (!notificationsRes?.data || notificationsRes?.data?.length === 0);
 
   const formatRelativeTime = (isoString) => {
@@ -58,7 +58,7 @@ export function DashboardHome() {
       <div className="dashboard-home-page">
         <div className="empty-state">
           <AlertCircle size={48} color="var(--color-danger)" />
-          <p>Lỗi tải dữ liệu. Vui lòng thử lại sau.</p>
+          <p>Failed to load data. Please try again later.</p>
         </div>
       </div>
     );
@@ -83,17 +83,15 @@ export function DashboardHome() {
     return (
       <div className="dashboard-home-page">
         <div className="empty-state">
-          <p>Chưa có hoạt động nào. Bắt đầu khám phá Market!</p>
+          <p>No activity yet. Start exploring the Market!</p>
           <Link to="/" className="btn btn-primary btn-lg">Go to Market</Link>
         </div>
       </div>
     );
   }
 
-  // getAuctions cursor paginated returns data: { items, nextCursor }
+  // getAuctions returns { items, nextCursor }. We count items length as a temporary approximation.
   const activeBidsCount = activeBidsRes?.data?.items?.length || 0;
-  // getBids by user returns array directly in data
-  const winningBidsCount = winningBidsRes?.data?.length || 0;
   const notifications = notificationsRes?.data || [];
 
   return (
@@ -102,10 +100,6 @@ export function DashboardHome() {
         <div className="metric-card">
           <span className="metric-label">Active Bids</span>
           <span className="metric-value">{activeBidsCount}</span>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Winning Bids</span>
-          <span className="metric-value">{winningBidsCount}</span>
         </div>
       </div>
 

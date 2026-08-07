@@ -1,6 +1,6 @@
 import Joi from 'joi';
 
-export const VALID_AUCTION_STATUSES = ['scheduled', 'active', 'ended', 'pending_payment', 'paid', 'shipped', 'completed', 'no_sale'];
+export const VALID_AUCTION_STATUSES = ['scheduled', 'active', 'ended', 'pending_payment', 'paid', 'awaiting_ship', 'shipped', 'completed', 'no_sale'];
 
 export const getAuctionsSchema = Joi.object({
   status: Joi.string().valid(...VALID_AUCTION_STATUSES).optional(),
