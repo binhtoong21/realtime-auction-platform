@@ -59,6 +59,26 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
         CAPTURE_PENDING: 'status-badge--warning',// Extrapolated: in-flight processing
         RELEASED: 'status-badge--disabled'     // Extrapolated: terminal inactive
       }
+    },
+    kyc: {
+      LABELS: {
+        NOT_STARTED: 'Not Started',
+        PENDING: 'Pending',
+        PROCESSING: 'Processing',
+        VERIFIED: 'Verified',
+        FAILED: 'Failed',
+        PAYOUTS_ENABLED: 'Payouts Active',
+        PAYOUTS_DISABLED: 'Payouts Disabled'
+      },
+      TOKENS: {
+        NOT_STARTED: 'status-badge--secondary',
+        PENDING: 'status-badge--warning',
+        PROCESSING: 'status-badge--warning',
+        VERIFIED: 'status-badge--success',
+        FAILED: 'status-badge--danger',
+        PAYOUTS_ENABLED: 'status-badge--success',
+        PAYOUTS_DISABLED: 'status-badge--danger'
+      }
     }
   };
 

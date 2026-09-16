@@ -1,0 +1,201 @@
+.payment-methods-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+}
+
+.payment-methods-header {
+  margin-bottom: var(--space-2);
+}
+
+.payment-methods-header h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.payment-methods-header p {
+  color: var(--color-text-secondary);
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.payment-methods-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+}
+
+.payment-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.payment-card:hover {
+  border-color: var(--color-brand);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.payment-card.is-default {
+  border-color: var(--color-brand);
+  background-color: var(--color-brand-subtle);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-brand {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  text-transform: capitalize;
+}
+
+.default-badge {
+  background-color: var(--color-brand);
+  color: white;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.card-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.card-number {
+  font-family: monospace;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+  letter-spacing: 2px;
+}
+
+.card-expiry {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.card-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.card-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background-color 0.2s;
+}
+
+.card-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-set-default {
+  color: var(--color-brand);
+}
+.btn-set-default:hover:not(:disabled) {
+  background-color: var(--color-brand-subtle);
+}
+
+.btn-delete {
+  color: var(--color-danger);
+}
+.btn-delete:hover:not(:disabled) {
+  background-color: var(--color-danger-subtle);
+}
+
+.empty-state {
+  background-color: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.add-card-section {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-top: var(--space-4);
+}
+
+.add-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.add-card-header h2 {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin: 0;
+}
+
+.add-card-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.stripe-element-container {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-background);
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: flex-end;
+}
+
+.pm-skeleton {
+  animation: pulse 1.5s infinite ease-in-out;
+  background-color: var(--color-surface-raised);
+  border-radius: var(--radius-md);
+}
+
+.pm-skeleton-card {
+  height: 180px;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
