@@ -1,4 +1,3 @@
-import { useEffect, useRef, useCallback } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { useFetch } from '../../../core/hooks/useFetch';
 import { useMutation } from '../../../core/hooks/useMutation';
@@ -23,7 +22,7 @@ export function KycPage() {
   const { mutate: createIdentity, isLoading: isCreatingIdentity } = useMutation('/users/me/kyc/identity-session');
   const { mutate: createConnect, isLoading: isCreatingConnect } = useMutation('/users/me/kyc/connect-onboarding');
 
-  const { showError, showSuccess } = useToast();
+  const { showError } = useToast();
 
   const handleStartIdentity = async () => {
     try {
@@ -34,17 +33,19 @@ export function KycPage() {
       const stripe = await stripePromise;
       if (!stripe) throw new Error('Stripe failed to initialize');
 
-      // Mở modal Stripe Identity
       const { error } = await stripe.verifyIdentity(clientSecret);
       
       if (error) {
         showError(error.message || 'Verification failed or was closed.');
       }
-      
-      // Bắt buộc refetch sau khi modal đóng (dù success hay failed/closed) để đồng bộ state từ API
-      refetchKyc();
     } catch (err) {
       showError(err.response?.data?.error?.message || err.message || 'Failed to start verification.');
+    } finally {
+      try {
+        await refetchKyc();
+      } catch {
+        // Refetch failure is non-critical; KYC state will sync on next page load
+      }
     }
   };
 
@@ -106,7 +107,24 @@ export function KycPage() {
     );
   }
 
-  if (!kycData) return null;
+  const isValidKycData = kycData && typeof kycData === 'object' && 'identityStatus' in kycData;
+
+  if (!isValidKycData) {
+    return (
+      <div className="kyc-page">
+        <div className="kyc-header">
+          <h1>KYC & Seller Verification</h1>
+          <p>Complete verification to create auctions and receive payouts.</p>
+        </div>
+        <div className="kyc-alert kyc-alert--danger">
+          <strong>Unable to load KYC data.</strong> The server returned an unexpected response.
+          <button className="btn-secondary" onClick={refetchKyc} style={{ marginLeft: 'var(--space-4)' }}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const { 
     identityStatus, 

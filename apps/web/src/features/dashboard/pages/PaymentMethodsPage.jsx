@@ -66,9 +66,9 @@ function AddCardForm({ onCancel, onSuccess }) {
     }
   };
 
-  const getCSSVariable = (name, fallback) => {
-    if (typeof window === 'undefined') return fallback;
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  const getCSSVariable = (name) => {
+    if (typeof window === 'undefined') return '';
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   };
 
   const cardElementOptions = {
@@ -76,10 +76,10 @@ function AddCardForm({ onCancel, onSuccess }) {
       base: {
         fontSize: '16px',
         fontFamily: 'Inter, system-ui, sans-serif',
-        color: getCSSVariable('--text-primary', '#1C1917'),
-        '::placeholder': { color: getCSSVariable('--text-muted', '#A8A29E') },
+        color: getCSSVariable('--color-text-primary'),
+        '::placeholder': { color: getCSSVariable('--color-text-secondary') },
       },
-      invalid: { color: getCSSVariable('--error', '#DC2626') },
+      invalid: { color: getCSSVariable('--color-danger') },
     },
   };
 
@@ -124,7 +124,23 @@ export function PaymentMethodsPage() {
   const { showError, showSuccess, showInfo } = useToast();
   
   // Dynamic URL mutations
-  const { mutate: mutateCard } = useMutation(null); // URL sẽ được override
+  const { mutate: mutateCard } = useMutation(null);
+
+  const pollTimersRef = useRef([]);
+  const prevCardCountRef = useRef(cards.length);
+
+  // Track card count for polling comparison
+  useEffect(() => {
+    prevCardCountRef.current = cards.length;
+  }, [cards.length]);
+
+  // Cleanup polling timers on unmount
+  useEffect(() => {
+    return () => {
+      pollTimersRef.current.forEach(clearTimeout);
+      pollTimersRef.current = [];
+    };
+  }, []);
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to remove this card?')) return;
@@ -172,10 +188,31 @@ export function PaymentMethodsPage() {
     }
   };
 
+
   const handleAddSuccess = () => {
     setShowAddForm(false);
-    // Timeout nhỏ để đợi webhook từ Stripe xử lý xong DB local trước khi fetch lại
-    setTimeout(() => refetch(), 1500);
+    const expectedCount = prevCardCountRef.current;
+    let attempt = 0;
+    const maxAttempts = 5;
+    const intervalMs = 1500;
+
+    const poll = async () => {
+      attempt++;
+      try {
+        const res = await refetch();
+        const newCards = res?.data?.data;
+        if (Array.isArray(newCards) && newCards.length > expectedCount) return;
+      } catch {
+        // Non-critical: will retry on next poll
+      }
+      if (attempt < maxAttempts) {
+        const timerId = setTimeout(poll, intervalMs);
+        pollTimersRef.current.push(timerId);
+      }
+    };
+
+    const timerId = setTimeout(poll, intervalMs);
+    pollTimersRef.current.push(timerId);
   };
 
   if (isLoading && !cardsRes) {
@@ -257,7 +294,7 @@ export function PaymentMethodsPage() {
         ) : (
           <div className="card-list">
             {cards.map(card => {
-              const isProcessing = actionInProgressId === card.id;
+              const isAnyActionInProgress = actionInProgressId !== null;
               
               return (
                 <div key={card.id} className={`payment-card ${card.isDefault ? 'is-default' : ''}`}>
@@ -276,18 +313,18 @@ export function PaymentMethodsPage() {
                       <button 
                         className="card-action-btn btn-set-default"
                         onClick={() => handleSetDefault(card.id)}
-                        disabled={isProcessing}
+                        disabled={isAnyActionInProgress}
                       >
                         Set as Default
                       </button>
                     ) : (
-                      <span></span> // Empty spacer to keep Delete button on right
+                      <span></span>
                     )}
                     
                     <button 
                       className="card-action-btn btn-delete"
                       onClick={() => handleDelete(card.id)}
-                      disabled={isProcessing}
+                      disabled={isAnyActionInProgress}
                     >
                       Remove
                     </button>
