@@ -97,6 +97,20 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
         EXPIRED: 'status-badge--disabled',
         WITHDRAWN: 'status-badge--disabled',
       }
+    },
+    bidOutcome: {
+      LABELS: {
+        WINNING: 'Winning',
+        OUTBID: 'Outbid',
+        WON: 'Won',
+        LOST: 'Lost',
+      },
+      TOKENS: {
+        WINNING: 'status-badge--success',
+        OUTBID: 'status-badge--danger',
+        WON: 'status-badge--brand',
+        LOST: 'status-badge--disabled',
+      }
     }
   };
 

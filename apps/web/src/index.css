@@ -13,14 +13,16 @@
      ============================================ */
   --color-action:       #166534; /* Green 800 */
   --color-action-hover: #14532D; /* Green 900 */
-  --color-action-text:  #FFFFFF;
+  --color-action-text:  #FFF;
 
   /* ============================================
      SURFACE — Warm off-white
      ============================================ */
   --color-bg:             #FFFBF5;
-  --color-surface:        #FFFFFF;
+  --color-surface:        #FFF;
   --color-surface-raised: #FDF8F0;
+  --color-overlay-dark:   rgb(0, 0, 0, 0.6);
+  --color-overlay-dark-hover: rgb(0, 0, 0, 0.8);
 
   /* ============================================
      TEXT
@@ -49,16 +51,14 @@
   /* ============================================
      TYPOGRAPHY
      ============================================ */
-  --font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+  --font-display: 'DM Serif Display', georgia, 'Times New Roman', serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-
   --text-xs:   0.694rem;  /* 11px */
   --text-sm:   0.833rem;  /* 13px */
   --text-base: 1rem;      /* 16px */
   --text-lg:   1.125rem;  /* 18px */
   --text-xl:   1.5rem;    /* 24px */
-
   --header-height: 48px;
 
   /* ============================================
@@ -74,14 +74,12 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
-
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 1px 2px rgb(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgb(0, 0, 0, 0.08), 0 1px 2px rgb(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgb(0, 0, 0, 0.10), 0 2px 6px rgb(0, 0, 0, 0.06);
 }
 
 [data-theme="dark"] {
@@ -256,6 +254,7 @@ input[type="password"]::-ms-clear {
   will be wired into the Live Auction Room components to reflect price updates, 
   countdown warnings, and new bid entries.
 */
+
 /* Animations */
 @keyframes bid-flash {
   0%   { color: var(--color-bid-flash); }
@@ -281,6 +280,7 @@ input[type="password"]::-ms-clear {
     transform: translateY(-8px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;

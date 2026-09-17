@@ -78,7 +78,28 @@
   gap: var(--space-3);
 }
 
+/* [+ Create auction] button (outline, action color) */
+.header__create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-action);
+  background-color: transparent;
+  border: 1px solid var(--color-action);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: background-color 0.15s, color 0.15s;
+}
 
+.header__create-btn:hover {
+  background-color: var(--color-success-subtle);
+  color: var(--color-action-hover);
+  border-color: var(--color-action-hover);
+}
 
 .header__theme-toggle {
   background: none;

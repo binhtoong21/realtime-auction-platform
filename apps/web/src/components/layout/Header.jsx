@@ -83,7 +83,7 @@ export function Header() {
 
         <div className="header__right">
           {user && (
-            <Link to="/dashboard/auctions/create" className="btn btn--sm btn--primary">
+            <Link to="/dashboard/auctions/create" className="btn btn--sm header__create-btn">
               + Create auction
             </Link>
           )}

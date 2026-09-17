@@ -71,7 +71,7 @@
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-overlay-dark);
   color: white;
   border: none;
   width: 40px;
@@ -87,7 +87,7 @@
 }
 
 .gallery-nav-btn:hover {
-  background: rgba(0, 0, 0, 0.8);
+  background: var(--color-overlay-dark-hover);
   transform: translateY(-50%) scale(1.1);
 }
 
@@ -358,6 +358,7 @@
   .auction-detail-layout {
     grid-template-columns: 1fr;
   }
+
   .auction-detail-terminal {
     position: relative;
     top: 0;
