@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuctions } from '../hooks/useAuctions';
 import { FilterPills } from '../components/FilterPills';
 import { AuctionCard } from '../components/AuctionCard';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import { AlertCircle, PackageSearch } from 'lucide-react';
 import './AuctionBrowsePage.css';
 
 /**
@@ -22,7 +24,7 @@ export function AuctionBrowsePage() {
     status: searchParams.get('status') !== null ? searchParams.get('status') : 'active',
   };
 
-  const { auctions, nextCursor, hasMore, isLoading, error } = useAuctions({
+  const { auctions, nextCursor, hasMore, isLoading, error, refetch } = useAuctions({
     ...filters,
     cursor,
     limit: 12
@@ -112,15 +114,20 @@ export function AuctionBrowsePage() {
           </div>
 
           {error && (
-            <div className="error-state">
-              <p>Failed to load auctions. Please try again.</p>
-            </div>
+            <EmptyState
+              icon={AlertCircle}
+              heading="Failed to load auctions"
+              subtext="An error occurred while fetching data. Please try again."
+              cta={{ label: 'Retry', onClick: refetch }}
+            />
           )}
 
           {!isLoading && allAuctions.length === 0 && !error && (
-            <div className="empty-state">
-              <p>No auctions found matching your criteria.</p>
-            </div>
+            <EmptyState
+              icon={PackageSearch}
+              heading="No auctions found"
+              subtext="There are no auctions matching your current filters."
+            />
           )}
 
           <div 
@@ -149,7 +156,7 @@ export function AuctionBrowsePage() {
             <div className="load-more-container">
               <button 
                 type="button" 
-                className="btn btn-outline btn-lg" 
+                className="btn btn--lg btn--secondary" 
                 onClick={handleLoadMore}
                 disabled={isLoading}
               >

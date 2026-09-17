@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { usePaymentHistory, useConfirmDelivery, useRetryPayment } from '../hooks/useBuyerActions';
+import { usePaymentHistory, useRetryPayment } from '../hooks/useBuyerActions';
 import { DisputeModal } from '../components/DisputeModal';
+import { ConfirmDeliveryModal } from '../components/ConfirmDeliveryModal';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
 import { useToast } from '../../../core/context/ToastContext';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import { CreditCard } from 'lucide-react';
 import './PaymentHistoryPage.css';
 
 const STATUS_TABS = [
@@ -22,7 +25,7 @@ export function PaymentHistoryPage() {
   // Need to use currentCursor in usePaymentHistory
   const { payments: currentPayments, nextCursor: currentNextCursor, isLoading: isPaymentsLoading, error: paymentsError, refetch: refetchPayments } = usePaymentHistory(activeTab, currentCursor);
   
-  const { confirm, isLoading: isConfirming } = useConfirmDelivery();
+  const [confirmDeliveryAuctionId, setConfirmDeliveryAuctionId] = useState(null);
   const { retry, isLoading: isRetrying } = useRetryPayment();
   const { showSuccess, showError } = useToast();
 
@@ -44,17 +47,9 @@ export function PaymentHistoryPage() {
 
   const [disputePayment, setDisputePayment] = useState(null);
 
-  const handleConfirmDelivery = async (auctionId) => {
-    if (!window.confirm('Are you sure you have received the item and want to release funds to the seller? This action cannot be undone.')) {
-      return;
-    }
-    try {
-      await confirm(auctionId);
-      showSuccess('Delivery confirmed successfully.');
-      refetchPayments();
-    } catch (err) {
-      showError(err.response?.data?.error?.message || 'Error occurred while confirming delivery');
-    }
+  const handleConfirmSuccess = () => {
+    setConfirmDeliveryAuctionId(null);
+    refetchPayments();
   };
 
   const handleDisputeSuccess = () => {
@@ -105,11 +100,11 @@ export function PaymentHistoryPage() {
             <button className="btn-secondary" onClick={refetchPayments}>Retry</button>
           </div>
         ) : currentPayments.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">💳</div>
-            <h3>No transactions found</h3>
-            <p>You do not have any payments in this status.</p>
-          </div>
+          <EmptyState
+            icon={CreditCard}
+            heading="No payments found"
+            subtext="You do not have any payment history."
+          />
         ) : (
           <div className="table-responsive">
             <table className="payments-table">
@@ -131,7 +126,7 @@ export function PaymentHistoryPage() {
                       <span className="auction-title">{payment.auctionTitle}</span>
                       {payment.auctionStatus && (
                         <div className="auction-status-hint">
-                          Auction: {payment.auctionStatus.toUpperCase()}
+                          Auction: <span style={{ textTransform: 'capitalize' }}>{payment.auctionStatus}</span>
                         </div>
                       )}
                     </td>
@@ -144,8 +139,7 @@ export function PaymentHistoryPage() {
                           {payment.auctionStatus === 'shipped' ? (
                             <button 
                               className="btn-primary btn-sm"
-                              onClick={() => handleConfirmDelivery(payment.auctionId)}
-                              disabled={isConfirming}
+                              onClick={() => setConfirmDeliveryAuctionId(payment.auctionId)}
                             >
                               Confirm Delivery
                             </button>
@@ -154,7 +148,6 @@ export function PaymentHistoryPage() {
                           <button 
                             className="btn-link danger"
                             onClick={() => setDisputePayment(payment)}
-                            disabled={isConfirming}
                           >
                             Dispute
                           </button>
@@ -197,6 +190,14 @@ export function PaymentHistoryPage() {
           payment={disputePayment}
           onClose={() => setDisputePayment(null)}
           onSuccess={handleDisputeSuccess}
+        />
+      )}
+      
+      {confirmDeliveryAuctionId && (
+        <ConfirmDeliveryModal
+          auctionId={confirmDeliveryAuctionId}
+          onClose={() => setConfirmDeliveryAuctionId(null)}
+          onSuccess={handleConfirmSuccess}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import './BidHistory.css';
+import { useAuth } from '../../../core/context/AuthContext';
 
 /**
  * Masks bidder display name to protect privacy in the public bid room.
@@ -48,6 +49,7 @@ const formatAmount = (cents) => {
 export function BidHistory({ bids, isLoading, error }) {
   const [newBidId, setNewBidId] = useState(null);
   const topBidIdRef = useRef(null);
+  const user = useAuth();
 
   useEffect(() => {
     if (bids && bids.length > 0) {
@@ -101,10 +103,12 @@ export function BidHistory({ bids, isLoading, error }) {
         <div
           key={bid.id}
           className={`bid-history-item ${
-            bid.id === newBidId ? 'new-bid' : ''
+            bid.id === newBidId ? 'new-bid bid-entry-new' : ''
           }`}
         >
-          <span className="bid-user">{maskName(bid.bidder_name)}</span>
+          <span className="bid-user">
+            {user && bid.bidder_id === user.id ? 'You' : maskName(bid.bidder_name)}
+          </span>
           <span className="bid-amount">{formatAmount(bid.amount)}</span>
           <span className="bid-time">{formatRelativeTime(bid.created_at)}</span>
         </div>
