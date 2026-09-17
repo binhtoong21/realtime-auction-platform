@@ -76,10 +76,10 @@ function JoinForm({ clientSecret, onSuccess, onClose, confirmSetup }) {
       base: {
         fontSize: '16px',
         fontFamily: 'Inter, system-ui, sans-serif',
-        color: getCSSVariable('--text-primary', '#1C1917'),
-        '::placeholder': { color: getCSSVariable('--text-muted', '#A8A29E') },
+        color: getCSSVariable('--color-text-primary', '#1C1917'),
+        '::placeholder': { color: getCSSVariable('--color-text-disabled', '#A8A29E') },
       },
-      invalid: { color: getCSSVariable('--error', '#DC2626') },
+      invalid: { color: getCSSVariable('--color-danger', '#DC2626') },
     },
   };
 
@@ -91,14 +91,14 @@ function JoinForm({ clientSecret, onSuccess, onClose, confirmSetup }) {
       <div className="join-form-actions">
         <button
           type="submit"
-          className="btn-primary join-confirm-btn"
+          className="btn btn--md btn--primary join-confirm-btn"
           disabled={!stripe || isConfirming}
         >
           {isConfirming ? 'Confirming...' : 'Confirm Card'}
         </button>
         <button
           type="button"
-          className="join-cancel-btn"
+          className="btn btn--md btn--secondary join-cancel-btn"
           onClick={onClose}
           disabled={isConfirming}
         >
@@ -182,7 +182,7 @@ export function JoinAuctionModal({ isOpen, onClose, auctionId, onJoinSuccess }) 
           {error && (
             <div className="join-modal-error">
               <p>{error || 'Failed to initialize payment. Please try again.'}</p>
-              <button className="btn-primary" onClick={() => { setHasRequested(false); }}>
+              <button className="btn btn--sm btn--primary" onClick={() => { setHasRequested(false); }}>
                 Retry
               </button>
             </div>
@@ -199,7 +199,7 @@ export function JoinAuctionModal({ isOpen, onClose, auctionId, onJoinSuccess }) 
               <p style={{ color: 'var(--color-success)', marginBottom: 'var(--space-4)' }}>
                 You have already joined this auction and your payment method is verified.
               </p>
-              <button className="btn-primary" onClick={() => { handleJoinSuccess(); onClose(); }}>
+              <button className="btn btn--sm btn--primary" onClick={() => { handleJoinSuccess(); onClose(); }}>
                 Start Bidding
               </button>
             </div>

@@ -1,0 +1,20 @@
+{
+  "extends": "stylelint-config-standard",
+  "plugins": ["stylelint-value-no-unknown-custom-properties"],
+  "rules": {
+    "csstools/value-no-unknown-custom-properties": [
+      true,
+      {
+        "importFrom": ["./src/index.css"]
+      }
+    ],
+    "custom-property-pattern": null,
+    "selector-class-pattern": null,
+    "property-no-vendor-prefix": null,
+    "value-no-vendor-prefix": null,
+    "alpha-value-notation": "number",
+    "color-function-notation": "legacy",
+    "media-feature-range-notation": "prefix",
+    "keyframes-name-pattern": null
+  }
+}

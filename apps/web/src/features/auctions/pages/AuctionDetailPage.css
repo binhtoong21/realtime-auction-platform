@@ -33,7 +33,7 @@
 /* Error state */
 .auction-detail-error, .auction-detail-empty {
   text-align: center;
-  padding: var(--space-20) var(--space-4);
+  padding: var(--space-12) var(--space-4);
 }
 
 /* Main layout: 60/40 Split */
@@ -135,7 +135,7 @@
 
 .thumbnail-btn.active {
   opacity: 1;
-  border-color: var(--color-primary);
+  border-color: var(--color-brand);
 }
 
 .thumbnail-btn img {
@@ -301,7 +301,6 @@
   color: var(--color-text-secondary);
   font-weight: 500;
   margin: 0;
-  text-transform: uppercase;
 }
 
 .history-total {

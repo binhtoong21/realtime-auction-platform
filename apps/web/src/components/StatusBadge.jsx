@@ -25,25 +25,25 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
         ACTIVE: 'status-badge--success',       // --color-action, #F0FDF4
         SCHEDULED: 'status-badge--secondary',      // --color-text-secondary
         ENDED: 'status-badge--disabled',       // --color-text-disabled
-        AWAITING_SHIP: 'status-badge--brand',  // --color-brand
+        AWAITING_SHIP: 'status-badge--warning',  // --color-warning
         SHIPPED: 'status-badge--brand',        // --color-brand
         COMPLETED: 'status-badge--success',    // --color-action
         NO_SALE: 'status-badge--disabled',     // --color-text-disabled
-        CANCELLED: 'status-badge--disabled',   // --color-text-disabled
+        CANCELLED: 'status-badge--danger',   // --color-danger
       }
     },
     payment: {
       LABELS: {
         AUTHORIZED: 'Authorized',
         CAPTURED: 'Captured',
-        TRANSFERRED: 'Transferred',
+        TRANSFERRED: 'Paid Out',
         REFUNDED: 'Refunded',
-        HOLD_FAILED: 'Hold Failed',
-        GRACE_PERIOD: 'Grace Period',
-        SECOND_CHANCE: 'Second Chance',
+        HOLD_FAILED: 'Payment Failed',
+        GRACE_PERIOD: 'Action Needed',
+        SECOND_CHANCE: 'Offer Pending',
         FROZEN: 'Disputed',
-        HOLD_PENDING: 'Hold Pending',
-        CAPTURE_PENDING: 'Capture Pending',
+        HOLD_PENDING: 'Processing',
+        CAPTURE_PENDING: 'Processing',
         RELEASED: 'Released'
       },
       TOKENS: {
@@ -55,8 +55,8 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
         GRACE_PERIOD: 'status-badge--warning', // Extrapolated: user action required
         SECOND_CHANCE: 'status-badge--warning',// Extrapolated: warning
         FROZEN: 'status-badge--warning',       // Extrapolated: disputed pattern
-        HOLD_PENDING: 'status-badge--warning', // Extrapolated: in-flight processing
-        CAPTURE_PENDING: 'status-badge--warning',// Extrapolated: in-flight processing
+        HOLD_PENDING: 'status-badge--secondary', // Extrapolated: in-flight processing
+        CAPTURE_PENDING: 'status-badge--secondary',// Extrapolated: in-flight processing
         RELEASED: 'status-badge--disabled'     // Extrapolated: terminal inactive
       }
     },
@@ -78,6 +78,24 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
         FAILED: 'status-badge--danger',
         PAYOUTS_ENABLED: 'status-badge--success',
         PAYOUTS_DISABLED: 'status-badge--danger'
+      }
+    },
+    dispute: {
+      LABELS: {
+        OPEN: 'Open',
+        UNDER_REVIEW: 'Under Review',
+        RESOLVED_BUYER_WINS: 'Resolved',
+        RESOLVED_SELLER_WINS: 'Resolved',
+        EXPIRED: 'Expired',
+        WITHDRAWN: 'Withdrawn',
+      },
+      TOKENS: {
+        OPEN: 'status-badge--warning',
+        UNDER_REVIEW: 'status-badge--brand',
+        RESOLVED_BUYER_WINS: 'status-badge--disabled',
+        RESOLVED_SELLER_WINS: 'status-badge--disabled',
+        EXPIRED: 'status-badge--disabled',
+        WITHDRAWN: 'status-badge--disabled',
       }
     }
   };
