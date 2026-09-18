@@ -66,8 +66,8 @@
 
 .step-item.active .step-circle {
   border-color: var(--color-brand);
-  background-color: var(--color-brand);
-  color: #fff;
+  background-color: var(--color-surface);
+  color: var(--color-brand);
 }
 
 .step-item.completed .step-circle {
@@ -141,20 +141,20 @@
   margin-top: 2px;
 }
 
-.input-with-suffix {
+.input-with-prefix {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.input-with-suffix input {
+.input-with-prefix input {
   width: 100%;
-  padding-right: 48px;
+  padding-left: 28px;
 }
 
-.suffix-text {
+.prefix-text {
   position: absolute;
-  right: var(--space-3);
+  left: var(--space-3);
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
   pointer-events: none;
@@ -222,7 +222,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: var(--color-overlay-dark);
   color: white;
   border: none;
   display: flex;

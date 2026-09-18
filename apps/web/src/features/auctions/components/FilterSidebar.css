@@ -1,19 +1,18 @@
 /* apps/web/src/features/auctions/components/FilterSidebar.css */
 .filter-sidebar {
   background-color: var(--color-surface);
-  border: 1px solid rgba(0,0,0,0.03);
+  border: 1px solid rgb(0,0,0,0.03);
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-6);
   box-shadow: var(--shadow-sm);
   display: flex;
-  flex-direction: row;
+  flex-flow: row wrap;
   align-items: center;
   gap: var(--space-6);
-  flex-wrap: wrap;
 }
 
 [data-theme="dark"] .filter-sidebar {
-  border: 1px solid rgba(255,255,255,0.03);
+  border: 1px solid rgb(255,255,255,0.03);
 }
 
 .filter-header {

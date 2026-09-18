@@ -1,11 +1,11 @@
 import { useFetch } from '../../../core/hooks/useFetch';
-import { useAuth } from '../../../core/context/AuthContext';
+// import { useAuth } from '../../../core/context/AuthContext';
 import { Link } from 'react-router-dom';
 import { AlertCircle, Flag, Trophy, Bell } from 'lucide-react';
 import './DashboardHome.css';
 
 export function DashboardHome() {
-  const { user } = useAuth();
+  // const { user } = useAuth(); // Not used currently
 
   // Fetch summary data
   // Note: Using limit=100 as a temporary approximation to get total count.
@@ -22,6 +22,7 @@ export function DashboardHome() {
 
   const formatRelativeTime = (isoString) => {
     if (!isoString) return '';
+    // eslint-disable-next-line react-hooks/purity
     const diff = Date.now() - new Date(isoString).getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
     if (hours < 24) return `${hours}h ago`;

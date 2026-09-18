@@ -28,6 +28,32 @@ export function usePaymentHistory(status, cursor = null) {
 }
 
 /**
+ * Retrieve user's bid history.
+ * Backend: GET /users/me/bids (Phase 14)
+ */
+export function useMyBids(status, cursor = null) {
+  const queryParams = new URLSearchParams();
+  if (status) queryParams.append('status', status);
+  if (cursor) queryParams.append('cursor', cursor);
+  
+  const queryString = queryParams.toString();
+  const url = `/users/me/bids${queryString ? `?${queryString}` : ''}`;
+
+  const { data, error, isLoading, refetch } = useFetch(url);
+
+  const bids = data?.data?.items || [];
+  const nextCursor = data?.data?.nextCursor;
+
+  return {
+    bids,
+    nextCursor,
+    isLoading,
+    error,
+    refetch,
+  };
+}
+
+/**
  * Confirm delivery of a won item (releases escrow funds to the seller).
  * Backend: POST /auctions/:id/confirm-delivery
  */

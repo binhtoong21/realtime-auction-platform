@@ -48,7 +48,7 @@
 
 .payment-card:hover {
   border-color: var(--color-brand);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgb(0, 0, 0, 0.05);
 }
 
 .payment-card.is-default {
@@ -124,6 +124,7 @@
 .btn-set-default {
   color: var(--color-brand);
 }
+
 .btn-set-default:hover:not(:disabled) {
   background-color: var(--color-brand-subtle);
 }
@@ -131,6 +132,7 @@
 .btn-delete {
   color: var(--color-danger);
 }
+
 .btn-delete:hover:not(:disabled) {
   background-color: var(--color-danger-subtle);
 }

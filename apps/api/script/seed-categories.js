@@ -3,11 +3,11 @@ import { pool } from '../src/config/database.js';
 
 const seedCategories = async () => {
   const categories = [
-    { name: 'Đồ điện tử', slug: 'do-dien-tu', description: 'Điện thoại, laptop, linh kiện...' },
-    { name: 'Đồ cổ & Sưu tầm', slug: 'do-co-suu-tam', description: 'Đồng hồ cổ, tiền xu, tem...' },
-    { name: 'Thời trang', slug: 'thoi-trang', description: 'Quần áo, túi xách, giày dép...' },
-    { name: 'Nghệ thuật', slug: 'nghe-thuat', description: 'Tranh ảnh, điêu khắc, thủ công mỹ nghệ...' },
-    { name: 'Khác', slug: 'khac', description: 'Các sản phẩm không thuộc danh mục trên' },
+    { name: 'Electronics', slug: 'electronics', description: 'Phones, laptops, accessories...' },
+    { name: 'Antiques & Collectibles', slug: 'antiques-collectibles', description: 'Vintage watches, coins, stamps...' },
+    { name: 'Fashion', slug: 'fashion', description: 'Clothing, bags, shoes...' },
+    { name: 'Art', slug: 'art', description: 'Paintings, sculptures, crafts...' },
+    { name: 'Other', slug: 'other', description: 'Products not in the above categories' },
   ];
 
   try {

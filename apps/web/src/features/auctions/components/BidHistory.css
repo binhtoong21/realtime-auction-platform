@@ -10,11 +10,11 @@
   align-items: center;
   padding: 6px var(--space-4);
   font-family: var(--font-mono);
-  border-bottom: 1px solid rgba(0,0,0,0.03);
+  border-bottom: 1px solid rgb(0,0,0,0.03);
 }
 
 [data-theme="dark"] .bid-history-item {
-  border-bottom: 1px solid rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgb(255,255,255,0.03);
 }
 
 .bid-history-item.new-bid {
