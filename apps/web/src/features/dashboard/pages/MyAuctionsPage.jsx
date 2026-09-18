@@ -4,6 +4,8 @@ import { useSellerAuctions } from '../hooks/useSellerActions';
 import { ShipModal } from '../components/ShipModal';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import { Package } from 'lucide-react';
 import './MyAuctionsPage.css';
 
 const STATUS_TABS = [
@@ -76,16 +78,12 @@ export function MyAuctionsPage() {
             <button className="btn-secondary" onClick={refetch}>Retry</button>
           </div>
         ) : auctions.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">📦</div>
-            <h3>No items found</h3>
-            <p>You do not have any auctions in this status.</p>
-            {activeTab === '' && (
-              <Link to="/dashboard/auctions/create" className="btn-primary mt-4">
-                Start Selling
-              </Link>
-            )}
-          </div>
+          <EmptyState
+            icon={Package}
+            heading="No items found"
+            subtext="You do not have any auctions in this status."
+            cta={activeTab === '' ? { label: 'Start Selling', to: '/dashboard/auctions/create' } : undefined}
+          />
         ) : (
           <div className="table-responsive">
             <table className="auctions-table">
@@ -103,14 +101,14 @@ export function MyAuctionsPage() {
                 {auctions.map(auction => (
                   <tr key={auction.id}>
                     <td>
-                      <div className="auction-product">
+                      <Link to={`/auctions/${auction.id}`} className="auction-product">
                         {auction.images && auction.images[0] ? (
                           <img src={auction.images[0]} alt={auction.title} className="auction-thumb" />
                         ) : (
                           <div className="auction-thumb-placeholder">No Image</div>
                         )}
                         <span className="auction-title" title={auction.title}>{auction.title}</span>
-                      </div>
+                      </Link>
                     </td>
                     <td><StatusBadge status={auction.status} type="auction" /></td>
                     <td className="price-cell">
@@ -123,8 +121,6 @@ export function MyAuctionsPage() {
                       {(auction.status === 'active' || auction.status === 'scheduled') && Number(auction.bid_count) === 0 && (
                         <div className="action-buttons">
                           <Link to={`/dashboard/auctions/${auction.id}/edit`} className="btn-link">Edit</Link>
-                          {/* Cancel logic not fully implemented in API yet */}
-                          <button className="btn-link danger" disabled title="Cancel feature is under development">Cancel</button>
                         </div>
                       )}
                       

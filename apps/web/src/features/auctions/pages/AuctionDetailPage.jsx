@@ -256,10 +256,8 @@ export function AuctionDetailPage() {
               <div className="auction-detail-countdown">
                 {isScheduled ? (
                   <CountdownTimer endAt={auction.start_at} timeOffset={timeOffset} endedText="Starting..." onEnd={refetchAuction} />
-                ) : isActive ? (
-                  <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
                 ) : (
-                  <span>—</span>
+                  <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
                 )}
               </div>
             </div>
