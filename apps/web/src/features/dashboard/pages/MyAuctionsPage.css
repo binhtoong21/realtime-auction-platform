@@ -1,8 +1,8 @@
 .my-auctions-page {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
-  padding: var(--spacing-md);
+  gap: var(--space-6);
+  padding: var(--space-4);
 }
 
 .page-header {
@@ -21,7 +21,7 @@
 .subtitle {
   font-size: 13px;
   color: var(--color-text-secondary);
-  margin: 0 0 var(--spacing-md) 0;
+  margin: 0 0 var(--space-4) 0;
 }
 
 .btn-primary {
@@ -45,14 +45,14 @@
 
 .btn-primary.btn-sm {
   padding: 4px 12px;
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
 }
 
 .status-tabs {
   display: flex;
-  gap: var(--spacing-xs);
+  gap: var(--space-1);
   overflow-x: auto;
-  padding-bottom: var(--spacing-xs);
+  padding-bottom: var(--space-1);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -101,7 +101,7 @@
 
 .auctions-table th,
 .auctions-table td {
-  padding: var(--spacing-md);
+  padding: var(--space-4);
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
 }
@@ -109,7 +109,7 @@
 .auctions-table th {
   color: var(--color-text-secondary);
   font-weight: 500;
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -120,7 +120,7 @@
 .auction-product {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--space-2);
 }
 
 .auction-thumb,
@@ -154,18 +154,19 @@
 
 .my-auctions-page .load-more-container {
   text-align: center;
-  padding: var(--spacing-lg);
+  padding: var(--space-6);
   border-top: 1px solid var(--color-border);
 }
 
 .price-cell {
+  font-family: var(--font-mono);
   font-weight: 600;
-  color: var(--color-brand);
+  color: var(--color-text-primary);
 }
 
 .date-cell {
   color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -179,7 +180,7 @@
 
 .action-buttons {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
@@ -208,7 +209,7 @@
 }
 
 .tracking-number {
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
   background: var(--color-surface-raised);
   padding: 4px 8px;
@@ -230,15 +231,10 @@
 
 .empty-icon {
   font-size: 48px;
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--space-4);
   opacity: 0.5;
 }
 
-.empty-state h3 {
-  color: var(--color-text-primary);
-  margin: 0 0 var(--spacing-xs) 0;
-}
-
 .mt-4 {
-  margin-top: var(--spacing-md);
+  margin-top: var(--space-4);
 }

@@ -1,6 +1,7 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth, useAuthDispatch } from '../../core/context/AuthContext';
+import { useSocket } from '../../core/contexts/SocketContext';
 import { Sun, Moon } from 'lucide-react';
 import './Header.css';
 
@@ -14,6 +15,22 @@ export function Header() {
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
+
+  // Connection status derived from socket instance
+  const socket = useSocket();
+  const [isConnected, setIsConnected] = useState(socket?.connected ?? false);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    return () => { 
+      socket.off('connect', onConnect); 
+      socket.off('disconnect', onDisconnect); 
+    };
+  }, [socket]);
 
   useEffect(() => {
     if (isDark) {
@@ -66,7 +83,7 @@ export function Header() {
 
         <div className="header__right">
           {user && (
-            <Link to="/dashboard/auctions/create" className="header__create-btn">
+            <Link to="/dashboard/auctions/create" className="btn btn--sm header__create-btn">
               + Create auction
             </Link>
           )}
@@ -79,19 +96,17 @@ export function Header() {
             {isDark ? <Sun size={14} /> : <Moon size={14} />}
           </button>
 
-          {/* Connection status dot — 6px real CSS dot */}
-          <span
-            className="header__connection-dot header__connection-dot--offline"
-            title="Disconnected"
-          />
-
           {user ? (
             <div className="header__user">
+              <span
+                className={`header__connection-dot header__connection-dot--${isConnected ? 'online' : 'offline'}`}
+                title={isConnected ? 'Realtime connected' : 'Disconnected'}
+              />
               {/* Profile Avatar: 28px round, initials */}
               <div className="header__avatar" title={user.displayName || user.email}>
                 {getInitials()}
               </div>
-              <button onClick={logout} className="header__logout-btn">
+              <button onClick={logout} className="btn btn--sm btn--secondary">
                 Logout
               </button>
             </div>
@@ -100,7 +115,7 @@ export function Header() {
               <Link to="/auth/login" className="header__nav-link">
                 Login
               </Link>
-              <Link to="/auth/register" className="header__signup-btn">
+              <Link to="/auth/register" className="btn btn--sm btn--primary">
                 Sign Up
               </Link>
             </div>

@@ -129,7 +129,7 @@ export function BidForm({
         <div className="bid-error-banner">
           <p>Could not confirm your bid. Network issue detected.</p>
           <div className="bid-error-actions">
-            <button className="btn-primary" onClick={handleRetry}>
+            <button className="btn btn--md btn--primary" onClick={handleRetry}>
               Retry
             </button>
             <button className="bid-cancel-btn" onClick={handleCancel}>
@@ -158,7 +158,7 @@ export function BidForm({
         <button
           id="place-bid-btn"
           type="submit"
-          className="btn-primary bid-submit-btn"
+          className="btn btn--lg btn--primary bid-submit-btn"
           disabled={isDisabled}
         >
           {isSubmitting

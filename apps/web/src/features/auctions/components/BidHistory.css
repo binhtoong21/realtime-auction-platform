@@ -18,7 +18,7 @@
 }
 
 .bid-history-item.new-bid {
-  background-color: var(--color-action-subtle);
+  background-color: var(--color-brand-subtle);
   border-bottom: none;
 }
 

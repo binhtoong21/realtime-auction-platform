@@ -231,11 +231,11 @@ export function CreateAuctionPage() {
               <div className="category-status loading">Loading categories...</div>
             ) : categoriesError ? (
               <div className="category-status error">
-                Failed to load categories. <button type="button" onClick={refetch} className="btn-link">Retry</button>
+                Failed to load categories. <button type="button" onClick={refetch} className="btn btn--sm btn--link">Retry</button>
               </div>
             ) : (!categories || categories.length === 0) ? (
               <div className="category-status empty">
-                No categories available. <button type="button" onClick={refetch} className="btn-link">Refresh</button>
+                No categories available. <button type="button" onClick={refetch} className="btn btn--sm btn--link">Refresh</button>
               </div>
             ) : (
               <select 
@@ -374,12 +374,12 @@ export function CreateAuctionPage() {
 
       <div className="form-actions">
         {currentStep > 0 && (
-          <button className="btn-secondary" onClick={handlePrev} disabled={isSubmitting}>Back</button>
+          <button className="btn btn--md btn--secondary" onClick={handlePrev} disabled={isSubmitting}>Back</button>
         )}
         {currentStep < 2 ? (
-          <button className="btn-primary" onClick={handleNext}>Next</button>
+          <button className="btn btn--md btn--primary" onClick={handleNext}>Next</button>
         ) : (
-          <button className="btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
+          <button className="btn btn--md btn--primary" onClick={handleSubmit} disabled={isSubmitting}>
             {isSubmitting ? 'Creating auction...' : 'Create Auction'}
           </button>
         )}

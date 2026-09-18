@@ -8,6 +8,7 @@ import { BidForm } from '../components/BidForm';
 import { BidHistory } from '../components/BidHistory';
 import { JoinAuctionModal } from '../components/JoinAuctionModal';
 import { CountdownTimer } from '../components/CountdownTimer';
+import { StatusBadge } from '../../../components/StatusBadge';
 import './AuctionDetailPage.css';
 
 export function AuctionDetailPage() {
@@ -157,8 +158,6 @@ export function AuctionDetailPage() {
   
   const isScheduled = auction.status === 'scheduled';
   const isActive = auction.status === 'active';
-  const isEnded = ['ended', 'pending_payment', 'no_sale', 'cancelled'].includes(auction.status);
-  
   const isJoined = auction.is_joined || false;
 
   return (
@@ -233,13 +232,13 @@ export function AuctionDetailPage() {
           <div className="terminal-header">
             <div className="terminal-title-row">
               <h1>{auction.title}</h1>
-              <span className={`status-badge ${auction.status}`}>
-                {auction.status}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <StatusBadge status={auction.status} type="auction" />
+                <span className={`connection-dot ${connectionStatus}`} title={connectionStatus} />
+              </div>
             </div>
             <p className="auction-detail-seller">
               Seller: {auction.seller_name || 'Unknown'}
-              <span className={`connection-dot ${connectionStatus}`} title={connectionStatus} />
             </p>
           </div>
 
@@ -260,7 +259,7 @@ export function AuctionDetailPage() {
                 ) : isActive ? (
                   <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
                 ) : (
-                  <span>00:00:00</span>
+                  <span>—</span>
                 )}
               </div>
             </div>
@@ -292,7 +291,7 @@ export function AuctionDetailPage() {
                 <>
                   <p>This auction has not started yet.</p>
                   <button 
-                    className="btn btn-primary" 
+                    className="btn btn--md btn--primary" 
                     onClick={handleJoinClick}
                     style={{ marginTop: '1rem' }}
                   >
