@@ -15,7 +15,9 @@ const STATUS_TABS = [
   { value: 'captured', label: 'Captured' },
   { value: 'transferred', label: 'Transferred' },
   { value: 'frozen', label: 'Disputed' },
-  { value: 'refunded', label: 'Refunded' }
+  { value: 'refunded', label: 'Refunded' },
+  { value: 'hold_failed', label: 'Failed' },
+  { value: 'grace_period', label: 'Action Needed' }
 ];
 
 export function PaymentHistoryPage() {

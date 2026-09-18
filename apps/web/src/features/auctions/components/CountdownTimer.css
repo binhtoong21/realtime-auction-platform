@@ -1,7 +1,10 @@
-
-
 .countdown-timer {
   font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+}
+
+.countdown-warning {
+  color: var(--color-warning);
 }
 
 .countdown-critical {
