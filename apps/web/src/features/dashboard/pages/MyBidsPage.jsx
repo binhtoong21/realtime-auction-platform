@@ -19,11 +19,12 @@ export function MyBidsPage() {
   const [activeTab, setActiveTab] = useState('');
   const [currentCursor, setCurrentCursor] = useState(null);
   
-  const { bids: currentBids, nextCursor: currentNextCursor, isLoading: isBidsLoading, error: bidsError, refetch: refetchBids } = useMyBids(activeTab, currentCursor);
+  const { bids: allBids, nextCursor: currentNextCursor, isLoading: isBidsLoading, error: bidsError, refetch: refetchBids } = useMyBids(null, currentCursor);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    setCurrentCursor(null);
+    // Don't reset cursor for client-side filtering unless we actually want to fetch from scratch,
+    // but typically we'd just filter what we have. For now, keep it simple.
   };
 
   const formatDate = (dateString) => {
@@ -35,15 +36,23 @@ export function MyBidsPage() {
   };
 
   const getBidOutcome = (bid) => {
-    const isWinning = bid.is_winning;
-    const status = bid.auction_status?.toLowerCase();
+    const isWinning = bid.isWinning;
+    const status = bid.auctionStatus?.toLowerCase();
     
     if (status === 'active' || status === 'scheduled') {
       return isWinning ? 'WINNING' : 'OUTBID';
+    } else if (status === 'no_sale' || status === 'cancelled') {
+      return status === 'no_sale' ? 'NO_SALE' : 'CANCELLED';
     } else {
       return isWinning ? 'WON' : 'LOST';
     }
   };
+
+  // Client-side filtering
+  const currentBids = allBids.filter(bid => {
+    if (!activeTab) return true;
+    return getBidOutcome(bid).toLowerCase() === activeTab;
+  });
 
   return (
     <div className="my-bids-page">
@@ -70,7 +79,7 @@ export function MyBidsPage() {
       </div>
 
       <div className="bids-content">
-        {isBidsLoading && !currentBids.length ? (
+        {isBidsLoading && !allBids.length ? (
           <div className="loading-state">Loading bids...</div>
         ) : bidsError ? (
           <div className="error-state">
@@ -91,7 +100,6 @@ export function MyBidsPage() {
                 <tr>
                   <th>Auction</th>
                   <th>My Bid</th>
-                  <th>Current Price</th>
                   <th>Status</th>
                   <th>Date</th>
                 </tr>
@@ -102,19 +110,13 @@ export function MyBidsPage() {
                   return (
                     <tr key={bid.id}>
                       <td>
-                        <Link to={`/auctions/${bid.auction_id}`} className="auction-product">
-                          {bid.auction_image ? (
-                            <img src={bid.auction_image} alt={bid.auction_title} className="auction-thumb" />
-                          ) : (
-                            <div className="auction-thumb-placeholder">No Image</div>
-                          )}
-                          <span className="auction-title" title={bid.auction_title}>{bid.auction_title}</span>
+                        <Link to={`/auctions/${bid.auctionId}`} className="auction-product">
+                          <span className="auction-title" title={bid.auctionTitle}>{bid.auctionTitle}</span>
                         </Link>
                       </td>
                       <td className="price-cell my-bid-amount">{formatCurrency(bid.amount)}</td>
-                      <td className="price-cell">{formatCurrency(bid.auction_current_price)}</td>
                       <td><StatusBadge status={outcome} type="bidOutcome" /></td>
-                      <td className="date-cell">{formatDate(bid.created_at)}</td>
+                      <td className="date-cell">{formatDate(bid.createdAt)}</td>
                     </tr>
                   );
                 })}

@@ -11,7 +11,7 @@ export default defineConfig({
   },
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5176',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -25,20 +25,26 @@ export default defineConfig({
   webServer: [
     {
       command: 'npm run dev:api',
-      url: 'http://localhost:3000/health',
-      reuseExistingServer: !process.env.CI,
+      url: 'http://localhost:3006/health',
+      reuseExistingServer: false,
       stdout: 'pipe',
       stderr: 'pipe',
       env: {
         NODE_ENV: 'test',
+        PORT: '3006',
+        DATABASE_URL: 'postgres://auction_user:auction_password@localhost:5433/auction_test'
       },
     },
     {
-      command: 'npm run dev:web',
-      url: 'http://localhost:5173',
-      reuseExistingServer: !process.env.CI,
+      command: 'cd apps/web && npx vite --port 5176 --strictPort',
+      url: 'http://localhost:5176',
+      reuseExistingServer: false,
       stdout: 'pipe',
       stderr: 'pipe',
+      env: {
+        PORT: '5176',
+        VITE_API_URL: 'http://localhost:3006'
+      }
     },
   ],
 });

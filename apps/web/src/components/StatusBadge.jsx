@@ -104,12 +104,16 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
         OUTBID: 'Outbid',
         WON: 'Won',
         LOST: 'Lost',
+        NO_SALE: 'No Sale',
+        CANCELLED: 'Cancelled',
       },
       TOKENS: {
         WINNING: 'status-badge--success',
         OUTBID: 'status-badge--danger',
         WON: 'status-badge--brand',
         LOST: 'status-badge--disabled',
+        NO_SALE: 'status-badge--disabled',
+        CANCELLED: 'status-badge--disabled',
       }
     }
   };
