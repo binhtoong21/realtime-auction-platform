@@ -15,8 +15,8 @@ export function usePaymentHistory(status, cursor = null) {
 
   const { data, error, isLoading, refetch } = useFetch(url);
 
-  const payments = data?.data?.items || [];
-  const nextCursor = data?.data?.nextCursor;
+  const payments = Array.isArray(data?.data) ? data.data : (data?.data?.items || []);
+  const nextCursor = data?.meta?.nextCursor || data?.data?.nextCursor;
 
   return {
     payments,
@@ -41,8 +41,8 @@ export function useMyBids(status, cursor = null) {
 
   const { data, error, isLoading, refetch } = useFetch(url);
 
-  const bids = data?.data?.items || [];
-  const nextCursor = data?.data?.nextCursor;
+  const bids = Array.isArray(data?.data) ? data.data : (data?.data?.items || []);
+  const nextCursor = data?.meta?.nextCursor || data?.data?.nextCursor;
 
   return {
     bids,
