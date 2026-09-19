@@ -61,8 +61,10 @@ app.use('/payments', paymentsRoutes);
 app.use('/disputes', disputesRoutes);
 app.use('/admin', adminRoutes);
 
-// Always mount test routes for e2e tests
-app.use('/test', testRoutes);
+// Mount test routes for e2e tests only in test environment
+if (process.env.NODE_ENV === 'test') {
+  app.use('/test', testRoutes);
+}
 
 // Serve mock S3 files in development synchronously
 if (process.env.NODE_ENV !== 'production') {
