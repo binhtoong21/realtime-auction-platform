@@ -21,8 +21,8 @@
   --color-bg:             #FFFBF5;
   --color-surface:        #FFF;
   --color-surface-raised: #FDF8F0;
-  --color-overlay-dark:   rgb(0, 0, 0, 0.6);
-  --color-overlay-dark-hover: rgb(0, 0, 0, 0.8);
+  --color-overlay-dark:   rgba(0, 0, 0, 0.6);
+  --color-overlay-dark-hover: rgba(0, 0, 0, 0.8);
 
   /* ============================================
      TEXT

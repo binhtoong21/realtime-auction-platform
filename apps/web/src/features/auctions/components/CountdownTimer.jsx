@@ -45,13 +45,14 @@ export function CountdownTimer({ endAt, timeOffset = 0, endedText = 'Ended', onE
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [endAt, timeOffset]);
+  }, [endAt, timeOffset, onEnd]);
 
   if (isEnded) {
     return <span className="countdown-ended" style={{ color: 'var(--color-text-disabled)' }}>{endedText}</span>;
   }
 
   const isCritical = timeLeft > 0 && timeLeft <= 2 * 60 * 1000;
+  const isWarning = timeLeft > 2 * 60 * 1000 && timeLeft <= 10 * 60 * 1000;
   
   // Format HH:MM:SS
   const seconds = Math.floor((timeLeft / 1000) % 60);
@@ -66,7 +67,7 @@ export function CountdownTimer({ endAt, timeOffset = 0, endedText = 'Ended', onE
     : `${formatUnit(hours)}:${formatUnit(minutes)}:${formatUnit(seconds)}`;
 
   return (
-    <span className={`countdown-timer ${isCritical ? 'countdown-critical' : ''}`}>
+    <span className={`countdown-timer ${isCritical ? 'countdown-critical' : isWarning ? 'countdown-warning' : ''}`}>
       {timeString}
     </span>
   );

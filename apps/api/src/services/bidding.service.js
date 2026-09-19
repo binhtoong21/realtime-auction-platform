@@ -113,3 +113,44 @@ export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) 
     auction: result.auction
   };
 };
+
+export const getMyBids = async (userId, cursor, limit = 20) => {
+  let query = `
+    SELECT 
+      b.id,
+      b.auction_id as "auctionId",
+      b.amount,
+      b.is_winning as "isWinning",
+      b.created_at as "createdAt",
+      a.title as "auctionTitle",
+      a.status as "auctionStatus",
+      a.current_price as "auctionCurrentPrice"
+    FROM bids b
+    JOIN auctions a ON b.auction_id = a.id
+    WHERE b.bidder_id = $1
+  `;
+  
+  const values = [userId];
+  
+  if (cursor) {
+    query += ` AND b.created_at < $2`;
+    values.push(cursor);
+  }
+  
+  query += ` ORDER BY b.created_at DESC LIMIT $${values.length + 1}`;
+  values.push(limit + 1); // Fetch one extra to determine hasMore
+  
+  const result = await pool.query(query, values);
+  
+  const bids = result.rows.slice(0, limit);
+  const hasMore = result.rows.length > limit;
+  const nextCursor = hasMore ? bids[bids.length - 1].createdAt : null;
+  
+  return {
+    bids,
+    meta: {
+      nextCursor,
+      hasMore
+    }
+  };
+};

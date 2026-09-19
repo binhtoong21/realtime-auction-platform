@@ -54,7 +54,7 @@
 
 .browse-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-4);
 }
 
@@ -71,22 +71,7 @@
   background-color: var(--color-surface-raised);
 }
 
-@media (max-width: 1280px) {
-  .browse-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-@media (max-width: 1024px) {
-  .browse-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
 @media (max-width: 768px) {
-  .browse-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
   .browse-main {
     padding: var(--space-3) var(--space-4);
   }

@@ -15,11 +15,37 @@ export function usePaymentHistory(status, cursor = null) {
 
   const { data, error, isLoading, refetch } = useFetch(url);
 
-  const payments = data?.data?.items || [];
-  const nextCursor = data?.data?.nextCursor;
+  const payments = Array.isArray(data?.data) ? data.data : (data?.data?.items || []);
+  const nextCursor = data?.meta?.nextCursor || data?.data?.nextCursor;
 
   return {
     payments,
+    nextCursor,
+    isLoading,
+    error,
+    refetch,
+  };
+}
+
+/**
+ * Retrieve user's bid history.
+ * Backend: GET /users/me/bids (Phase 14)
+ */
+export function useMyBids(status, cursor = null) {
+  const queryParams = new URLSearchParams();
+  if (status) queryParams.append('status', status);
+  if (cursor) queryParams.append('cursor', cursor);
+  
+  const queryString = queryParams.toString();
+  const url = `/users/me/bids${queryString ? `?${queryString}` : ''}`;
+
+  const { data, error, isLoading, refetch } = useFetch(url);
+
+  const bids = Array.isArray(data?.data) ? data.data : (data?.data?.items || []);
+  const nextCursor = data?.meta?.nextCursor || data?.data?.nextCursor;
+
+  return {
+    bids,
     nextCursor,
     isLoading,
     error,

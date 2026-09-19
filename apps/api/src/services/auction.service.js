@@ -167,7 +167,7 @@ export const getBidsByAuctionId = async (auctionId, limit = 50) => {
   // Lịch sử bid chỉ cần limit 50 là đủ cho UI thông thường.
   // Sắp xếp bid cao nhất (hoặc mới nhất) lên đầu.
   const query = `
-    SELECT b.id, b.amount, b.created_at, b.is_winning,
+    SELECT b.id, b.amount, b.created_at, b.is_winning, b.bidder_id,
            u.display_name as bidder_name
     FROM bids b
     JOIN users u ON b.bidder_id = u.id

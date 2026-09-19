@@ -268,7 +268,8 @@ export function CreateAuctionPage() {
         <div className="form-step">
           <div className="form-group">
             <label>Starting Price</label>
-            <div className="input-with-suffix">
+            <div className="input-with-prefix">
+              <span className="prefix-text">$</span>
               <input 
                 type="number" 
                 value={startingPrice} 
@@ -276,14 +277,14 @@ export function CreateAuctionPage() {
                 min="1"
                 step="0.01"
               />
-              <span className="suffix-text">USD</span>
             </div>
             {errors.startingPrice && <span className="field-error">{errors.startingPrice}</span>}
           </div>
 
           <div className="form-group">
             <label>Reserve Price (Optional)</label>
-            <div className="input-with-suffix">
+            <div className="input-with-prefix">
+              <span className="prefix-text">$</span>
               <input 
                 type="number" 
                 value={reservePrice} 
@@ -291,14 +292,14 @@ export function CreateAuctionPage() {
                 min={startingPrice || '1'}
                 step="0.01"
               />
-              <span className="suffix-text">USD</span>
             </div>
             {errors.reservePrice && <span className="field-error">{errors.reservePrice}</span>}
           </div>
 
           <div className="form-group">
             <label>Bid Increment</label>
-            <div className="input-with-suffix">
+            <div className="input-with-prefix">
+              <span className="prefix-text">$</span>
               <input 
                 type="number" 
                 value={bidIncrement} 
@@ -306,7 +307,6 @@ export function CreateAuctionPage() {
                 min="1"
                 step="0.01"
               />
-              <span className="suffix-text">USD</span>
             </div>
             {errors.bidIncrement && <span className="field-error">{errors.bidIncrement}</span>}
           </div>

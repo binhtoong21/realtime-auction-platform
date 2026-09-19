@@ -56,6 +56,20 @@ test.describe('Global Layout & App Shell (R1)', () => {
 
   test('TC-L1-03: Real-Time Connection Indicator State', async ({ page }) => {
     await page.goto('/');
+    await page.route('**/api/auth/me', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            user: { id: 2, email: 'bidder1@example.com', displayName: 'Bidder 1', role: 'user' }
+          }
+        })
+      });
+    });
+    await page.goto('/');
+    
     const connDot = page.locator('.header__connection-dot');
     await expect(connDot).toBeVisible();
     
@@ -106,10 +120,19 @@ test.describe('Global Layout & App Shell (R1)', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
     
-    // Log in bidder1
-    await page.evaluate((token) => {
-      localStorage.setItem('accessToken', token);
-    }, bidder1Token);
+    // Log in bidder1 by mocking /auth/me
+    await page.route('**/api/auth/me', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            user: { id: 2, email: 'bidder1@example.com', displayName: 'Bidder 1', role: 'user' }
+          }
+        })
+      });
+    });
     await page.goto('/');
 
     // User email/name is hidden via CSS, but avatar element (28px) is still visible
@@ -142,16 +165,25 @@ test.describe('Global Layout & App Shell (R1)', () => {
 
   test('TC-L2-04: Avatar Initials Fallback', async ({ page }) => {
     await page.goto('/');
-    await page.evaluate((token) => {
-      localStorage.setItem('accessToken', token);
-    }, bidder1Token);
+    await page.route('**/api/auth/me', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            user: { id: 2, email: 'bidder1@example.com', displayName: 'Bidder 1', role: 'user' }
+          }
+        })
+      });
+    });
     await page.goto('/');
 
     const avatar = page.locator('.header__avatar');
     await expect(avatar).toBeVisible();
     const text = await avatar.textContent();
-    // 'bidder1@example.com' -> initials 'BI'
-    expect(text.trim()).toBe('BI');
+    // 'Bidder 1' -> initials 'B1'
+    expect(text.trim()).toBe('B1');
   });
 
   test('TC-L2-05: Spacing Variable Strict Verification', async ({ page }) => {

@@ -122,6 +122,15 @@ export function BidForm({
 
   const isDisabled = isSubmitting || bidState === 'success' || auctionStatus !== 'active';
 
+  const handleQuickBid = (multiplier) => {
+    if (!isJoined) {
+      onJoinClick();
+      return;
+    }
+    const newAmountCents = currentPrice + (multiplier * bidIncrement);
+    setBidAmount(String(newAmountCents / 100));
+  };
+
   return (
     <div className="bid-form-container">
       {/* Network error banner */}
@@ -170,6 +179,18 @@ export function BidForm({
             : 'Place Bid'}
         </button>
       </form>
+
+      <div className="quick-bid-container">
+        <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickBid(1)} disabled={isDisabled}>
+          + ${(bidIncrementDollars).toFixed(2)}
+        </button>
+        <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickBid(2)} disabled={isDisabled}>
+          + ${(bidIncrementDollars * 2).toFixed(2)}
+        </button>
+        <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickBid(5)} disabled={isDisabled}>
+          + ${(bidIncrementDollars * 5).toFixed(2)}
+        </button>
+      </div>
 
       <p className="bid-form-hint">
         Min bid: ${minValidAmountDollars.toFixed(2)} (current + ${bidIncrementDollars.toFixed(2)} increment)
