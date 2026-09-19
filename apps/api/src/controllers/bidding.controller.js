@@ -28,3 +28,20 @@ export const placeBid = async (req, res, next) => {
     next(error);
   }
 };
+
+export const handleGetMyBids = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { cursor, limit } = req.query;
+    
+    const result = await biddingService.getMyBids(userId, cursor, limit ? parseInt(limit, 10) : 20);
+    
+    res.status(200).json({
+      success: true,
+      data: result.bids,
+      meta: result.meta
+    });
+  } catch (error) {
+    next(error);
+  }
+};

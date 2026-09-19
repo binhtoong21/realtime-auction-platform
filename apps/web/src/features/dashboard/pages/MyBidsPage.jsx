@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useMyBids } from '../hooks/useBuyerActions';
 import { StatusBadge } from '../../../components/StatusBadge';
@@ -18,13 +18,25 @@ const STATUS_TABS = [
 export function MyBidsPage() {
   const [activeTab, setActiveTab] = useState('');
   const [currentCursor, setCurrentCursor] = useState(null);
+  const [accumulatedBids, setAccumulatedBids] = useState([]);
   
   const { bids: allBids, nextCursor: currentNextCursor, isLoading: isBidsLoading, error: bidsError, refetch: refetchBids } = useMyBids(null, currentCursor);
 
+  // Accumulate bids when new page data arrives
+  useEffect(() => {
+    if (allBids && allBids.length > 0) {
+      setAccumulatedBids(prev => {
+        const existingIds = new Set(prev.map(b => b.id));
+        const newBids = allBids.filter(b => !existingIds.has(b.id));
+        return [...prev, ...newBids];
+      });
+    }
+  }, [allBids]);
+
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    // Don't reset cursor for client-side filtering unless we actually want to fetch from scratch,
-    // but typically we'd just filter what we have. For now, keep it simple.
+    setAccumulatedBids([]); // Reset accumulation
+    setCurrentCursor(null); // Fetch from scratch
   };
 
   const formatDate = (dateString) => {
@@ -49,7 +61,7 @@ export function MyBidsPage() {
   };
 
   // Client-side filtering
-  const currentBids = allBids.filter(bid => {
+  const currentBids = accumulatedBids.filter(bid => {
     if (!activeTab) return true;
     return getBidOutcome(bid).toLowerCase() === activeTab;
   });
