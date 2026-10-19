@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import { DisputeReason, DisputePolicyRule, DisputeRejectionReason, DisputeOutcome } from '@auction/shared-constants';
+import { DisputeReason, DisputePolicyRule, DisputeRejectionReason, DisputeOutcome, DisputeStatus } from '@auction/shared-constants';
 
 export const openDisputeSchema = Joi.object({
   paymentId: Joi.string().uuid().required(),
@@ -14,6 +14,12 @@ export const addEvidenceSchema = Joi.object({
 
 export const disputeIdSchema = Joi.object({
   id: Joi.string().uuid().required(),
+});
+
+export const adminDisputesQuerySchema = Joi.object({
+  status: Joi.string().valid(...Object.values(DisputeStatus)).optional(),
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20),
 });
 
 export const resolveDisputeSchema = Joi.object({

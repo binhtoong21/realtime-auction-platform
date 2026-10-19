@@ -142,3 +142,22 @@ export const handleResolveDispute = async (req, res, next) => {
     next(err);
   }
 };
+
+export const handleGetAdminDisputes = async (req, res, next) => {
+  try {
+    const { status, page = 1, limit = 20 } = req.query;
+    const result = await disputeService.getAdminDisputes({
+      status,
+      page,
+      limit,
+    });
+
+    res.json({
+      success: true,
+      data: result.disputes,
+      meta: result.meta,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
