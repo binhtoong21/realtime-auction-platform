@@ -7,12 +7,15 @@ import { ForgotPasswordPage } from '../features/authentication/pages/ForgotPassw
 import { ResetPasswordPage } from '../features/authentication/pages/ResetPasswordPage';
 import { AuctionBrowsePage } from '../features/auctions/pages/AuctionBrowsePage';
 import { AuctionDetailPage } from '../features/auctions/pages/AuctionDetailPage';
+import { TrackingPage } from '../features/auctions/pages/TrackingPage';
 import { RequireAuth } from './RequireAuth';
 import { DashboardLayout } from '../features/dashboard/components/DashboardLayout';
 import { DashboardHome } from '../features/dashboard/pages/DashboardHome';
 import { MyAuctionsPage } from '../features/dashboard/pages/MyAuctionsPage';
 import { CreateAuctionPage } from '../features/dashboard/pages/CreateAuctionPage';
+import { EditAuctionPage } from '../features/dashboard/pages/EditAuctionPage';
 import { MyBidsPage } from '../features/dashboard/pages/MyBidsPage';
+
 import { PaymentHistoryPage } from '../features/dashboard/pages/PaymentHistoryPage';
 import { NotificationCenterPage } from '../features/dashboard/pages/NotificationCenterPage';
 import { ProfileSettingsPage } from '../features/dashboard/pages/ProfileSettingsPage';
@@ -61,6 +64,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'auctions/:id/tracking',
+        element: (
+          <RequireAuth>
+            <TrackingPage />
+          </RequireAuth>
+        ),
+      },
+      {
         path: 'dashboard',
         element: (
           <RequireAuth>
@@ -79,6 +90,10 @@ export const router = createBrowserRouter([
           {
             path: 'auctions/create',
             element: <CreateAuctionPage />,
+          },
+          {
+            path: 'auctions/:id/edit',
+            element: <EditAuctionPage />,
           },
           {
             path: 'bids',
