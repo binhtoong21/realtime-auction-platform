@@ -25,6 +25,7 @@ export function MyBidsPage() {
   // Accumulate bids when new page data arrives
   useEffect(() => {
     if (allBids && allBids.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAccumulatedBids(prev => {
         const existingIds = new Set(prev.map(b => b.id));
         const newBids = allBids.filter(b => !existingIds.has(b.id));
