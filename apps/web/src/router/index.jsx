@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { BaseLayout } from '../components/layout/BaseLayout';
 import { LoginPage } from '../features/authentication/pages/LoginPage';
 import { RegisterPage } from '../features/authentication/pages/RegisterPage';
@@ -9,6 +9,7 @@ import { AuctionBrowsePage } from '../features/auctions/pages/AuctionBrowsePage'
 import { AuctionDetailPage } from '../features/auctions/pages/AuctionDetailPage';
 import { TrackingPage } from '../features/auctions/pages/TrackingPage';
 import { RequireAuth } from './RequireAuth';
+import { RequireRole } from './RequireRole';
 import { DashboardLayout } from '../features/dashboard/components/DashboardLayout';
 import { DashboardHome } from '../features/dashboard/pages/DashboardHome';
 import { MyAuctionsPage } from '../features/dashboard/pages/MyAuctionsPage';
@@ -21,6 +22,9 @@ import { NotificationCenterPage } from '../features/dashboard/pages/Notification
 import { ProfileSettingsPage } from '../features/dashboard/pages/ProfileSettingsPage';
 import { PaymentMethodsPage } from '../features/dashboard/pages/PaymentMethodsPage';
 import { KycPage } from '../features/dashboard/pages/KycPage';
+import { AdminLayout } from '../features/admin/components/AdminLayout';
+import { NotFoundPage } from '../pages/NotFoundPage';
+import { ForbiddenPage } from '../pages/ForbiddenPage';
 
 export const router = createBrowserRouter([
   {
@@ -120,6 +124,39 @@ export const router = createBrowserRouter([
             element: <KycPage />,
           },
         ],
+      },
+      {
+        path: '403',
+        element: <ForbiddenPage />,
+      },
+      {
+        path: 'admin',
+        element: (
+          <RequireRole role="admin">
+            <AdminLayout />
+          </RequireRole>
+        ),
+        children: [
+          {
+            index: true,
+            element: <Navigate to="/admin/disputes" replace />,
+          },
+          {
+            path: 'disputes',
+            element: (
+              <div style={{ padding: '24px' }}>
+                <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Dispute Queue Desk</h2>
+                <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px' }}>
+                  Queue interface loading.
+                </p>
+              </div>
+            ),
+          },
+        ],
+      },
+      {
+        path: '*',
+        element: <NotFoundPage />,
       },
     ],
   },

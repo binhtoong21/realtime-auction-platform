@@ -214,7 +214,7 @@ export const getDisputeById = async ({ disputeId, userId, userRole }) => {
      FROM disputes d
      JOIN payments p ON d.payment_id = p.id
      JOIN auctions a ON d.auction_id = a.id
-     JOIN users u ON d.opened_by = u.id
+     LEFT JOIN users u ON d.opened_by = u.id
      WHERE d.id = $1`,
     [disputeId]
   );
@@ -239,7 +239,7 @@ export const getDisputeById = async ({ disputeId, userId, userRole }) => {
     auctionId: dispute.auction_id,
     auctionTitle: dispute.auction_title,
     paymentId: dispute.payment_id,
-    openedBy: { id: dispute.opened_by, displayName: dispute.opened_by_name },
+    openedBy: { id: dispute.opened_by, displayName: dispute.opened_by_name || 'System' },
     reason: dispute.reason,
     description: dispute.description,
     evidenceUrls: dispute.evidence_urls,
@@ -730,4 +730,73 @@ export const resolveDispute = async ({ disputeId, adminId, outcome, resolutionNo
   }
 
   return updatedDispute;
+};
+
+/**
+ * Admin retrieves paginated disputes list with optional status filter
+ */
+export const getAdminDisputes = async ({ status, page = 1, limit = 20 }) => {
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const offset = (pageNum - 1) * limitNum;
+
+  const whereClauses = [];
+  const params = [];
+
+  if (status) {
+    params.push(status);
+    whereClauses.push(`d.status = $${params.length}`);
+  }
+
+  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+  const countRes = await pool.query(
+    `SELECT COUNT(*)::int as total FROM disputes d ${whereSql}`,
+    params
+  );
+  const total = countRes.rows[0]?.total || 0;
+
+  const listParams = [...params, limitNum, offset];
+  const listRes = await pool.query(
+    `SELECT d.*, 
+            p.buyer_id, p.seller_id,
+            a.title as auction_title,
+            u.display_name as opened_by_name
+     FROM disputes d
+     JOIN payments p ON d.payment_id = p.id
+     JOIN auctions a ON d.auction_id = a.id
+     LEFT JOIN users u ON d.opened_by = u.id
+     ${whereSql}
+     ORDER BY d.created_at DESC
+     LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+    listParams
+  );
+
+  const disputes = listRes.rows.map((row) => ({
+    id: row.id,
+    auctionId: row.auction_id,
+    auctionTitle: row.auction_title,
+    paymentId: row.payment_id,
+    openedBy: { id: row.opened_by, displayName: row.opened_by_name || 'System' },
+    reason: row.reason,
+    description: row.description,
+    evidenceUrls: row.evidence_urls,
+    status: row.status,
+    resolutionNote: row.resolution_note,
+    policyRule: row.policy_rule,
+    deadlineAt: row.deadline_at,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at,
+    resolvedBy: row.resolved_by,
+  }));
+
+  return {
+    disputes,
+    meta: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    },
+  };
 };

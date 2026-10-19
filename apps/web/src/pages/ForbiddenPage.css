@@ -1,0 +1,9 @@
+.error-card--forbidden {
+  border-top: 3px solid var(--color-danger, #EF4444);
+}
+
+.error-code-badge--forbidden {
+  background-color: var(--color-danger-subtle, #FEE2E2);
+  color: var(--color-danger, #EF4444);
+  border: 1px solid var(--color-danger, #EF4444);
+}

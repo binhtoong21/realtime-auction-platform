@@ -18,6 +18,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@auction/shared-constants": "*",
     "@aws-sdk/client-s3": "^3.1090.0",
     "@smithy/node-http-handler": "^4.9.7",
     "@socket.io/redis-adapter": "^8.3.0",
