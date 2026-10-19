@@ -1,0 +1,84 @@
+.second-chance-banner {
+  background-color: #FEF3C7; /* Amber 100 */
+  border: 1px solid var(--color-brand);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.second-chance-banner__content {
+  flex: 1;
+}
+
+.second-chance-banner__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.second-chance-banner__title {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: #92400E; /* Amber 800 */
+  margin: 0;
+}
+
+.second-chance-banner__badge {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  background-color: var(--color-brand);
+  color: #FFF;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.second-chance-banner__text {
+  font-size: var(--text-sm);
+  color: #78350F; /* Amber 900 */
+  margin: 0;
+  line-height: 1.5;
+}
+
+.second-chance-banner__price {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-action);
+}
+
+.second-chance-banner__expiry {
+  font-size: var(--text-xs);
+  color: #B45309; /* Amber 700 */
+  margin-top: var(--space-1);
+  display: block;
+}
+
+.second-chance-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .second-chance-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .second-chance-banner__actions {
+    width: 100%;
+    margin-top: var(--space-3);
+  }
+
+  .second-chance-banner__actions button {
+    flex: 1;
+  }
+}

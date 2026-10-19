@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSellerAuctions } from '../hooks/useSellerActions';
 import { ShipModal } from '../components/ShipModal';
+import { ExtendShippingModal } from '../components/ExtendShippingModal';
+import { EditTrackingModal } from '../components/EditTrackingModal';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Package } from 'lucide-react';
 import './MyAuctionsPage.css';
+
 
 const STATUS_TABS = [
   { value: '', label: 'All' },
@@ -26,6 +29,8 @@ export function MyAuctionsPage() {
   const { auctions, nextCursor, isLoading, error, refetch } = useSellerAuctions(activeTab, currentCursor);
   
   const [shippingAuctionId, setShippingAuctionId] = useState(null);
+  const [extendShippingAuctionId, setExtendShippingAuctionId] = useState(null);
+  const [editTrackingAuction, setEditTrackingAuction] = useState(null);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -126,17 +131,37 @@ export function MyAuctionsPage() {
                       
                       {/* Shipping actions */}
                       {auction.status === 'awaiting_ship' && (
-                        <button 
-                          className="btn-primary btn-sm"
-                          onClick={() => setShippingAuctionId(auction.id)}
-                        >
-                          Ship Now
-                        </button>
+                        <div className="action-buttons">
+                          <button 
+                            className="btn-primary btn-sm"
+                            onClick={() => setShippingAuctionId(auction.id)}
+                          >
+                            Ship Now
+                          </button>
+                          {!auction.shipping_extended && (
+                            <button
+                              type="button"
+                              className="btn-link"
+                              onClick={() => setExtendShippingAuctionId(auction.id)}
+                            >
+                              Extend (+3d)
+                            </button>
+                          )}
+                        </div>
                       )}
 
                       {auction.status === 'shipped' && (
-                        <div className="tracking-info">
-                          <span className="tracking-number">{auction.carrier}: {auction.tracking_number}</span>
+                        <div className="action-buttons">
+                          <Link to={`/auctions/${auction.id}/tracking`} className="btn-link">
+                            Track
+                          </Link>
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => setEditTrackingAuction(auction)}
+                          >
+                            Edit Tracking
+                          </button>
                         </div>
                       )}
                     </td>
@@ -167,6 +192,31 @@ export function MyAuctionsPage() {
           onSuccess={handleShipSuccess}
         />
       )}
+
+      {extendShippingAuctionId && (
+        <ExtendShippingModal
+          auctionId={extendShippingAuctionId}
+          onClose={() => setExtendShippingAuctionId(null)}
+          onSuccess={() => {
+            setExtendShippingAuctionId(null);
+            refetch();
+          }}
+        />
+      )}
+
+      {editTrackingAuction && (
+        <EditTrackingModal
+          auctionId={editTrackingAuction.id}
+          initialCarrier={editTrackingAuction.carrier}
+          initialTrackingNumber={editTrackingAuction.tracking_number}
+          onClose={() => setEditTrackingAuction(null)}
+          onSuccess={() => {
+            setEditTrackingAuction(null);
+            refetch();
+          }}
+        />
+      )}
     </div>
   );
 }
+

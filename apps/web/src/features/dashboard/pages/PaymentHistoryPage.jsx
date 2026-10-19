@@ -1,13 +1,16 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { usePaymentHistory, useRetryPayment } from '../hooks/useBuyerActions';
 import { DisputeModal } from '../components/DisputeModal';
 import { ConfirmDeliveryModal } from '../components/ConfirmDeliveryModal';
+import { ExtendDeliveryModal } from '../components/ExtendDeliveryModal';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
 import { useToast } from '../../../core/context/ToastContext';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { CreditCard } from 'lucide-react';
 import './PaymentHistoryPage.css';
+
 
 const STATUS_TABS = [
   { value: '', label: 'All' },
@@ -28,6 +31,7 @@ export function PaymentHistoryPage() {
   const { payments: currentPayments, nextCursor: currentNextCursor, isLoading: isPaymentsLoading, error: paymentsError, refetch: refetchPayments } = usePaymentHistory(activeTab, currentCursor);
   
   const [confirmDeliveryAuctionId, setConfirmDeliveryAuctionId] = useState(null);
+  const [extendDeliveryAuctionId, setExtendDeliveryAuctionId] = useState(null);
   const { retry, isLoading: isRetrying } = useRetryPayment();
   const { showSuccess, showError } = useToast();
 
@@ -138,14 +142,26 @@ export function PaymentHistoryPage() {
                     <td className="actions-cell">
                       {payment.status === 'authorized' && (
                         <div className="action-buttons">
-                          {payment.auctionStatus === 'shipped' ? (
-                            <button 
-                              className="btn-primary btn-sm"
-                              onClick={() => setConfirmDeliveryAuctionId(payment.auctionId)}
-                            >
-                              Confirm Delivery
-                            </button>
-                          ) : null}
+                          {payment.auctionStatus === 'shipped' && (
+                            <>
+                              <button 
+                                className="btn-primary btn-sm"
+                                onClick={() => setConfirmDeliveryAuctionId(payment.auctionId)}
+                              >
+                                Confirm Delivery
+                              </button>
+                              <Link to={`/auctions/${payment.auctionId}/tracking`} className="btn-link">
+                                Track
+                              </Link>
+                              <button
+                                type="button"
+                                className="btn-link"
+                                onClick={() => setExtendDeliveryAuctionId(payment.auctionId)}
+                              >
+                                Extend (+7d)
+                              </button>
+                            </>
+                          )}
                           
                           <button 
                             className="btn-link danger"
@@ -202,6 +218,18 @@ export function PaymentHistoryPage() {
           onSuccess={handleConfirmSuccess}
         />
       )}
+
+      {extendDeliveryAuctionId && (
+        <ExtendDeliveryModal
+          auctionId={extendDeliveryAuctionId}
+          onClose={() => setExtendDeliveryAuctionId(null)}
+          onSuccess={() => {
+            setExtendDeliveryAuctionId(null);
+            refetchPayments();
+          }}
+        />
+      )}
     </div>
   );
 }
+
