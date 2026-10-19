@@ -130,3 +130,73 @@ export function useRetryPayment() {
     reset,
   };
 }
+
+/**
+ * Request delivery deadline extension (+7 days).
+ * Backend: POST /auctions/:id/extend-delivery
+ */
+export function useExtendDelivery() {
+  const { mutate, isLoading, error, reset } = useMutation('', 'post');
+
+  const extendDelivery = async (auctionId, reason) => {
+    if (!auctionId) throw new Error('Auction ID is required');
+    const body = { reason };
+    const overrideOptions = {
+      url: `/auctions/${encodeURIComponent(auctionId)}/extend-delivery`,
+    };
+
+    const response = await mutate(body, overrideOptions);
+    return response.data;
+  };
+
+  return {
+    extendDelivery,
+    isLoading,
+    error,
+    reset,
+  };
+}
+
+/**
+ * Respond to a Second Chance offer (runner-up buyer).
+ * Backend: POST /auctions/:id/second-chance/accept
+ *          POST /auctions/:id/second-chance/decline
+ */
+export function useSecondChance() {
+  const { mutate: mutateAccept, isLoading: isAccepting, error: acceptError, reset: resetAccept } = useMutation('', 'post');
+  const { mutate: mutateDecline, isLoading: isDeclining, error: declineError, reset: resetDecline } = useMutation('', 'post');
+
+  const accept = async (auctionId) => {
+    if (!auctionId) throw new Error('Auction ID is required');
+    const overrideOptions = {
+      url: `/auctions/${encodeURIComponent(auctionId)}/second-chance/accept`,
+    };
+
+    const response = await mutateAccept({}, overrideOptions);
+    return response.data;
+  };
+
+  const decline = async (auctionId) => {
+    if (!auctionId) throw new Error('Auction ID is required');
+    const overrideOptions = {
+      url: `/auctions/${encodeURIComponent(auctionId)}/second-chance/decline`,
+    };
+
+    const response = await mutateDecline({}, overrideOptions);
+    return response.data;
+  };
+
+  return {
+    accept,
+    decline,
+    isLoading: isAccepting || isDeclining,
+    isAccepting,
+    isDeclining,
+    error: acceptError || declineError,
+    reset: () => {
+      resetAccept();
+      resetDecline();
+    },
+  };
+}
+
