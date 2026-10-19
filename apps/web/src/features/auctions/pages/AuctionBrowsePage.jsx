@@ -34,7 +34,6 @@ export function AuctionBrowsePage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCursor(null);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAllAuctions([]);
   }, [filters.categoryId, filters.minPrice, filters.maxPrice, filters.status]);
 

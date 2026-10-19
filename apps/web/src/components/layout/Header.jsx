@@ -1,7 +1,7 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth, useAuthDispatch } from '../../core/context/AuthContext';
-import { useSocket } from '../../core/contexts/SocketContext';
+import { useSocketStatus } from '../../core/contexts/SocketContext';
 import { Sun, Moon } from 'lucide-react';
 import './Header.css';
 
@@ -12,25 +12,11 @@ import './Header.css';
 export function Header() {
   const user = useAuth();
   const { logout } = useAuthDispatch();
+  const { isConnected } = useSocketStatus();
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
 
-  // Connection status derived from socket instance
-  const socket = useSocket();
-  const [isConnected, setIsConnected] = useState(socket?.connected ?? false);
-
-  useEffect(() => {
-    if (!socket) return;
-    const onConnect = () => setIsConnected(true);
-    const onDisconnect = () => setIsConnected(false);
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    return () => { 
-      socket.off('connect', onConnect); 
-      socket.off('disconnect', onDisconnect); 
-    };
-  }, [socket]);
 
   useEffect(() => {
     if (isDark) {
