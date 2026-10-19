@@ -23,6 +23,8 @@ import { ProfileSettingsPage } from '../features/dashboard/pages/ProfileSettings
 import { PaymentMethodsPage } from '../features/dashboard/pages/PaymentMethodsPage';
 import { KycPage } from '../features/dashboard/pages/KycPage';
 import { AdminLayout } from '../features/admin/components/AdminLayout';
+import { AdminDisputeListPage } from '../features/admin/pages/AdminDisputeListPage';
+import { AdminDisputeDetailPage } from '../features/admin/pages/AdminDisputeDetailPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ForbiddenPage } from '../pages/ForbiddenPage';
 
@@ -143,14 +145,11 @@ export const router = createBrowserRouter([
           },
           {
             path: 'disputes',
-            element: (
-              <div style={{ padding: '24px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Dispute Queue Desk</h2>
-                <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px' }}>
-                  Queue interface loading.
-                </p>
-              </div>
-            ),
+            element: <AdminDisputeListPage />,
+          },
+          {
+            path: 'disputes/:id',
+            element: <AdminDisputeDetailPage />,
           },
         ],
       },
