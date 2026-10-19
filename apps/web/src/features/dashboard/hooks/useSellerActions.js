@@ -69,3 +69,108 @@ export function useShipAuction() {
     reset,
   };
 }
+
+/**
+ * Update tracking number within 24 hours of shipment.
+ * Backend: PATCH /auctions/:id/ship
+ */
+export function useUpdateTracking() {
+  const { mutate, isLoading, error, reset } = useMutation('', 'patch');
+
+  const updateTracking = async (auctionId, carrier, trackingNumber) => {
+    if (!auctionId) throw new Error('Auction ID is required');
+    const body = { carrier, trackingNumber };
+    const overrideOptions = {
+      url: `/auctions/${encodeURIComponent(auctionId)}/ship`,
+    };
+
+    const response = await mutate(body, overrideOptions);
+    return response.data;
+  };
+
+  return {
+    updateTracking,
+    isLoading,
+    error,
+    reset,
+  };
+}
+
+/**
+ * Request shipping deadline extension (+3 days).
+ * Backend: POST /auctions/:id/extend-shipping
+ */
+export function useExtendShipping() {
+  const { mutate, isLoading, error, reset } = useMutation('', 'post');
+
+  const extendShipping = async (auctionId, reason) => {
+    if (!auctionId) throw new Error('Auction ID is required');
+    const body = { reason };
+    const overrideOptions = {
+      url: `/auctions/${encodeURIComponent(auctionId)}/extend-shipping`,
+    };
+
+    const response = await mutate(body, overrideOptions);
+    return response.data;
+  };
+
+  return {
+    extendShipping,
+    isLoading,
+    error,
+    reset,
+  };
+}
+
+/**
+ * Edit scheduled or active auction before any bids are placed.
+ * Backend: PATCH /auctions/:id
+ */
+export function useEditAuction() {
+  const { mutate, isLoading, error, reset } = useMutation('', 'patch');
+
+  const editAuction = async (auctionId, formDataOrBody) => {
+    if (!auctionId) throw new Error('Auction ID is required');
+    const isFormData = typeof FormData !== 'undefined' && formDataOrBody instanceof FormData;
+    const overrideOptions = {
+      url: `/auctions/${encodeURIComponent(auctionId)}`,
+      ...(isFormData ? { headers: { 'Content-Type': undefined } } : {}),
+    };
+
+    const response = await mutate(formDataOrBody, overrideOptions);
+    return response.data;
+  };
+
+  return {
+    editAuction,
+    isLoading,
+    error,
+    reset,
+  };
+}
+
+/**
+ * Cancel an auction before any bids are placed.
+ * Backend: PATCH /auctions/:id/cancel
+ */
+export function useCancelAuction() {
+  const { mutate, isLoading, error, reset } = useMutation('', 'patch');
+
+  const cancelAuction = async (auctionId) => {
+    if (!auctionId) throw new Error('Auction ID is required');
+    const overrideOptions = {
+      url: `/auctions/${encodeURIComponent(auctionId)}/cancel`,
+    };
+
+    const response = await mutate({}, overrideOptions);
+    return response.data;
+  };
+
+  return {
+    cancelAuction,
+    isLoading,
+    error,
+    reset,
+  };
+}
+

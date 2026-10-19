@@ -2,30 +2,9 @@ import { useState } from 'react';
 import PropTypes from 'prop-types';
 import { useShipAuction } from '../hooks/useSellerActions';
 import { useToast } from '../../../core/context/ToastContext';
-import { CARRIERS, CARRIER_TRACKING_REGEX } from '@auction/shared-constants';
+import { CARRIERS } from '@auction/shared-constants';
+import { CARRIER_LABELS, TRACKING_HINTS, validateTrackingNumber } from '../../../utils/carriers';
 import './ShipModal.css';
-
-const CARRIER_LABELS = {
-  [CARRIERS.VNPOST]: 'VNPost',
-  [CARRIERS.GHN]: 'GHN (Giao Hang Nhanh)',
-  [CARRIERS.GHTK]: 'GHTK (Giao Hang Tiet Kiem)',
-  [CARRIERS.JT]: 'J&T Express',
-  [CARRIERS.FEDEX]: 'FedEx',
-  [CARRIERS.DHL]: 'DHL',
-  [CARRIERS.UPS]: 'UPS',
-  [CARRIERS.OTHER]: 'Other'
-};
-
-const TRACKING_HINTS = {
-  [CARRIERS.VNPOST]: '2 letters + 9 digits + 2 letters (e.g., EA123456789VN)',
-  [CARRIERS.GHN]: '10-15 digits',
-  [CARRIERS.GHTK]: '10-20 alphanumeric characters',
-  [CARRIERS.JT]: '9-12 digits',
-  [CARRIERS.FEDEX]: '12, 15, or 22 digits',
-  [CARRIERS.DHL]: '10 digits',
-  [CARRIERS.UPS]: 'Starts with 1Z, followed by 16 alphanumeric characters',
-  [CARRIERS.OTHER]: 'Enter a valid tracking number'
-};
 
 export function ShipModal({ auctionId, onClose, onSuccess }) {
   const [carrier, setCarrier] = useState('');
@@ -37,10 +16,11 @@ export function ShipModal({ auctionId, onClose, onSuccess }) {
     e.preventDefault();
     if (!carrier || !trackingNumber) return;
 
-    if (CARRIER_TRACKING_REGEX[carrier] && !CARRIER_TRACKING_REGEX[carrier].test(trackingNumber)) {
+    if (!validateTrackingNumber(carrier, trackingNumber)) {
       showError('Tracking number format does not match the selected carrier');
       return;
     }
+
 
     try {
       await ship(auctionId, carrier, trackingNumber);
