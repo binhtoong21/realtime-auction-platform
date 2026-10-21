@@ -25,6 +25,8 @@ import { PaymentMethodsPage } from '../features/dashboard/pages/PaymentMethodsPa
 import { KycPage } from '../features/dashboard/pages/KycPage';
 import { AdminLayout } from '../features/admin/components/AdminLayout';
 import { AdminDashboardPage } from '../features/admin/pages/AdminDashboardPage';
+import { AdminUsersPage } from '../features/admin/pages/AdminUsersPage';
+import { AdminUserDetailPage } from '../features/admin/pages/AdminUserDetailPage';
 import { AdminDisputeListPage } from '../features/admin/pages/AdminDisputeListPage';
 import { AdminDisputeDetailPage } from '../features/admin/pages/AdminDisputeDetailPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
@@ -156,6 +158,14 @@ export const router = createBrowserRouter([
           {
             path: 'disputes/:id',
             element: <AdminDisputeDetailPage />,
+          },
+          {
+            path: 'users',
+            element: <AdminUsersPage />,
+          },
+          {
+            path: 'users/:id',
+            element: <AdminUserDetailPage />,
           },
         ],
       },

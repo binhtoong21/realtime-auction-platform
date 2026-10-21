@@ -3,7 +3,7 @@ export { useDisputeDetail } from './useDisputeDetail';
 export { useDisputeReview } from './useDisputeReview';
 export { useDisputeResolve } from './useDisputeResolve';
 export { useAdminStats } from './useAdminStats';
-export { useAdminUsers } from './useAdminUsers';
+export { useAdminUsers, useAdminUserDetail } from './useAdminUsers';
 export { useAdminUserActions } from './useAdminUserActions';
 export { useAdminAuctions } from './useAdminAuctions';
 export { useAdminAuctionActions } from './useAdminAuctionActions';
