@@ -23,3 +23,20 @@ export const handleUpdateProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Handle fetching public profile for any seller / user
+ */
+export const handleGetPublicProfile = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const profile = await userService.getPublicProfile(id);
+
+    res.json({
+      success: true,
+      data: profile,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

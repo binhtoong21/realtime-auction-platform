@@ -8,6 +8,7 @@ import { ResetPasswordPage } from '../features/authentication/pages/ResetPasswor
 import { AuctionBrowsePage } from '../features/auctions/pages/AuctionBrowsePage';
 import { AuctionDetailPage } from '../features/auctions/pages/AuctionDetailPage';
 import { TrackingPage } from '../features/auctions/pages/TrackingPage';
+import { SellerProfilePage } from '../features/users/pages/SellerProfilePage';
 import { RequireAuth } from './RequireAuth';
 import { RequireRole } from './RequireRole';
 import { DashboardLayout } from '../features/dashboard/components/DashboardLayout';
@@ -76,6 +77,10 @@ export const router = createBrowserRouter([
             <TrackingPage />
           </RequireAuth>
         ),
+      },
+      {
+        path: 'sellers/:id',
+        element: <SellerProfilePage />,
       },
       {
         path: 'dashboard',
@@ -160,4 +165,3 @@ export const router = createBrowserRouter([
     ],
   },
 ]);
-
