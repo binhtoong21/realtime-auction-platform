@@ -2,7 +2,8 @@ import { Link, NavLink } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth, useAuthDispatch } from '../../core/context/AuthContext';
 import { useSocketStatus } from '../../core/contexts/SocketContext';
-import { Sun, Moon } from 'lucide-react';
+import { useNotifications } from '../../features/dashboard/hooks/useNotifications';
+import { Sun, Moon, Bell } from 'lucide-react';
 import './Header.css';
 
 /**
@@ -13,10 +14,10 @@ export function Header() {
   const user = useAuth();
   const { logout } = useAuthDispatch();
   const { isConnected } = useSocketStatus();
+  const { unreadCount } = useNotifications({ limit: 1 });
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
-
 
   useEffect(() => {
     if (isDark) {
@@ -33,7 +34,7 @@ export function Header() {
     if (!user) return '';
     const name = user.displayName || user.email || 'U';
     if (name.includes('@')) return name.substring(0, 2).toUpperCase();
-    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    return name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase();
   };
 
   return (
@@ -62,6 +63,16 @@ export function Header() {
                 >
                   My Bids
                 </NavLink>
+                {user.role === 'admin' && (
+                  <NavLink
+                    to="/admin/disputes"
+                    className={({ isActive }) =>
+                      `header__nav-link${isActive ? ' header__nav-link--active' : ''}`
+                    }
+                  >
+                    Admin Desk
+                  </NavLink>
+                )}
               </>
             )}
           </nav>
@@ -88,10 +99,37 @@ export function Header() {
                 className={`header__connection-dot header__connection-dot--${isConnected ? 'online' : 'offline'}`}
                 title={isConnected ? 'Realtime connected' : 'Disconnected'}
               />
-              {/* Profile Avatar: 28px round, initials */}
-              <div className="header__avatar" title={user.displayName || user.email}>
-                {getInitials()}
-              </div>
+              <Link
+                to="/dashboard/notifications"
+                className="header__icon-btn header__notification-btn"
+                title="Notifications"
+                aria-label="Notifications"
+              >
+                <Bell size={16} />
+                {unreadCount > 0 && (
+                  <span className="header__notification-badge">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </Link>
+              {/* Profile Avatar: 28px round, initials or uploaded avatar */}
+              <Link
+                to="/dashboard/settings/profile"
+                className="header__avatar-link"
+                title={user.displayName || user.email}
+              >
+                <div className="header__avatar">
+                  {user.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.displayName || 'Avatar'}
+                      className="header__avatar-img"
+                    />
+                  ) : (
+                    getInitials()
+                  )}
+                </div>
+              </Link>
               <button onClick={logout} className="btn btn--sm btn--secondary">
                 Logout
               </button>
