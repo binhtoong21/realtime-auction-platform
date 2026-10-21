@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useFetch } from '../../../core/hooks/useFetch';
 import { useAuctionSocket } from '../hooks/useAuctionSocket';
 import { useBidSubmit } from '../hooks/useBidSubmit';
@@ -45,11 +45,14 @@ export function AuctionDetailPage() {
     }
   }, [auction?.bid_increment]);
 
-  const onOutbid = useCallback((currentPrice) => {
-    const minBidCents = Number(currentPrice) + Number(bidIncrementRef.current);
-    setBidAmount(String(minBidCents / 100));
-    showError(`You have been outbid! Minimum bid is now $${(minBidCents / 100).toFixed(2)}`);
-  }, [showError]);
+  const onOutbid = useCallback(
+    (currentPrice) => {
+      const minBidCents = Number(currentPrice) + Number(bidIncrementRef.current);
+      setBidAmount(String(minBidCents / 100));
+      showError(`You have been outbid! Minimum bid is now $${(minBidCents / 100).toFixed(2)}`);
+    },
+    [showError]
+  );
 
   const { connectionStatus, timeOffset } = useAuctionSocket(id, setAuctionData, onOutbid);
 
@@ -84,6 +87,7 @@ export function AuctionDetailPage() {
       isBidInitializedRef.current = false;
     }
   }, [auction?.id]);
+
   useEffect(() => {
     if (auction && !isBidInitializedRef.current) {
       const minBidCents = Number(auction.current_price || 0) + Number(auction.bid_increment || 0);
@@ -128,14 +132,21 @@ export function AuctionDetailPage() {
 
   // Error state
   if (auctionError) {
-    const is404 = typeof auctionError === 'string' && auctionError.toLowerCase().includes('not found');
+    const is404 =
+      typeof auctionError === 'string' && auctionError.toLowerCase().includes('not found');
     return (
       <div className="auction-detail-page">
         <div className="auction-detail-error">
           <h2>{is404 ? 'Auction not found' : 'Something went wrong'}</h2>
-          <p>{is404 ? 'The auction you are looking for does not exist or has been removed.' : 'Failed to load auction data. Please try again.'}</p>
+          <p>
+            {is404
+              ? 'The auction you are looking for does not exist or has been removed.'
+              : 'Failed to load auction data. Please try again.'}
+          </p>
           {!is404 && (
-            <button className="btn-primary" onClick={refetchAuction}>Retry</button>
+            <button className="btn-primary" onClick={refetchAuction}>
+              Retry
+            </button>
           )}
         </div>
       </div>
@@ -155,7 +166,7 @@ export function AuctionDetailPage() {
 
   const currentPrice = Number(auction.current_price || 0);
   const bidIncrement = Number(auction.bid_increment || 0);
-  
+
   const isScheduled = auction.status === 'scheduled';
   const isActive = auction.status === 'active';
   const isJoined = auction.is_joined || false;
@@ -170,18 +181,20 @@ export function AuctionDetailPage() {
               <>
                 <div className="auction-detail-main-image-container">
                   {auction.images.length > 1 && (
-                    <button 
+                    <button
                       className="gallery-nav-btn prev"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedImageIndex(prev => prev === 0 ? auction.images.length - 1 : prev - 1);
+                        setSelectedImageIndex((prev) =>
+                          prev === 0 ? auction.images.length - 1 : prev - 1
+                        );
                       }}
                       aria-label="Previous image"
                     >
                       &#10094;
                     </button>
                   )}
-                  
+
                   <img
                     src={auction.images[selectedImageIndex] || auction.images[0]}
                     alt={auction.title}
@@ -189,11 +202,13 @@ export function AuctionDetailPage() {
                   />
 
                   {auction.images.length > 1 && (
-                    <button 
+                    <button
                       className="gallery-nav-btn next"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedImageIndex(prev => prev === auction.images.length - 1 ? 0 : prev + 1);
+                        setSelectedImageIndex((prev) =>
+                          prev === auction.images.length - 1 ? 0 : prev + 1
+                        );
                       }}
                       aria-label="Next image"
                     >
@@ -219,7 +234,7 @@ export function AuctionDetailPage() {
               <div className="auction-detail-no-image">No Image Available</div>
             )}
           </div>
-          
+
           <div className="auction-detail-description">
             <h2>Description</h2>
             <p>{auction.description || 'No description provided.'}</p>
@@ -228,7 +243,6 @@ export function AuctionDetailPage() {
 
         {/* Right: Bidding Terminal (Sticky) */}
         <div className="auction-detail-terminal">
-          
           <div className="terminal-header">
             <div className="terminal-title-row">
               <h1>{auction.title}</h1>
@@ -238,7 +252,17 @@ export function AuctionDetailPage() {
               </div>
             </div>
             <p className="auction-detail-seller">
-              Seller: {auction.seller_name || 'Unknown'}
+              Seller:{' '}
+              {auction.seller_id ? (
+                <Link
+                  to={`/sellers/${auction.seller_id}`}
+                  className="auction-detail-seller-link"
+                >
+                  {auction.seller_name || 'View Profile'}
+                </Link>
+              ) : (
+                auction.seller_name || 'Unknown'
+              )}
             </p>
           </div>
 
@@ -255,7 +279,12 @@ export function AuctionDetailPage() {
               </span>
               <div className="auction-detail-countdown">
                 {isScheduled ? (
-                  <CountdownTimer endAt={auction.start_at} timeOffset={timeOffset} endedText="Starting..." onEnd={refetchAuction} />
+                  <CountdownTimer
+                    endAt={auction.start_at}
+                    timeOffset={timeOffset}
+                    endedText="Starting..."
+                    onEnd={refetchAuction}
+                  />
                 ) : (
                   <CountdownTimer endAt={auction.end_at} timeOffset={timeOffset} />
                 )}
@@ -288,8 +317,8 @@ export function AuctionDetailPage() {
               ) : (
                 <>
                   <p>This auction has not started yet.</p>
-                  <button 
-                    className="btn btn--md btn--primary" 
+                  <button
+                    className="btn btn--md btn--primary"
                     onClick={handleJoinClick}
                     style={{ marginTop: '1rem' }}
                   >
@@ -301,9 +330,7 @@ export function AuctionDetailPage() {
           ) : (
             <div className="auction-detail-ended-notice">
               <p>This auction has ended.</p>
-              {auction.winner_id && (
-                <p>Final Price: {formatPrice(currentPrice)}</p>
-              )}
+              {auction.winner_id && <p>Final Price: {formatPrice(currentPrice)}</p>}
             </div>
           )}
 

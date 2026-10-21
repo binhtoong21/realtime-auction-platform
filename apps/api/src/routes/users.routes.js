@@ -10,7 +10,10 @@ import {
 } from '../controllers/kyc.controller.js';
 import { handleGetMyPayments } from '../controllers/payment.controller.js';
 import { handleGetMyBids } from '../controllers/bidding.controller.js';
-import { handleUpdateProfile } from '../controllers/user.controller.js';
+import {
+  handleUpdateProfile,
+  handleGetPublicProfile,
+} from '../controllers/user.controller.js';
 
 const router = Router();
 
@@ -25,5 +28,8 @@ router.post(
   validate(connectOnboardingSchema),
   createConnectOnboarding
 );
+
+// Public seller/user profile
+router.get('/:id/profile', handleGetPublicProfile);
 
 export default router;

@@ -100,4 +100,88 @@ describe('user.service', () => {
       );
     });
   });
+
+  describe('getPublicProfile', () => {
+    it('should return public seller profile with stats and auctions', async () => {
+      // 1. User query
+      pool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'user-1',
+            display_name: 'Super Seller',
+            avatar_url: 'https://cdn.example.com/avatar.png',
+            role: 'user',
+            identity_status: 'verified',
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+      });
+
+      // 2. Stats query
+      pool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            total_auctions: 10,
+            active_auctions: 2,
+            completed_sales: 8,
+            dispute_count: 0,
+            total_sales_volume: 500000,
+          },
+        ],
+      });
+
+      // 3. Active auctions query
+      pool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'auc-1',
+            title: 'Vintage Watch',
+            current_price: 25000,
+            images: ['https://cdn.example.com/watch.jpg'],
+            end_at: '2026-11-01T00:00:00Z',
+            status: 'active',
+            created_at: '2026-10-01T00:00:00Z',
+          },
+        ],
+      });
+
+      // 4. Completed auctions query
+      pool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'auc-2',
+            title: 'Rare Coin',
+            current_price: 15000,
+            images: [],
+            end_at: '2026-10-15T00:00:00Z',
+            status: 'completed',
+            created_at: '2026-10-05T00:00:00Z',
+          },
+        ],
+      });
+
+      const result = await userService.getPublicProfile('user-1');
+
+      expect(result.user.displayName).toBe('Super Seller');
+      expect(result.user.identityStatus).toBe('verified');
+      expect(result.stats.totalAuctions).toBe(10);
+      expect(result.stats.completedSales).toBe(8);
+      expect(result.stats.completionRate).toBe(100);
+      expect(result.stats.reputationScore).toBe(100);
+      expect(result.stats.totalSalesVolume).toBe(500000);
+      expect(result.activeAuctions).toHaveLength(1);
+      expect(result.activeAuctions[0].title).toBe('Vintage Watch');
+      expect(result.completedAuctions).toHaveLength(1);
+    });
+
+    it('should throw 404 when user not found or banned', async () => {
+      pool.query.mockResolvedValueOnce({
+        rows: [],
+      });
+
+      await expect(userService.getPublicProfile('nonexistent')).rejects.toThrow(
+        'User not found'
+      );
+    });
+  });
 });
