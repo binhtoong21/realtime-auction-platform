@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import { BaseLayout } from '../components/layout/BaseLayout';
 import { LoginPage } from '../features/authentication/pages/LoginPage';
 import { RegisterPage } from '../features/authentication/pages/RegisterPage';
@@ -24,6 +24,7 @@ import { ProfileSettingsPage } from '../features/dashboard/pages/ProfileSettings
 import { PaymentMethodsPage } from '../features/dashboard/pages/PaymentMethodsPage';
 import { KycPage } from '../features/dashboard/pages/KycPage';
 import { AdminLayout } from '../features/admin/components/AdminLayout';
+import { AdminDashboardPage } from '../features/admin/pages/AdminDashboardPage';
 import { AdminDisputeListPage } from '../features/admin/pages/AdminDisputeListPage';
 import { AdminDisputeDetailPage } from '../features/admin/pages/AdminDisputeDetailPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
@@ -146,7 +147,7 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <Navigate to="/admin/disputes" replace />,
+            element: <AdminDashboardPage />,
           },
           {
             path: 'disputes',
