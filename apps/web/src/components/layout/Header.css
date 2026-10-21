@@ -140,7 +140,7 @@
 
 .header__icon-btn:hover {
   color: var(--color-text-primary);
-  background-color: var(--color-surface-hover, rgba(128, 128, 128, 0.1));
+  background-color: var(--color-surface-raised, rgb(128, 128, 128, 0.1));
 }
 
 .header__notification-badge {
