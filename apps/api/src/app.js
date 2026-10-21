@@ -14,6 +14,7 @@ import webhooksRoutes from './routes/webhooks.routes.js';
 import paymentMethodRoutes from './routes/payment-method.routes.js';
 import paymentsRoutes from './routes/payments.routes.js';
 import disputesRoutes from './routes/disputes.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import testRoutes from './routes/test.routes.js';
 import { redisClient } from './config/redis.js';
@@ -59,6 +60,7 @@ app.use('/users', usersRoutes);
 app.use('/payment-methods', paymentMethodRoutes);
 app.use('/payments', paymentsRoutes);
 app.use('/disputes', disputesRoutes);
+app.use('/notifications', notificationsRoutes);
 app.use('/admin', adminRoutes);
 
 // Mount test routes for e2e tests only in test environment

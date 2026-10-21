@@ -80,3 +80,39 @@ export const uploadDisputeEvidence = [
   upload.array('evidence', MAX_EVIDENCE_COUNT),
   checkFilesLimitAndMime,
 ];
+
+export const uploadAvatar = [
+  upload.single('avatar'),
+  async (req, res, next) => {
+    if (!req.file) {
+      return next();
+    }
+
+    try {
+      const fileType = await fileTypeFromBuffer(req.file.buffer);
+      if (!fileType) {
+        const error = new multer.MulterError('LIMIT_UNEXPECTED_FILE', req.file.fieldname);
+        error.message = 'File magic bytes could not be determined';
+        return next(error);
+      }
+
+      if (!ALLOWED_MIME_TYPES.image.includes(fileType.mime)) {
+        const error = new multer.MulterError('LIMIT_UNEXPECTED_FILE', req.file.fieldname);
+        error.message = 'Avatar must be an image (JPEG, PNG, WebP)';
+        return next(error);
+      }
+
+      if (req.file.size > MAX_IMAGE_SIZE) {
+        const error = new multer.MulterError('LIMIT_FILE_SIZE', req.file.fieldname);
+        error.message = 'Avatar image size should not exceed 5MB';
+        return next(error);
+      }
+
+      req.file.detectedMime = fileType.mime;
+      req.file.detectedExt = fileType.ext;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  },
+];
