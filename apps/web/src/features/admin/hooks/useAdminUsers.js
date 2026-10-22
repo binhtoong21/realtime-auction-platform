@@ -42,3 +42,23 @@ export function useAdminUsers({
     refetch,
   };
 }
+
+/**
+ * Hook to fetch detailed profile and activity for an individual user
+ * @param {string} userId
+ */
+export function useAdminUserDetail(userId) {
+  const { data, error, isLoading, refetch } = useFetch(
+    userId ? `/admin/users/${userId}` : null
+  );
+
+  return {
+    userDetail: data?.data?.user || null,
+    recentAuctions: data?.data?.recentAuctions || [],
+    recentBids: data?.data?.recentBids || [],
+    recentDisputes: data?.data?.recentDisputes || [],
+    isLoading,
+    error,
+    refetch,
+  };
+}
