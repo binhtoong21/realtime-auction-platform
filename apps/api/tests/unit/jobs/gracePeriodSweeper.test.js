@@ -10,7 +10,15 @@ vi.mock('../../../src/config/database.js', () => ({
   },
 }));
 
+
+
 vi.mock('../../../src/config/redis.js', () => ({
+  createRedisConnection: vi.fn(() => ({
+    get: vi.fn(),
+    set: vi.fn(),
+    del: vi.fn(),
+    on: vi.fn(),
+  })),
   redisClient: {
     get: vi.fn(),
     set: vi.fn(),
