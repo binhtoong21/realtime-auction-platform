@@ -1,0 +1,111 @@
+.admin-categories-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.admin-categories-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-3);
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.admin-categories-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-brand-subtle);
+  color: var(--color-brand);
+  border: 1px solid var(--color-brand);
+  text-transform: uppercase;
+  margin-bottom: var(--space-1);
+}
+
+.admin-categories-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Overview stats strip */
+.admin-categories-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.admin-category-stat-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-category-stat-label {
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.admin-category-stat-value {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.admin-category-stat-hint {
+  font-size: 0.6875rem;
+  color: var(--color-text-disabled);
+}
+
+/* Category item inside table */
+.admin-category-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-category-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.admin-category-slug {
+  font-size: 0.6875rem;
+  color: var(--color-text-disabled);
+}
+
+.admin-category-desc-cell {
+  max-width: 340px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.admin-auction-count-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-brand);
+  text-decoration: none;
+}
+
+.admin-auction-count-link:hover {
+  text-decoration: underline;
+}
