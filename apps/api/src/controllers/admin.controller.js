@@ -68,6 +68,7 @@ export const handleBanUser = async (req, res, next) => {
       userId: id,
       adminId: req.user.id,
       reason,
+      ipAddress: req.ip || null,
     });
     res.json({
       success: true,
@@ -90,6 +91,7 @@ export const handleSuspendUser = async (req, res, next) => {
       userId: id,
       adminId: req.user.id,
       reason,
+      ipAddress: req.ip || null,
     });
     res.json({
       success: true,
@@ -110,6 +112,7 @@ export const handleReactivateUser = async (req, res, next) => {
     const user = await adminService.reactivateUser({
       userId: id,
       adminId: req.user.id,
+      ipAddress: req.ip || null,
     });
     res.json({
       success: true,
@@ -132,6 +135,7 @@ export const handleKycOverride = async (req, res, next) => {
       userId: id,
       adminId: req.user.id,
       note,
+      ipAddress: req.ip || null,
     });
     res.json({
       success: true,
@@ -178,6 +182,7 @@ export const handleCancelAuction = async (req, res, next) => {
       auctionId: id,
       adminId: req.user.id,
       reason,
+      ipAddress: req.ip || null,
     });
     res.json({
       success: true,
@@ -274,6 +279,8 @@ export const handleMergeCategories = async (req, res, next) => {
     const result = await adminService.mergeCategories({
       sourceCategoryId,
       targetCategoryId,
+      adminId: req.user.id,
+      ipAddress: req.ip || null,
     });
     res.json({
       success: true,

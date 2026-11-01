@@ -1,5 +1,6 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
+import { writeAuditLog } from './auditLogger.js';
 
 /**
  * Calculate datetime threshold for period
@@ -277,37 +278,81 @@ export const getUserById = async (userId) => {
 /**
  * Ban user and cancel their active auctions
  */
-export const banUser = async ({ userId, adminId, reason }) => {
+export const banUser = async ({ userId, adminId, reason, ipAddress = null }) => {
+  if (adminId && adminId === userId) {
+    const error = new Error('Admin cannot ban their own account');
+    error.statusCode = 403;
+    error.errorCode = 'CANNOT_BAN_SELF';
+    throw error;
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const userRes = await client.query(
-      `UPDATE users
-       SET status = 'banned'
-       WHERE id = $1
-       RETURNING id, email, status`,
+    const checkRes = await client.query(
+      'SELECT id, email, status FROM users WHERE id = $1 FOR UPDATE',
       [userId]
     );
 
-    if (userRes.rowCount === 0) {
+    if (checkRes.rowCount === 0) {
       const error = new Error('User not found');
       error.statusCode = 404;
       throw error;
     }
 
+    const user = checkRes.rows[0];
+
+    // Idempotency: if already banned, commit and return without duplicate cascade
+    if (user.status === 'banned') {
+      await client.query('COMMIT');
+      return user;
+    }
+
+    const userRes = await client.query(
+      `UPDATE users
+       SET status = 'banned', banned_at = NOW(), ban_reason = $2
+       WHERE id = $1
+       RETURNING id, email, status, banned_at, ban_reason`,
+      [userId, reason || null]
+    );
+
     // Cancel any active or scheduled auctions created by this seller
     await client.query(
       `UPDATE auctions
-       SET status = 'cancelled'
+       SET status = 'cancelled', updated_at = NOW()
        WHERE seller_id = $1 AND status IN ('active', 'scheduled')`,
       [userId]
     );
 
+    // Revoke all active refresh tokens for the banned user
+    await client.query(
+      'DELETE FROM refresh_tokens WHERE user_id = $1',
+      [userId]
+    );
+
     await client.query('COMMIT');
+
+    await writeAuditLog({
+      referenceId: userId,
+      referenceType: 'user',
+      action: 'admin_user_banned',
+      deltaState: {
+        previousStatus: user.status,
+        newStatus: 'banned',
+        reason: reason || null,
+      },
+      actorId: adminId || null,
+      ipAddress: ipAddress || null,
+    });
+
     return userRes.rows[0];
   } catch (err) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      // ignore rollback failure
+    }
     throw err;
   } finally {
     client.release();
@@ -317,64 +362,202 @@ export const banUser = async ({ userId, adminId, reason }) => {
 /**
  * Suspend user
  */
-export const suspendUser = async ({ userId, adminId, reason }) => {
-  const res = await pool.query(
-    `UPDATE users
-     SET status = 'suspended'
-     WHERE id = $1
-     RETURNING id, email, status`,
-    [userId]
-  );
-
-  if (res.rowCount === 0) {
-    const error = new Error('User not found');
-    error.statusCode = 404;
+export const suspendUser = async ({ userId, adminId, reason, ipAddress = null }) => {
+  if (adminId && adminId === userId) {
+    const error = new Error('Admin cannot suspend their own account');
+    error.statusCode = 403;
+    error.errorCode = 'CANNOT_SUSPEND_SELF';
     throw error;
   }
 
-  return res.rows[0];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const checkRes = await client.query(
+      'SELECT id, email, status FROM users WHERE id = $1 FOR UPDATE',
+      [userId]
+    );
+
+    if (checkRes.rowCount === 0) {
+      const error = new Error('User not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const user = checkRes.rows[0];
+
+    // Idempotency: if already suspended, return early
+    if (user.status === 'suspended') {
+      await client.query('COMMIT');
+      return user;
+    }
+
+    const res = await client.query(
+      `UPDATE users
+       SET status = 'suspended'
+       WHERE id = $1
+       RETURNING id, email, status`,
+      [userId]
+    );
+
+    // Revoke active refresh tokens
+    await client.query(
+      'DELETE FROM refresh_tokens WHERE user_id = $1',
+      [userId]
+    );
+
+    await client.query('COMMIT');
+
+    await writeAuditLog({
+      referenceId: userId,
+      referenceType: 'user',
+      action: 'admin_user_suspended',
+      deltaState: {
+        previousStatus: user.status,
+        newStatus: 'suspended',
+        reason: reason || null,
+      },
+      actorId: adminId || null,
+      ipAddress: ipAddress || null,
+    });
+
+    return res.rows[0];
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      // ignore rollback failure
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 /**
  * Reactivate suspended or banned user
  */
-export const reactivateUser = async ({ userId, adminId }) => {
-  const res = await pool.query(
-    `UPDATE users
-     SET status = 'active'
-     WHERE id = $1
-     RETURNING id, email, status`,
-    [userId]
-  );
+export const reactivateUser = async ({ userId, adminId, ipAddress = null }) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (res.rowCount === 0) {
-    const error = new Error('User not found');
-    error.statusCode = 404;
-    throw error;
+    const checkRes = await client.query(
+      'SELECT id, email, status FROM users WHERE id = $1 FOR UPDATE',
+      [userId]
+    );
+
+    if (checkRes.rowCount === 0) {
+      const error = new Error('User not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const user = checkRes.rows[0];
+
+    // Idempotency: if already active, return early
+    if (user.status === 'active') {
+      await client.query('COMMIT');
+      return user;
+    }
+
+    const res = await client.query(
+      `UPDATE users
+       SET status = 'active', banned_at = NULL, ban_reason = NULL
+       WHERE id = $1
+       RETURNING id, email, status`,
+      [userId]
+    );
+
+    await client.query('COMMIT');
+
+    await writeAuditLog({
+      referenceId: userId,
+      referenceType: 'user',
+      action: 'admin_user_reactivated',
+      deltaState: {
+        previousStatus: user.status,
+        newStatus: 'active',
+      },
+      actorId: adminId || null,
+      ipAddress: ipAddress || null,
+    });
+
+    return res.rows[0];
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      // ignore rollback failure
+    }
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return res.rows[0];
 };
 
 /**
  * Admin manual KYC override
  */
-export const overrideKyc = async ({ userId, adminId, note }) => {
-  const res = await pool.query(
-    `UPDATE users
-     SET identity_status = 'verified'
-     WHERE id = $1
-     RETURNING id, email, identity_status`,
-    [userId]
-  );
+export const overrideKyc = async ({ userId, adminId, note, ipAddress = null }) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (res.rowCount === 0) {
-    const error = new Error('User not found');
-    error.statusCode = 404;
-    throw error;
+    const checkRes = await client.query(
+      'SELECT id, email, identity_status FROM users WHERE id = $1 FOR UPDATE',
+      [userId]
+    );
+
+    if (checkRes.rowCount === 0) {
+      const error = new Error('User not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const user = checkRes.rows[0];
+
+    // Idempotency: if already verified, return early
+    if (user.identity_status === 'verified') {
+      await client.query('COMMIT');
+      return user;
+    }
+
+    const res = await client.query(
+      `UPDATE users
+       SET identity_status = 'verified', identity_verified_at = NOW(), identity_failure_reason = NULL
+       WHERE id = $1
+       RETURNING id, email, identity_status, identity_verified_at`,
+      [userId]
+    );
+
+    await client.query('COMMIT');
+
+    await writeAuditLog({
+      referenceId: userId,
+      referenceType: 'user',
+      action: 'admin_kyc_override',
+      deltaState: {
+        previousIdentityStatus: user.identity_status,
+        newIdentityStatus: 'verified',
+        note: note || null,
+      },
+      actorId: adminId || null,
+      ipAddress: ipAddress || null,
+    });
+
+    return res.rows[0];
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      // ignore rollback failure
+    }
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return res.rows[0];
 };
 
 /**
@@ -477,22 +660,72 @@ export const getAuctions = async ({
 /**
  * Force cancel an auction
  */
-export const cancelAuction = async ({ auctionId, adminId, reason }) => {
-  const res = await pool.query(
-    `UPDATE auctions
-     SET status = 'cancelled'
-     WHERE id = $1 AND status != 'cancelled'
-     RETURNING id, title, status`,
-    [auctionId]
-  );
+export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = null }) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (res.rowCount === 0) {
-    const error = new Error('Auction not found or already cancelled');
-    error.statusCode = 404;
-    throw error;
+    const checkRes = await client.query(
+      'SELECT id, title, status FROM auctions WHERE id = $1 FOR UPDATE',
+      [auctionId]
+    );
+
+    if (checkRes.rowCount === 0) {
+      const error = new Error('Auction not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const auction = checkRes.rows[0];
+
+    // Idempotency: if already cancelled, return early
+    if (auction.status === 'cancelled') {
+      await client.query('COMMIT');
+      return auction;
+    }
+
+    // Guard: cannot cancel if already completed or refunded
+    if (['completed', 'refunded'].includes(auction.status)) {
+      const error = new Error(`Cannot cancel auction in finalized state: ${auction.status}`);
+      error.statusCode = 409;
+      error.errorCode = 'INVALID_AUCTION_STATE';
+      throw error;
+    }
+
+    const res = await client.query(
+      `UPDATE auctions
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, title, status`,
+      [auctionId]
+    );
+
+    await client.query('COMMIT');
+
+    await writeAuditLog({
+      referenceId: auctionId,
+      referenceType: 'auction',
+      action: 'admin_auction_force_cancelled',
+      deltaState: {
+        previousStatus: auction.status,
+        newStatus: 'cancelled',
+        reason: reason || null,
+      },
+      actorId: adminId || null,
+      ipAddress: ipAddress || null,
+    });
+
+    return res.rows[0];
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      // ignore rollback failure
+    }
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return res.rows[0];
 };
 
 /**
@@ -613,7 +846,12 @@ export const deleteCategory = async (categoryId) => {
 /**
  * Merge source category into target category and delete source
  */
-export const mergeCategories = async ({ sourceCategoryId, targetCategoryId }) => {
+export const mergeCategories = async ({
+  sourceCategoryId,
+  targetCategoryId,
+  adminId = null,
+  ipAddress = null,
+}) => {
   if (sourceCategoryId === targetCategoryId) {
     const error = new Error('Source and target category cannot be the same');
     error.statusCode = 400;
@@ -624,10 +862,30 @@ export const mergeCategories = async ({ sourceCategoryId, targetCategoryId }) =>
   try {
     await client.query('BEGIN');
 
+    const sourceRes = await client.query(
+      'SELECT id, name FROM categories WHERE id = $1 FOR UPDATE',
+      [sourceCategoryId]
+    );
+    if (sourceRes.rowCount === 0) {
+      const error = new Error('Source category not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const targetRes = await client.query(
+      'SELECT id, name FROM categories WHERE id = $1 FOR UPDATE',
+      [targetCategoryId]
+    );
+    if (targetRes.rowCount === 0) {
+      const error = new Error('Target category not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
     // 1. Move all auctions to target category
     const updateRes = await client.query(
       `UPDATE auctions
-       SET category_id = $1
+       SET category_id = $1, updated_at = NOW()
        WHERE category_id = $2`,
       [targetCategoryId, sourceCategoryId]
     );
@@ -636,13 +894,33 @@ export const mergeCategories = async ({ sourceCategoryId, targetCategoryId }) =>
     await client.query('DELETE FROM categories WHERE id = $1', [sourceCategoryId]);
 
     await client.query('COMMIT');
+
+    await writeAuditLog({
+      referenceId: sourceCategoryId,
+      referenceType: 'category',
+      action: 'admin_category_merged',
+      deltaState: {
+        sourceCategoryId,
+        targetCategoryId,
+        sourceCategoryName: sourceRes.rows[0].name,
+        targetCategoryName: targetRes.rows[0].name,
+        reassignedAuctionsCount: updateRes.rowCount,
+      },
+      actorId: adminId || null,
+      ipAddress: ipAddress || null,
+    });
+
     return {
       sourceCategoryId,
       targetCategoryId,
       reassignedAuctionsCount: updateRes.rowCount,
     };
   } catch (err) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      // ignore rollback failure
+    }
     throw err;
   } finally {
     client.release();
