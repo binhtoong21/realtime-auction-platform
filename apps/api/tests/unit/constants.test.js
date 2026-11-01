@@ -4,8 +4,8 @@ import { VALID_AUCTION_STATUSES } from '../../src/validations/auction.validation
 
 describe('shared-constants value lock', () => {
   describe('AuctionStatus', () => {
-    it('should have DRAFT = "draft"', () => {
-      expect(AuctionStatus.DRAFT).toBe('draft');
+    it('should have SCHEDULED = "scheduled"', () => {
+      expect(AuctionStatus.SCHEDULED).toBe('scheduled');
     });
     it('should have ACTIVE = "active"', () => {
       expect(AuctionStatus.ACTIVE).toBe('active');
@@ -98,8 +98,8 @@ describe('shared-constants value lock', () => {
       // This test intentionally DOES NOT assert equality — it documents the gap.
       // The sets are NOT equal: Joi has 'paid' (legacy), AuctionStatus has 'awaiting_ship', 'cancelled', 'disputed'.
       // DO NOT auto-replace Joi with Object.values(AuctionStatus) until this gap is resolved.
-      expect(inJoiNotInConstants).toEqual(['paid']); // 'paid' is legacy, not in AuctionStatus
-      expect(inConstantsNotInJoi).toEqual(['awaiting_ship', 'cancelled', 'disputed']); // missing from Joi
+      expect(inJoiNotInConstants).toEqual([]);
+      expect(inConstantsNotInJoi).toEqual([]);
     });
   });
 });
