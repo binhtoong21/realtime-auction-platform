@@ -29,6 +29,8 @@ import { AdminUsersPage } from '../features/admin/pages/AdminUsersPage';
 import { AdminUserDetailPage } from '../features/admin/pages/AdminUserDetailPage';
 import { AdminDisputeListPage } from '../features/admin/pages/AdminDisputeListPage';
 import { AdminDisputeDetailPage } from '../features/admin/pages/AdminDisputeDetailPage';
+import { AdminAuctionsPage } from '../features/admin/pages/AdminAuctionsPage';
+import { AdminCategoriesPage } from '../features/admin/pages/AdminCategoriesPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ForbiddenPage } from '../pages/ForbiddenPage';
 
@@ -166,6 +168,14 @@ export const router = createBrowserRouter([
           {
             path: 'users/:id',
             element: <AdminUserDetailPage />,
+          },
+          {
+            path: 'auctions',
+            element: <AdminAuctionsPage />,
+          },
+          {
+            path: 'categories',
+            element: <AdminCategoriesPage />,
           },
         ],
       },
