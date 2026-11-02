@@ -139,3 +139,120 @@
   justify-content: flex-end;
   gap: var(--space-3);
 }
+
+/* Blast Radius Modal Additions */
+.admin-modal-card--wide {
+  max-width: 580px;
+}
+
+.admin-blast-radius-wrap {
+  margin-bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.admin-blast-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .admin-blast-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.admin-blast-metric {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-blast-metric--span {
+  grid-column: span 3;
+}
+
+@media (max-width: 640px) {
+  .admin-blast-metric--span {
+    grid-column: span 2;
+  }
+}
+
+.admin-blast-metric-label {
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+}
+
+.admin-blast-metric-val {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+}
+
+.admin-blast-metric-val--danger {
+  color: var(--color-danger);
+}
+
+.admin-blast-metric-val--warning {
+  color: var(--color-warning);
+}
+
+.admin-ban-actions-box {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.admin-ban-actions-title {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  margin: 0 0 8px;
+}
+
+.admin-ban-actions-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-ban-actions-list li {
+  margin: 0;
+}
+
+.admin-blast-skeleton {
+  height: 80px;
+  background: linear-gradient(90deg, var(--color-bg) 25%, var(--color-border) 50%, var(--color-bg) 75%);
+  background-size: 200% 100%;
+  animation: adminSkeleton 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes adminSkeleton {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
