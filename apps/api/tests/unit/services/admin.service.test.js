@@ -176,7 +176,15 @@ describe('admin.service', () => {
         }) // 6. Buyer payments
         .mockResolvedValueOnce({ rows: [{ count: 0 }] }) // 7. Buyer open disputes
         .mockResolvedValueOnce({
-          rows: [{ status: 'authorized', count: 1, total_amount: 50000 }],
+          rows: [
+            {
+              status: 'authorized',
+              count: 1,
+              total_amount: 50000,
+              awaiting_ship_count: 1,
+              awaiting_ship_amount: 50000,
+            },
+          ],
         }); // 8. Seller payments
 
       const result = await adminService.getBanPreview({
@@ -200,8 +208,9 @@ describe('admin.service', () => {
           expect.stringContaining('Cancel 3 listing(s)'),
           expect.stringContaining('Notify bidders on 2 cancelled auction(s)'),
           expect.stringContaining('Recalculate winning bids on 1 active auction(s)'),
-          expect.stringContaining('Release escrow holds and refund 1 order(s) awaiting shipment'),
+          expect.stringContaining('Release escrow holds and refund 1 order(s) awaiting shipment totaling $500.00'),
           expect.stringContaining('Freeze 1 in-transit order(s)'),
+          expect.stringContaining('Release 1 other active escrow hold(s) totaling $250.00'),
           expect.stringContaining('Flag 1 active dispute(s)'),
         ])
       );
