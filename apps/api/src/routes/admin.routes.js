@@ -64,6 +64,7 @@ router.get(
   adminController.handleGetUsers
 );
 router.get('/users/:id', adminController.handleGetUserById);
+router.get('/users/:id/ban-preview', adminController.handleGetBanPreview);
 router.post(
   '/users/:id/ban',
   validate(adminBanUserSchema, 'body'),
