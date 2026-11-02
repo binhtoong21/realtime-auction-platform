@@ -110,12 +110,47 @@ export function BanUserModal({ isOpen, onClose, onConfirm, user, isLoading }) {
 
             {actions.length > 0 && (
               <div className="admin-ban-actions-box">
-                <h4 className="admin-ban-actions-title">Cascade Consequences ({actions.length})</h4>
+                <h4 className="admin-ban-actions-title">Cascade Consequences & Required Actions ({actions.length})</h4>
                 <ul className="admin-ban-actions-list">
-                  {actions.map((act, idx) => (
-                    <li key={idx}>{act}</li>
-                  ))}
+                  {actions.map((act, idx) => {
+                    const isAutomated =
+                      act.startsWith('Revoke all active') ||
+                      (act.startsWith('Cancel ') && act.includes('listing'));
+                    const isInfo = act.includes('already banned');
+                    const isManual = !isAutomated && !isInfo;
+
+                    return (
+                      <li key={idx} className="admin-ban-action-item">
+                        {isAutomated && (
+                          <span className="admin-action-badge admin-action-badge--auto">
+                            Automated
+                          </span>
+                        )}
+                        {isManual && (
+                          <span className="admin-action-badge admin-action-badge--manual">
+                            Manual Action Required
+                          </span>
+                        )}
+                        {isInfo && (
+                          <span className="admin-action-badge admin-action-badge--info">
+                            Info
+                          </span>
+                        )}
+                        <span className="admin-ban-action-text">{act}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
+                {actions.some(
+                  (act) =>
+                    !act.startsWith('Revoke all active') &&
+                    !(act.startsWith('Cancel ') && act.includes('listing')) &&
+                    !act.includes('already banned')
+                ) && (
+                  <p className="admin-ban-actions-note">
+                    <strong>Note:</strong> Refunds, escrow releases, and winning bid adjustments are not automated by the ban action and must be handled manually via their respective management views.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -158,7 +193,7 @@ export function BanUserModal({ isOpen, onClose, onConfirm, user, isLoading }) {
               className="btn btn--destructive"
               disabled={isLoading}
             >
-              {isLoading ? 'Banning...' : 'Confirm & Execute Ban Cascade'}
+              {isLoading ? 'Banning...' : 'Confirm Ban & Cancel Listings'}
             </button>
           </div>
         </form>
