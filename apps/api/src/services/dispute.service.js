@@ -208,7 +208,7 @@ export const createSystemDispute = async ({ id, paymentId, reason, description }
 export const getDisputeById = async ({ disputeId, userId, userRole }) => {
   const res = await pool.query(
     `SELECT d.*, 
-            p.buyer_id, p.seller_id,
+            p.buyer_id, p.seller_id, p.amount,
             a.title as auction_title,
             u.display_name as opened_by_name
      FROM disputes d
@@ -234,6 +234,21 @@ export const getDisputeById = async ({ disputeId, userId, userRole }) => {
     throw err;
   }
 
+  const amountCents = Number(dispute.amount || 0);
+  const isHighValue = amountCents > 50000;
+
+  let userDisputeCount = 0;
+  if (dispute.opened_by) {
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int as count 
+       FROM disputes 
+       WHERE opened_by = $1 AND created_at >= NOW() - INTERVAL '6 months'`,
+      [dispute.opened_by]
+    );
+    userDisputeCount = countRes.rows[0]?.count || 0;
+  }
+  const isFrequentDisputer = userDisputeCount > 3;
+
   return {
     id: dispute.id,
     auctionId: dispute.auction_id,
@@ -247,7 +262,14 @@ export const getDisputeById = async ({ disputeId, userId, userRole }) => {
     resolutionNote: dispute.resolution_note,
     policyRule: dispute.policy_rule,
     deadlineAt: dispute.deadline_at,
+    sellerEvidenceDeadlineAt: dispute.seller_evidence_deadline_at,
+    isHighValue,
+    isFrequentDisputer,
+    userDisputeCount,
+    amount: amountCents,
     createdAt: dispute.created_at,
+    resolvedAt: dispute.resolved_at,
+    resolvedBy: dispute.resolved_by,
   };
 };
 
@@ -259,7 +281,7 @@ export const addEvidence = async ({ disputeId, userId, evidenceUrls }) => {
     await client.query('BEGIN');
 
     const res = await client.query(
-      `SELECT d.id, d.status, d.evidence_urls, p.buyer_id, p.seller_id 
+      `SELECT d.id, d.status, d.evidence_urls, d.seller_evidence_deadline_at, p.buyer_id, p.seller_id 
        FROM disputes d
        JOIN payments p ON d.payment_id = p.id
        WHERE d.id = $1 FOR UPDATE`,
@@ -284,6 +306,18 @@ export const addEvidence = async ({ disputeId, userId, evidenceUrls }) => {
     if (![DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW].includes(dispute.status)) {
       const err = new Error('Cannot add evidence to a resolved or closed dispute');
       err.statusCode = 422;
+      throw err;
+    }
+
+    // Enforce 72-hour seller evidence submission window
+    if (
+      userId === dispute.seller_id &&
+      dispute.seller_evidence_deadline_at &&
+      new Date() > new Date(dispute.seller_evidence_deadline_at)
+    ) {
+      const err = new Error('Seller evidence submission deadline has expired (72 hours window)');
+      err.statusCode = 422;
+      err.errorCode = 'EVIDENCE_DEADLINE_EXPIRED';
       throw err;
     }
 
@@ -497,8 +531,8 @@ export const reviewDispute = async ({ disputeId, adminId }) => {
     disputeId,
     status: DisputeStatus.UNDER_REVIEW,
   };
-  emitToUser(dispute.buyer_id, EventNames.DISPUTE_UPDATED, eventPayload);
-  emitToUser(dispute.seller_id, EventNames.DISPUTE_UPDATED, eventPayload);
+  emitToUser(dispute.buyer_id, EventNames.DISPUTE_REVIEWED, eventPayload);
+  emitToUser(dispute.seller_id, EventNames.DISPUTE_REVIEWED, eventPayload);
 
   return updatedDispute;
 };
@@ -759,9 +793,15 @@ export const getAdminDisputes = async ({ status, page = 1, limit = 20 }) => {
   const listParams = [...params, limitNum, offset];
   const listRes = await pool.query(
     `SELECT d.*, 
-            p.buyer_id, p.seller_id,
+            p.buyer_id, p.seller_id, p.amount,
             a.title as auction_title,
-            u.display_name as opened_by_name
+            u.display_name as opened_by_name,
+            (
+              SELECT COUNT(*)::int 
+              FROM disputes d2 
+              WHERE d2.opened_by = d.opened_by 
+                AND d2.created_at >= NOW() - INTERVAL '6 months'
+            ) as user_dispute_count
      FROM disputes d
      JOIN payments p ON d.payment_id = p.id
      JOIN auctions a ON d.auction_id = a.id
@@ -772,23 +812,32 @@ export const getAdminDisputes = async ({ status, page = 1, limit = 20 }) => {
     listParams
   );
 
-  const disputes = listRes.rows.map((row) => ({
-    id: row.id,
-    auctionId: row.auction_id,
-    auctionTitle: row.auction_title,
-    paymentId: row.payment_id,
-    openedBy: { id: row.opened_by, displayName: row.opened_by_name || 'System' },
-    reason: row.reason,
-    description: row.description,
-    evidenceUrls: row.evidence_urls,
-    status: row.status,
-    resolutionNote: row.resolution_note,
-    policyRule: row.policy_rule,
-    deadlineAt: row.deadline_at,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at,
-    resolvedBy: row.resolved_by,
-  }));
+  const disputes = listRes.rows.map((row) => {
+    const amountCents = Number(row.amount || 0);
+    const userDisputeCount = Number(row.user_dispute_count || 0);
+    return {
+      id: row.id,
+      auctionId: row.auction_id,
+      auctionTitle: row.auction_title,
+      paymentId: row.payment_id,
+      openedBy: { id: row.opened_by, displayName: row.opened_by_name || 'System' },
+      reason: row.reason,
+      description: row.description,
+      evidenceUrls: row.evidence_urls,
+      status: row.status,
+      resolutionNote: row.resolution_note,
+      policyRule: row.policy_rule,
+      deadlineAt: row.deadline_at,
+      sellerEvidenceDeadlineAt: row.seller_evidence_deadline_at,
+      isHighValue: amountCents > 50000,
+      isFrequentDisputer: userDisputeCount > 3,
+      userDisputeCount,
+      amount: amountCents,
+      createdAt: row.created_at,
+      resolvedAt: row.resolved_at,
+      resolvedBy: row.resolved_by,
+    };
+  });
 
   return {
     disputes,
