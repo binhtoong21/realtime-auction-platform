@@ -58,6 +58,25 @@ export const handleGetUserById = async (req, res, next) => {
 };
 
 /**
+ * Preview impact and blast radius before banning user
+ */
+export const handleGetBanPreview = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const preview = await adminService.getBanPreview({
+      userId: id,
+      adminId: req.user?.id,
+    });
+    res.json({
+      success: true,
+      data: preview,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Ban user
  */
 export const handleBanUser = async (req, res, next) => {

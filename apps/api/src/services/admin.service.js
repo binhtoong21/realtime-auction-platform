@@ -276,6 +276,215 @@ export const getUserById = async (userId) => {
 };
 
 /**
+ * Preview blast radius and cascade impact before banning a user
+ */
+export const getBanPreview = async ({ userId, adminId }) => {
+  if (adminId && adminId === userId) {
+    const error = new Error('Admin cannot ban their own account');
+    error.statusCode = 403;
+    error.errorCode = 'CANNOT_BAN_SELF';
+    throw error;
+  }
+
+  // 1. Fetch user
+  const userRes = await pool.query(
+    'SELECT id, email, display_name, status, role FROM users WHERE id = $1',
+    [userId]
+  );
+
+  if (userRes.rows.length === 0) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const user = userRes.rows[0];
+
+  // 2. Aggregate impact metrics across auctions, payments, bids, disputes sequentially
+  // to avoid consuming multiple database pool connections simultaneously.
+  // 1. Seller auctions by status
+  const sellerAuctionsRes = await pool.query(
+    `SELECT status, COUNT(*)::int as count
+     FROM auctions
+     WHERE seller_id = $1 AND status IN ('scheduled', 'active', 'paid', 'awaiting_ship', 'shipped')
+     GROUP BY status`,
+    [userId]
+  );
+
+  // 2. Total bids on active auctions of this seller
+  const sellerBidsRes = await pool.query(
+    `SELECT COUNT(*)::int as count
+     FROM bids b
+     JOIN auctions a ON a.id = b.auction_id
+     WHERE a.seller_id = $1 AND a.status = 'active'`,
+    [userId]
+  );
+
+  // 3. Open disputes where user is seller
+  const sellerDisputesRes = await pool.query(
+    `SELECT COUNT(*)::int as count
+     FROM disputes d
+     JOIN payments p ON p.id = d.payment_id
+     WHERE p.seller_id = $1 AND d.status IN ('open', 'under_review')`,
+    [userId]
+  );
+
+  // 4. Active auctions where user is winning bidder
+  const buyerWinningBidsRes = await pool.query(
+    `SELECT COUNT(DISTINCT a.id)::int as count
+     FROM bids b
+     JOIN auctions a ON a.id = b.auction_id
+     WHERE b.bidder_id = $1 AND a.status = 'active' AND b.is_winning = true`,
+    [userId]
+  );
+
+  // 5. Buyer active payments / holds
+  const buyerPaymentsRes = await pool.query(
+    `SELECT status, COUNT(*)::int as count, COALESCE(SUM(amount), 0)::bigint as total_amount
+     FROM payments
+     WHERE buyer_id = $1 AND status IN ('authorized', 'grace_period', 'frozen')
+     GROUP BY status`,
+    [userId]
+  );
+
+  // 6. Open disputes where user is buyer
+  const buyerDisputesRes = await pool.query(
+    `SELECT COUNT(*)::int as count
+     FROM disputes d
+     JOIN payments p ON p.id = d.payment_id
+     WHERE p.buyer_id = $1 AND d.status IN ('open', 'under_review')`,
+    [userId]
+  );
+
+  // 7. Seller payments in escrow / hold (joined with auctions to isolate awaiting ship orders)
+  const sellerPaymentsRes = await pool.query(
+    `SELECT 
+       p.status, 
+       COUNT(*)::int as count, 
+       COALESCE(SUM(p.amount), 0)::bigint as total_amount,
+       COUNT(CASE WHEN a.status IN ('paid', 'awaiting_ship') THEN 1 END)::int as awaiting_ship_count,
+       COALESCE(SUM(CASE WHEN a.status IN ('paid', 'awaiting_ship') THEN p.amount ELSE 0 END), 0)::bigint as awaiting_ship_amount
+     FROM payments p
+     LEFT JOIN auctions a ON a.id = p.auction_id
+     WHERE p.seller_id = $1 AND p.status IN ('authorized', 'grace_period')
+     GROUP BY p.status`,
+    [userId]
+  );
+
+  // Extract seller auction counts
+  const auctionStatusCounts = {};
+  sellerAuctionsRes.rows.forEach((r) => {
+    auctionStatusCounts[r.status] = Number(r.count || 0);
+  });
+
+  const scheduledAuctions = auctionStatusCounts['scheduled'] || 0;
+  const activeAuctions = auctionStatusCounts['active'] || 0;
+  const paidAwaitingShip = (auctionStatusCounts['paid'] || 0) + (auctionStatusCounts['awaiting_ship'] || 0);
+  const shippedInTransit = auctionStatusCounts['shipped'] || 0;
+  const activeBidsOnSellerAuctions = Number(sellerBidsRes.rows[0]?.count || 0);
+  const sellerOpenDisputes = Number(sellerDisputesRes.rows[0]?.count || 0);
+
+  // Extract buyer counts
+  const winningActiveBids = Number(buyerWinningBidsRes.rows[0]?.count || 0);
+  const buyerOpenDisputes = Number(buyerDisputesRes.rows[0]?.count || 0);
+
+  let buyerHoldsCount = 0;
+  let buyerHoldsAmount = 0n;
+  buyerPaymentsRes.rows.forEach((r) => {
+    buyerHoldsCount += Number(r.count || 0);
+    buyerHoldsAmount += BigInt(r.total_amount || 0);
+  });
+
+  let sellerHoldsCount = 0;
+  let sellerHoldsAmount = 0n;
+  let awaitingShipHoldsCount = 0;
+  let awaitingShipHoldsAmount = 0n;
+  sellerPaymentsRes.rows.forEach((r) => {
+    sellerHoldsCount += Number(r.count || 0);
+    sellerHoldsAmount += BigInt(r.total_amount || 0);
+    awaitingShipHoldsCount += Number(r.awaiting_ship_count || 0);
+    awaitingShipHoldsAmount += BigInt(r.awaiting_ship_amount || 0);
+  });
+
+  const openDisputes = sellerOpenDisputes + buyerOpenDisputes;
+  const authHoldsToRelease = buyerHoldsCount + sellerHoldsCount;
+  const totalHoldAmount = Number(buyerHoldsAmount + sellerHoldsAmount);
+  const refundsRequired = paidAwaitingShip + (buyerHoldsCount > 0 ? buyerHoldsCount : 0);
+
+  const remainingHoldsCount = authHoldsToRelease - awaitingShipHoldsCount;
+  const remainingHoldsAmount = totalHoldAmount - Number(awaitingShipHoldsAmount);
+
+  // Generate actionable summary bullets
+  const actions = [];
+  if (user.status === 'banned') {
+    actions.push('User is already banned. No active cascade needed.');
+  } else {
+    actions.push('Revoke all active login sessions and refresh tokens');
+
+    const totalAuctionsToCancel = scheduledAuctions + activeAuctions;
+    if (totalAuctionsToCancel > 0) {
+      actions.push(
+        `Cancel ${totalAuctionsToCancel} listing(s) (${activeAuctions} active, ${scheduledAuctions} scheduled)`
+      );
+    }
+
+    if (activeBidsOnSellerAuctions > 0) {
+      actions.push(`Notify bidders on ${activeAuctions} cancelled auction(s)`);
+    }
+
+    if (winningActiveBids > 0) {
+      actions.push(`Recalculate winning bids on ${winningActiveBids} active auction(s) where user was leading`);
+    }
+
+    if (paidAwaitingShip > 0) {
+      const amountNote = awaitingShipHoldsAmount > 0n
+        ? ` totaling $${(Number(awaitingShipHoldsAmount) / 100).toFixed(2)}`
+        : '';
+      actions.push(
+        `Release escrow holds and refund ${paidAwaitingShip} order(s) awaiting shipment${amountNote}`
+      );
+    }
+
+    if (shippedInTransit > 0) {
+      actions.push(`Freeze ${shippedInTransit} in-transit order(s) for delivery dispute investigation`);
+    }
+
+    if (remainingHoldsCount > 0) {
+      const qualifier = paidAwaitingShip > 0 ? 'other ' : '';
+      actions.push(
+        `Release ${remainingHoldsCount} ${qualifier}active escrow hold(s) totaling $${(remainingHoldsAmount / 100).toFixed(2)}`
+      );
+    }
+
+    if (openDisputes > 0) {
+      actions.push(`Flag ${openDisputes} active dispute(s) with banned user status for priority admin review`);
+    }
+  }
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      displayName: user.display_name,
+      status: user.status,
+      role: user.role,
+    },
+    impact: {
+      scheduledAuctions,
+      activeAuctions,
+      paidAwaitingShip,
+      shippedInTransit,
+      winningActiveBids,
+      openDisputes,
+      authHoldsToRelease,
+      totalHoldAmount,
+      refundsRequired,
+    },
+    actions,
+  };
+};
+
+/**
  * Ban user and cancel their active auctions
  */
 export const banUser = async ({ userId, adminId, reason, ipAddress = null }) => {

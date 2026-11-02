@@ -146,6 +146,135 @@ describe('admin.service', () => {
     });
   });
 
+  describe('getBanPreview', () => {
+    it('should aggregate blast radius metrics and generate human-readable actions for active user', async () => {
+      pool.query
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'u-1',
+              email: 'seller@example.com',
+              display_name: 'Super Seller',
+              status: 'active',
+              role: 'user',
+            },
+          ],
+        }) // 1. User
+        .mockResolvedValueOnce({
+          rows: [
+            { status: 'scheduled', count: 1 },
+            { status: 'active', count: 2 },
+            { status: 'paid', count: 1 },
+            { status: 'shipped', count: 1 },
+          ],
+        }) // 2. Seller auctions
+        .mockResolvedValueOnce({ rows: [{ count: 5 }] }) // 3. Seller bids on active
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] }) // 4. Seller open disputes
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] }) // 5. Buyer winning bids
+        .mockResolvedValueOnce({
+          rows: [{ status: 'authorized', count: 1, total_amount: 25000 }],
+        }) // 6. Buyer payments
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] }) // 7. Buyer open disputes
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              status: 'authorized',
+              count: 1,
+              total_amount: 50000,
+              awaiting_ship_count: 1,
+              awaiting_ship_amount: 50000,
+            },
+          ],
+        }); // 8. Seller payments
+
+      const result = await adminService.getBanPreview({
+        userId: 'u-1',
+        adminId: 'admin-1',
+      });
+
+      expect(result.user.id).toBe('u-1');
+      expect(result.user.email).toBe('seller@example.com');
+      expect(result.impact.scheduledAuctions).toBe(1);
+      expect(result.impact.activeAuctions).toBe(2);
+      expect(result.impact.paidAwaitingShip).toBe(1);
+      expect(result.impact.shippedInTransit).toBe(1);
+      expect(result.impact.winningActiveBids).toBe(1);
+      expect(result.impact.openDisputes).toBe(1);
+      expect(result.impact.authHoldsToRelease).toBe(2);
+      expect(result.impact.totalHoldAmount).toBe(75000);
+      expect(result.actions).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('Revoke all active login sessions'),
+          expect.stringContaining('Cancel 3 listing(s)'),
+          expect.stringContaining('Notify bidders on 2 cancelled auction(s)'),
+          expect.stringContaining('Recalculate winning bids on 1 active auction(s)'),
+          expect.stringContaining('Release escrow holds and refund 1 order(s) awaiting shipment totaling $500.00'),
+          expect.stringContaining('Freeze 1 in-transit order(s)'),
+          expect.stringContaining('Release 1 other active escrow hold(s) totaling $250.00'),
+          expect.stringContaining('Flag 1 active dispute(s)'),
+        ])
+      );
+    });
+
+    it('should reject when admin attempts to preview ban on themselves', async () => {
+      await expect(
+        adminService.getBanPreview({
+          userId: 'admin-1',
+          adminId: 'admin-1',
+        })
+      ).rejects.toMatchObject({
+        statusCode: 403,
+        errorCode: 'CANNOT_BAN_SELF',
+        message: expect.stringContaining('Admin cannot ban their own account'),
+      });
+    });
+
+    it('should reject with 404 when user is not found', async () => {
+      pool.query.mockResolvedValueOnce({ rows: [] });
+
+      await expect(
+        adminService.getBanPreview({
+          userId: 'u-missing',
+          adminId: 'admin-1',
+        })
+      ).rejects.toMatchObject({
+        statusCode: 404,
+        message: expect.stringContaining('User not found'),
+      });
+    });
+
+    it('should handle already-banned user gracefully without duplicate cascade actions', async () => {
+      pool.query
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'u-banned',
+              email: 'banned@example.com',
+              display_name: 'Banned User',
+              status: 'banned',
+              role: 'user',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const result = await adminService.getBanPreview({
+        userId: 'u-banned',
+        adminId: 'admin-1',
+      });
+
+      expect(result.user.status).toBe('banned');
+      expect(result.impact.activeAuctions).toBe(0);
+      expect(result.actions).toContain('User is already banned. No active cascade needed.');
+    });
+  });
+
   describe('banUser', () => {
     it('should update user to banned, cancel active auctions, revoke tokens, and write audit log', async () => {
       mockClient.query
