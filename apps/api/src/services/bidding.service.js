@@ -82,21 +82,33 @@ export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) 
       [auctionId, bidId]
     );
 
+    // 4. Calculate authoritative bid count
+    const countResult = await client.query(
+      'SELECT COUNT(*)::int as count FROM bids WHERE auction_id = $1',
+      [auctionId]
+    );
+    const bidCount = countResult.rows[0]?.count || 0;
+
     return {
       bid: newBid,
-      auction: updatedAuction,
+      auction: {
+        ...updatedAuction,
+        bid_count: bidCount,
+      },
+      bidCount,
       previousWinnerId: previousWinnerResult.rows[0]?.bidder_id || null
     };
   });
 
-  // 4. Emit WebSocket events AFTER transaction commits
+  // 5. Emit WebSocket events AFTER transaction commits
   // Broadcast to auction room: new bid placed
   await emitToAuctionRoom(auctionId, 'bid:new', {
     bidderId: userId,
     amount: result.bid.amount,
     newPrice: result.auction.current_price,
     endAt: result.auction.end_at,
-    extendedCount: result.auction.extended_count
+    extendedCount: result.auction.extended_count,
+    bidCount: result.bidCount,
   });
 
   // Notify previous winner they've been outbid (private event)
