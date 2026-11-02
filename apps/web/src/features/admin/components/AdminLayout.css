@@ -76,7 +76,7 @@
 
 .admin-nav a:hover {
   color: var(--color-text-primary);
-  background-color: var(--color-bg-secondary, rgba(255, 255, 255, 0.04));
+  background-color: var(--color-bg-secondary, rgb(255, 255, 255, 0.04));
 }
 
 .admin-nav a.active {

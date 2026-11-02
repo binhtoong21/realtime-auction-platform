@@ -97,6 +97,7 @@ export function AdminDisputeListPage() {
               <tr>
                 <th>ID</th>
                 <th>AUCTION</th>
+                <th>AMOUNT</th>
                 <th>OPENED BY</th>
                 <th>REASON</th>
                 <th>STATUS</th>
@@ -107,7 +108,7 @@ export function AdminDisputeListPage() {
             <tbody>
               {[1, 2, 3, 4, 5].map((idx) => (
                 <tr key={idx} className="admin-table-row--skeleton">
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <div className="admin-skeleton-row" />
                   </td>
                 </tr>
@@ -139,6 +140,7 @@ export function AdminDisputeListPage() {
                 <tr>
                   <th>ID</th>
                   <th>AUCTION</th>
+                  <th>AMOUNT</th>
                   <th>OPENED BY</th>
                   <th>REASON</th>
                   <th>STATUS</th>
@@ -173,9 +175,31 @@ export function AdminDisputeListPage() {
                         </Link>
                       </td>
 
+                      {/* AMOUNT */}
+                      <td className="admin-col-amount font-mono text-xs">
+                        <div className="admin-amount-cell">
+                          <span>${(Number(dispute.amount || 0) / 100).toFixed(2)}</span>
+                          {dispute.isHighValue && (
+                            <span className="admin-flag-tag admin-flag-tag--high-value">
+                              High Value
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
                       {/* OPENED BY */}
                       <td className="admin-col-user">
-                        {dispute.openedBy?.displayName || 'System'}
+                        <div className="admin-user-cell">
+                          <span>{dispute.openedBy?.displayName || 'System'}</span>
+                          {dispute.isFrequentDisputer && (
+                            <span
+                              className="admin-flag-tag admin-flag-tag--frequent"
+                              title={`${dispute.userDisputeCount} claims in last 6 months`}
+                            >
+                              Frequent ({dispute.userDisputeCount})
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* REASON */}
@@ -193,7 +217,20 @@ export function AdminDisputeListPage() {
                       {/* SLA DEADLINE */}
                       <td className="font-mono text-xs">
                         {['open', 'under_review'].includes(dispute.status) ? (
-                          <CountdownTimer endAt={dispute.deadlineAt} endedText="Expired" />
+                          <div className="admin-deadline-cell">
+                            <CountdownTimer endAt={dispute.deadlineAt} endedText="Expired" />
+                            {dispute.sellerEvidenceDeadlineAt && dispute.status === 'open' && (
+                              <span
+                                className={`admin-sub-deadline ${ 
+                                  new Date() > new Date(dispute.sellerEvidenceDeadlineAt)
+                                    ? 'admin-sub-deadline--expired'
+                                    : 'admin-sub-deadline--active'
+                                }`}
+                              >
+                                Seller: {new Date() > new Date(dispute.sellerEvidenceDeadlineAt) ? 'Closed' : '72h Active'}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-secondary">Closed</span>
                         )}

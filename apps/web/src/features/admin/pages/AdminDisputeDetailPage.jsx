@@ -125,6 +125,34 @@ export function AdminDisputeDetailPage() {
         </div>
       </div>
 
+      {/* Escalation Alert Banner */}
+      {(dispute.isHighValue || dispute.isFrequentDisputer) && (
+        <div className="admin-escalation-banner" role="alert">
+          <div className="admin-escalation-header">
+            <span className="admin-escalation-icon" aria-hidden="true">⚠️</span>
+            <span className="admin-escalation-title">Escalated Dispute &mdash; Heightened Scrutiny Required</span>
+          </div>
+          <div className="admin-escalation-items">
+            {dispute.isHighValue && (
+              <div className="admin-escalation-item">
+                <span className="admin-flag-badge admin-flag-badge--high-value">High Value (&gt;$500)</span>
+                <span className="admin-escalation-text">
+                  This transaction is valued at ${(Number(dispute.amount || 0) / 100).toFixed(2)}. Mandatory policy requires detailed verification of shipping logs, carrier tracking, and product provenance before resolution.
+                </span>
+              </div>
+            )}
+            {dispute.isFrequentDisputer && (
+              <div className="admin-escalation-item">
+                <span className="admin-flag-badge admin-flag-badge--frequent-disputer">Frequent Disputer</span>
+                <span className="admin-escalation-text">
+                  The claimant has submitted {dispute.userDisputeCount} disputes within the last 6 months. Review historical dispute resolutions to prevent claim abuse.
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 2-Column Main Workspace */}
       <div className="admin-detail-grid">
         {/* Left Column: Context & Metadata */}
@@ -162,6 +190,17 @@ export function AdminDisputeDetailPage() {
               <span className="admin-card-val font-mono text-xs">{dispute.paymentId}</span>
             </div>
             <div className="admin-card-row">
+              <span className="admin-card-label">Disputed Amount</span>
+              <span className="admin-card-val font-mono text-xs font-semibold">
+                ${(Number(dispute.amount || 0) / 100).toFixed(2)}
+                {dispute.isHighValue && (
+                  <span className="admin-flag-badge admin-flag-badge--high-value" style={{ marginLeft: '8px' }}>
+                    High Value
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="admin-card-row">
               <span className="admin-card-label">Escrow State</span>
               <span className="admin-card-val">
                 <StatusBadge type="payment" status={isTerminal ? 'CAPTURED' : 'FROZEN'} />
@@ -180,6 +219,17 @@ export function AdminDisputeDetailPage() {
               <span className="admin-card-label">User ID</span>
               <span className="admin-card-val font-mono text-xs">{dispute.openedBy?.id || 'N/A'}</span>
             </div>
+            <div className="admin-card-row">
+              <span className="admin-card-label">Claimant History</span>
+              <span className="admin-card-val text-xs">
+                {dispute.userDisputeCount ?? 0} claim(s) / 6mo
+                {dispute.isFrequentDisputer && (
+                  <span className="admin-flag-badge admin-flag-badge--frequent-disputer" style={{ marginLeft: '8px' }}>
+                    Frequent
+                  </span>
+                )}
+              </span>
+            </div>
           </section>
 
           {/* SLA & Timeline Card */}
@@ -191,6 +241,22 @@ export function AdminDisputeDetailPage() {
                 {new Date(dispute.createdAt).toLocaleString()}
               </span>
             </div>
+            {dispute.sellerEvidenceDeadlineAt && (
+              <div className="admin-card-row">
+                <span className="admin-card-label">Seller 72h Evidence Window</span>
+                <span className="admin-card-val font-mono text-xs">
+                  {!isTerminal ? (
+                    new Date() > new Date(dispute.sellerEvidenceDeadlineAt) ? (
+                      <span className="text-secondary">Window Expired</span>
+                    ) : (
+                      <CountdownTimer endAt={dispute.sellerEvidenceDeadlineAt} endedText="Window Expired" />
+                    )
+                  ) : (
+                    <span>Concluded</span>
+                  )}
+                </span>
+              </div>
+            )}
             <div className="admin-card-row">
               <span className="admin-card-label">SLA Deadline</span>
               <span className="admin-card-val font-mono text-xs">

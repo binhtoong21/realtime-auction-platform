@@ -73,7 +73,7 @@
   text-transform: uppercase;
   color: var(--color-text-secondary);
   margin: 0 0 var(--space-3) 0;
-  border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.05));
+  border-bottom: 1px solid var(--color-border-subtle, rgb(255, 255, 255, 0.05));
   padding-bottom: 6px;
 }
 
@@ -83,7 +83,7 @@
   align-items: center;
   padding: 6px 0;
   font-size: var(--text-xs);
-  border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.03));
+  border-bottom: 1px solid var(--color-border-subtle, rgb(255, 255, 255, 0.03));
 }
 
 .admin-card-row:last-child {
@@ -138,7 +138,7 @@
 }
 
 .admin-statement-body {
-  margin: 6px 0 0 0;
+  margin: 6px 0 0;
   font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--color-text-primary);
@@ -188,7 +188,7 @@
 .admin-thumb-overlay {
   position: absolute;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgb(0, 0, 0, 0.5);
   color: #fff;
   font-size: 0.6875rem;
   font-weight: 600;
@@ -218,7 +218,7 @@
 .admin-empty-evidence {
   font-size: var(--text-xs);
   color: var(--color-text-disabled);
-  margin: 4px 0 0 0;
+  margin: 4px 0 0;
 }
 
 /* Resolution Console */
@@ -354,7 +354,7 @@
 }
 
 .admin-resolved-note {
-  margin: 4px 0 0 0;
+  margin: 4px 0 0;
   font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--color-text-primary);
@@ -369,7 +369,7 @@
 .admin-lightbox-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: rgb(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -449,4 +449,78 @@
 
 .font-semibold {
   font-weight: 600;
+}
+
+/* Escalation Alert Banner */
+.admin-escalation-banner {
+  background-color: var(--color-warning-subtle, #FEF3C7);
+  border: 1px solid var(--color-warning, #D97706);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.admin-escalation-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.admin-escalation-icon {
+  font-size: 1.125rem;
+}
+
+.admin-escalation-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-warning, #D97706);
+}
+
+.admin-escalation-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.admin-escalation-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.admin-escalation-text {
+  color: var(--color-text-primary);
+}
+
+/* Flag Badges */
+.admin-flag-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs, 2px);
+  white-space: nowrap;
+}
+
+.admin-flag-badge--high-value {
+  background-color: var(--color-danger-subtle, #FEF2F2);
+  color: var(--color-danger, #DC2626);
+  border: 1px solid var(--color-danger, #DC2626);
+}
+
+.admin-flag-badge--frequent-disputer {
+  background-color: var(--color-warning-subtle, #FEF3C7);
+  color: var(--color-warning, #D97706);
+  border: 1px solid var(--color-warning, #D97706);
 }
