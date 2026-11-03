@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePaymentHistory, useRetryPayment } from '../hooks/useBuyerActions';
 import { DisputeModal } from '../components/DisputeModal';
+import { UserDisputeDetailModal } from '../components/UserDisputeDetailModal';
 import { ConfirmDeliveryModal } from '../components/ConfirmDeliveryModal';
 import { ExtendDeliveryModal } from '../components/ExtendDeliveryModal';
 import { StatusBadge } from '../../../components/StatusBadge';
@@ -52,6 +53,7 @@ export function PaymentHistoryPage() {
   };
 
   const [disputePayment, setDisputePayment] = useState(null);
+  const [viewDisputeId, setViewDisputeId] = useState(null);
 
   const handleConfirmSuccess = () => {
     setConfirmDeliveryAuctionId(null);
@@ -171,6 +173,17 @@ export function PaymentHistoryPage() {
                           </button>
                         </div>
                       )}
+                      {(payment.status === 'frozen' || payment.disputeId) && (
+                        <div className="action-buttons">
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => setViewDisputeId(payment.disputeId)}
+                          >
+                            View Dispute
+                          </button>
+                        </div>
+                      )}
                       {payment.status === 'grace_period' && (
                         <div className="action-buttons">
                           <button 
@@ -227,6 +240,16 @@ export function PaymentHistoryPage() {
             setExtendDeliveryAuctionId(null);
             refetchPayments();
           }}
+        />
+      )}
+
+      {viewDisputeId && (
+        <UserDisputeDetailModal
+          isOpen={Boolean(viewDisputeId)}
+          disputeId={viewDisputeId}
+          role="buyer"
+          onClose={() => setViewDisputeId(null)}
+          onUpdated={refetchPayments}
         />
       )}
     </div>
