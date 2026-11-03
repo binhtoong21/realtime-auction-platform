@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuctions } from '../hooks/useAuctions';
+import { useWatchlistIds } from '../../dashboard/hooks/useWatchlist';
 import { FilterPills } from '../components/FilterPills';
 import { AuctionCard } from '../components/AuctionCard';
 import { EmptyState } from '../../../components/ui/EmptyState';
@@ -29,6 +30,8 @@ export function AuctionBrowsePage() {
     cursor,
     limit: 12
   });
+
+  const { watchedIdsSet, refetchWatchedIds } = useWatchlistIds();
 
   // Whenever filters change, reset cursor and data
   useEffect(() => {
@@ -139,7 +142,11 @@ export function AuctionBrowsePage() {
           >
             {allAuctions.map((auction) => (
               <div key={auction.id}>
-                <AuctionCard auction={auction} />
+                <AuctionCard
+                  auction={auction}
+                  isWatched={watchedIdsSet.has(auction.id)}
+                  onWatchlistToggle={refetchWatchedIds}
+                />
               </div>
             ))}
             

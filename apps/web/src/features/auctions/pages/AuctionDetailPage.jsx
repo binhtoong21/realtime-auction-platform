@@ -9,6 +9,7 @@ import { BidHistory } from '../components/BidHistory';
 import { JoinAuctionModal } from '../components/JoinAuctionModal';
 import { CountdownTimer } from '../components/CountdownTimer';
 import { StatusBadge } from '../../../components/StatusBadge';
+import { WatchlistButton } from '../components/WatchlistButton';
 import './AuctionDetailPage.css';
 
 export function AuctionDetailPage() {
@@ -247,6 +248,7 @@ export function AuctionDetailPage() {
             <div className="terminal-title-row">
               <h1>{auction.title}</h1>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <WatchlistButton auctionId={id} variant="detailed" />
                 <StatusBadge status={auction.status} type="auction" />
                 <span className={`connection-dot ${connectionStatus}`} title={connectionStatus} />
               </div>

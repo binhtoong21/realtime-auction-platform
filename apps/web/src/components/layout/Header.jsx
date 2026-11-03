@@ -56,6 +56,14 @@ export function Header() {
             {user && (
               <>
                 <NavLink
+                  to="/dashboard/watchlist"
+                  className={({ isActive }) =>
+                    `header__nav-link${isActive ? ' header__nav-link--active' : ''}`
+                  }
+                >
+                  Watchlist
+                </NavLink>
+                <NavLink
                   to="/dashboard/bids"
                   className={({ isActive }) =>
                     `header__nav-link${isActive ? ' header__nav-link--active' : ''}`
