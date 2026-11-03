@@ -12,6 +12,9 @@
 .admin-modal-card {
   max-width: 480px;
   width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-sizing: border-box;
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -138,4 +141,175 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-3);
+}
+
+/* Blast Radius Modal Additions */
+.admin-modal-card--wide {
+  max-width: 580px;
+}
+
+.admin-blast-radius-wrap {
+  margin-bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.admin-blast-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .admin-blast-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.admin-blast-metric {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-blast-metric--span {
+  grid-column: span 3;
+}
+
+@media (max-width: 640px) {
+  .admin-blast-metric--span {
+    grid-column: span 2;
+  }
+}
+
+.admin-blast-metric-label {
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+}
+
+.admin-blast-metric-val {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+}
+
+.admin-blast-metric-val--danger {
+  color: var(--color-danger);
+}
+
+.admin-blast-metric-val--warning {
+  color: var(--color-warning);
+}
+
+.admin-ban-actions-box {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.admin-ban-actions-title {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  margin: 0 0 8px;
+}
+
+.admin-ban-actions-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-ban-actions-list li {
+  margin: 0;
+}
+
+.admin-ban-action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.admin-action-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.admin-action-badge--auto {
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
+}
+
+.admin-action-badge--manual {
+  background-color: var(--color-warning-subtle);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning);
+}
+
+.admin-action-badge--info {
+  background-color: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.admin-ban-action-text {
+  flex: 1;
+}
+
+.admin-ban-actions-note {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+.admin-blast-skeleton {
+  height: 80px;
+  background: linear-gradient(90deg, var(--color-bg) 25%, var(--color-border) 50%, var(--color-bg) 75%);
+  background-size: 200% 100%;
+  animation: adminSkeleton 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes adminSkeleton {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }

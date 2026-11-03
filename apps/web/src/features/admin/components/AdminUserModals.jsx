@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useFetch } from '../../../core/hooks/useFetch';
 import PropTypes from 'prop-types';
 import { AlertTriangle, ShieldCheck, CheckCircle2, X } from 'lucide-react';
 import './AdminUserModals.css';
@@ -6,6 +7,17 @@ import './AdminUserModals.css';
 export function BanUserModal({ isOpen, onClose, onConfirm, user, isLoading }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+
+  const previewUrl = isOpen && user?.id ? `/admin/users/${user.id}/ban-preview` : null;
+  const {
+    data: previewData,
+    isLoading: isPreviewLoading,
+    error: previewError,
+  } = useFetch(previewUrl, {}, Boolean(isOpen && user?.id));
+
+  const preview = previewData?.data;
+  const impact = preview?.impact;
+  const actions = preview?.actions || [];
 
   if (!isOpen || !user) return null;
 
@@ -21,11 +33,11 @@ export function BanUserModal({ isOpen, onClose, onConfirm, user, isLoading }) {
 
   return (
     <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
-      <div className="admin-modal-card">
+      <div className="admin-modal-card admin-modal-card--wide">
         <div className="admin-modal-header">
           <div className="admin-modal-title-wrap">
             <AlertTriangle size={18} className="text-danger" />
-            <h3 className="admin-modal-title">Ban User Account</h3>
+            <h3 className="admin-modal-title">Ban User & Blast Radius</h3>
           </div>
           <button
             type="button"
@@ -42,9 +54,111 @@ export function BanUserModal({ isOpen, onClose, onConfirm, user, isLoading }) {
           You are about to permanently ban <strong>{user.displayName || user.email}</strong> (<span className="font-mono">{user.email}</span>).
         </p>
 
-        <div className="admin-modal-warning admin-modal-warning--danger">
-          <strong>Immediate Impact:</strong> Banning will immediately revoke all active sessions, cancel all ongoing auctions created by this trader, and prevent any future sign-ins.
-        </div>
+        {/* Dynamic Blast Radius Preview */}
+        {isPreviewLoading ? (
+          <div className="admin-blast-radius-wrap">
+            <div className="admin-blast-skeleton" />
+          </div>
+        ) : previewError ? (
+          <div className="admin-modal-warning admin-modal-warning--amber">
+            <strong>Preview unavailable:</strong> {previewError.message || previewError}. Generic ban cascade will still execute upon confirmation.
+          </div>
+        ) : impact ? (
+          <div className="admin-blast-radius-wrap">
+            <div className="admin-blast-grid">
+              <div className="admin-blast-metric">
+                <span className="admin-blast-metric-label">Active Listings</span>
+                <span className={`admin-blast-metric-val ${impact.activeAuctions > 0 ? 'admin-blast-metric-val--danger' : ''}`}>
+                  {impact.activeAuctions}
+                </span>
+              </div>
+              <div className="admin-blast-metric">
+                <span className="admin-blast-metric-label">Scheduled</span>
+                <span className="admin-blast-metric-val">{impact.scheduledAuctions}</span>
+              </div>
+              <div className="admin-blast-metric">
+                <span className="admin-blast-metric-label">Awaiting Ship</span>
+                <span className={`admin-blast-metric-val ${impact.paidAwaitingShip > 0 ? 'admin-blast-metric-val--danger' : ''}`}>
+                  {impact.paidAwaitingShip}
+                </span>
+              </div>
+              <div className="admin-blast-metric">
+                <span className="admin-blast-metric-label">In-Transit</span>
+                <span className={`admin-blast-metric-val ${impact.shippedInTransit > 0 ? 'admin-blast-metric-val--warning' : ''}`}>
+                  {impact.shippedInTransit}
+                </span>
+              </div>
+              <div className="admin-blast-metric">
+                <span className="admin-blast-metric-label">Leading Bids</span>
+                <span className={`admin-blast-metric-val ${impact.winningActiveBids > 0 ? 'admin-blast-metric-val--warning' : ''}`}>
+                  {impact.winningActiveBids}
+                </span>
+              </div>
+              <div className="admin-blast-metric">
+                <span className="admin-blast-metric-label">Open Disputes</span>
+                <span className={`admin-blast-metric-val ${impact.openDisputes > 0 ? 'admin-blast-metric-val--danger' : ''}`}>
+                  {impact.openDisputes}
+                </span>
+              </div>
+              <div className="admin-blast-metric admin-blast-metric--span">
+                <span className="admin-blast-metric-label">Escrow Holds to Release</span>
+                <span className="admin-blast-metric-val">
+                  {impact.authHoldsToRelease} hold(s) totaling ${(Number(impact.totalHoldAmount || 0) / 100).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {actions.length > 0 && (
+              <div className="admin-ban-actions-box">
+                <h4 className="admin-ban-actions-title">Cascade Consequences & Required Actions ({actions.length})</h4>
+                <ul className="admin-ban-actions-list">
+                  {actions.map((act, idx) => {
+                    const isAutomated =
+                      act.startsWith('Revoke all active') ||
+                      (act.startsWith('Cancel ') && act.includes('listing'));
+                    const isInfo = act.includes('already banned');
+                    const isManual = !isAutomated && !isInfo;
+
+                    return (
+                      <li key={idx} className="admin-ban-action-item">
+                        {isAutomated && (
+                          <span className="admin-action-badge admin-action-badge--auto">
+                            Automated
+                          </span>
+                        )}
+                        {isManual && (
+                          <span className="admin-action-badge admin-action-badge--manual">
+                            Manual Action Required
+                          </span>
+                        )}
+                        {isInfo && (
+                          <span className="admin-action-badge admin-action-badge--info">
+                            Info
+                          </span>
+                        )}
+                        <span className="admin-ban-action-text">{act}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {actions.some(
+                  (act) =>
+                    !act.startsWith('Revoke all active') &&
+                    !(act.startsWith('Cancel ') && act.includes('listing')) &&
+                    !act.includes('already banned')
+                ) && (
+                  <p className="admin-ban-actions-note">
+                    <strong>Note:</strong> Refunds, escrow releases, and winning bid adjustments are not automated by the ban action and must be handled manually via their respective management views.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="admin-modal-warning admin-modal-warning--danger">
+            <strong>Immediate Impact:</strong> Banning will immediately revoke all active sessions, cancel all ongoing auctions created by this trader, and prevent any future sign-ins.
+          </div>
+        )}
 
         {error && <div className="admin-modal-error">{error}</div>}
 
@@ -79,7 +193,7 @@ export function BanUserModal({ isOpen, onClose, onConfirm, user, isLoading }) {
               className="btn btn--destructive"
               disabled={isLoading}
             >
-              {isLoading ? 'Banning...' : 'Confirm Ban'}
+              {isLoading ? 'Banning...' : 'Confirm Ban & Cancel Listings'}
             </button>
           </div>
         </form>

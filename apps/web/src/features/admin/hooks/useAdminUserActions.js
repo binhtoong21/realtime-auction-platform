@@ -83,12 +83,23 @@ export function useAdminUserActions() {
     }
   }, []);
 
+  const getBanPreview = useCallback(async (userId) => {
+    try {
+      const res = await axiosClient.get(`/admin/users/${userId}/ban-preview`);
+      return res.data?.data;
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message || 'Failed to fetch ban preview';
+      throw new Error(msg, { cause: err });
+    }
+  }, []);
+
   return {
     banUser,
     suspendUser,
     reactivateUser,
     overrideKyc,
     fetchUserDetail,
+    getBanPreview,
     isActionLoading,
     actionError,
   };
