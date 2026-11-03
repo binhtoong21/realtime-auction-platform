@@ -4,7 +4,7 @@ import { useFetch } from '../../../core/hooks/useFetch';
 /** Builds a URL query string from filter params, omitting null/undefined values. */
 const EMPTY_ARRAY = [];
 
-function buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limit }) {
+function buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limit, search }) {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
   if (categoryId) params.set('categoryId', categoryId);
@@ -13,6 +13,7 @@ function buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limi
   if (sort) params.set('sort', sort);
   if (cursor) params.set('cursor', cursor);
   if (limit != null) params.set('limit', String(limit));
+  if (search) params.set('search', search);
   return params.toString();
 }
 
@@ -29,10 +30,10 @@ function buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limi
  * @param {number} [params.limit] - Number of items per page
  * @returns {{ auctions: Array, nextCursor: string|null, hasMore: boolean, isLoading: boolean, error: any, refetch: Function }}
  */
-export function useAuctions({ status, categoryId, minPrice, maxPrice, sort, cursor, limit } = {}) {
+export function useAuctions({ status, categoryId, minPrice, maxPrice, sort, cursor, limit, search } = {}) {
   const queryString = useMemo(
-    () => buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limit }),
-    [status, categoryId, minPrice, maxPrice, sort, cursor, limit]
+    () => buildQuery({ status, categoryId, minPrice, maxPrice, sort, cursor, limit, search }),
+    [status, categoryId, minPrice, maxPrice, sort, cursor, limit, search]
   );
 
   const url = queryString ? `/auctions?${queryString}` : '/auctions';

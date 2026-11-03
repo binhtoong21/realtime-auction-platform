@@ -4,7 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 export const getAuctions = async (req, res, next) => {
   try {
-    const { status, categoryId, cursor, limit, sort, minPrice, maxPrice } = req.query;
+    const { status, categoryId, cursor, limit, sort, minPrice, maxPrice, search } = req.query;
     let { sellerId, bidderId } = req.query;
 
     if (sellerId === 'me') {
@@ -31,6 +31,7 @@ export const getAuctions = async (req, res, next) => {
       sort,
       minPrice: minPrice !== undefined && minPrice !== '' ? Math.round(parseFloat(minPrice) * 100) : undefined,
       maxPrice: maxPrice !== undefined && maxPrice !== '' ? Math.round(parseFloat(maxPrice) * 100) : undefined,
+      search: search ? search.trim() : undefined,
     });
     
     res.status(200).json({

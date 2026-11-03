@@ -13,6 +13,7 @@ export const getAuctionsSchema = Joi.object({
   sort: Joi.string().valid('ending_soon', 'newest', 'price_asc', 'price_desc').optional(),
   minPrice: Joi.number().min(0).optional(),
   maxPrice: Joi.number().min(0).optional(),
+  search: Joi.string().trim().max(100).allow('').optional(),
 });
 
 export const getAuctionBidsSchema = Joi.object({
