@@ -4,6 +4,7 @@ import { useSellerAuctions } from '../hooks/useSellerActions';
 import { ShipModal } from '../components/ShipModal';
 import { ExtendShippingModal } from '../components/ExtendShippingModal';
 import { EditTrackingModal } from '../components/EditTrackingModal';
+import { UserDisputeDetailModal } from '../components/UserDisputeDetailModal';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
 import { EmptyState } from '../../../components/ui/EmptyState';
@@ -18,6 +19,7 @@ const STATUS_TABS = [
   { value: 'awaiting_ship', label: 'Awaiting Ship' },
   { value: 'shipped', label: 'Shipped' },
   { value: 'completed', label: 'Completed' },
+  { value: 'disputed', label: 'Disputed' },
   { value: 'ended', label: 'Ended' },
   { value: 'no_sale', label: 'No Sale' }
 ];
@@ -31,6 +33,7 @@ export function MyAuctionsPage() {
   const [shippingAuctionId, setShippingAuctionId] = useState(null);
   const [extendShippingAuctionId, setExtendShippingAuctionId] = useState(null);
   const [editTrackingAuction, setEditTrackingAuction] = useState(null);
+  const [viewDisputeId, setViewDisputeId] = useState(null);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -164,6 +167,18 @@ export function MyAuctionsPage() {
                           </button>
                         </div>
                       )}
+
+                      {(auction.status === 'disputed' || auction.disputeId) && (
+                        <div className="action-buttons">
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => setViewDisputeId(auction.disputeId)}
+                          >
+                            View Dispute
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -214,6 +229,16 @@ export function MyAuctionsPage() {
             setEditTrackingAuction(null);
             refetch();
           }}
+        />
+      )}
+
+      {viewDisputeId && (
+        <UserDisputeDetailModal
+          isOpen={Boolean(viewDisputeId)}
+          disputeId={viewDisputeId}
+          role="seller"
+          onClose={() => setViewDisputeId(null)}
+          onUpdated={refetch}
         />
       )}
     </div>
