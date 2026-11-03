@@ -9,6 +9,9 @@ export function DashboardLayout() {
           <NavLink to="/dashboard" end className={({ isActive }) => isActive ? 'active' : ''}>
             Overview
           </NavLink>
+          <NavLink to="/dashboard/watchlist" className={({ isActive }) => isActive ? 'active' : ''}>
+            Watchlist
+          </NavLink>
           <NavLink to="/dashboard/bids" className={({ isActive }) => isActive ? 'active' : ''}>
             My Bids
           </NavLink>

@@ -17,6 +17,7 @@ import { MyAuctionsPage } from '../features/dashboard/pages/MyAuctionsPage';
 import { CreateAuctionPage } from '../features/dashboard/pages/CreateAuctionPage';
 import { EditAuctionPage } from '../features/dashboard/pages/EditAuctionPage';
 import { MyBidsPage } from '../features/dashboard/pages/MyBidsPage';
+import { WatchlistPage } from '../features/dashboard/pages/WatchlistPage';
 
 import { PaymentHistoryPage } from '../features/dashboard/pages/PaymentHistoryPage';
 import { NotificationCenterPage } from '../features/dashboard/pages/NotificationCenterPage';
@@ -110,6 +111,10 @@ export const router = createBrowserRouter([
           {
             path: 'auctions/:id/edit',
             element: <EditAuctionPage />,
+          },
+          {
+            path: 'watchlist',
+            element: <WatchlistPage />,
           },
           {
             path: 'bids',

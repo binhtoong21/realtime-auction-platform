@@ -1,13 +1,16 @@
 import { Link } from 'react-router-dom';
 import { CountdownTimer } from './CountdownTimer';
+import { WatchlistButton } from './WatchlistButton';
 import './AuctionCard.css';
 
 /**
  * Pure component to render an auction card in high-density grid.
  * @param {Object} props
  * @param {Object} props.auction - The auction data.
+ * @param {boolean} [props.isWatched] - Whether auction is in user's watchlist.
+ * @param {Function} [props.onWatchlistToggle] - Callback when watchlist state changes.
  */
-export function AuctionCard({ auction }) {
+export function AuctionCard({ auction, isWatched, onWatchlistToggle }) {
   if (!auction || !auction.id) {
     return null;
   }
@@ -44,6 +47,14 @@ export function AuctionCard({ auction }) {
         ) : (
           <span className="auction-card-image-placeholder">No Image</span>
         )}
+        <div className="auction-card-watchlist">
+          <WatchlistButton
+            auctionId={id}
+            isWatched={isWatched}
+            onToggle={onWatchlistToggle}
+            size={16}
+          />
+        </div>
       </div>
       
       <div className="auction-card-info">
