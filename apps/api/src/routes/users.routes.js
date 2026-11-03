@@ -14,12 +14,16 @@ import {
   handleUpdateProfile,
   handleGetPublicProfile,
 } from '../controllers/user.controller.js';
+import { handleGetMyWatchlist, handleGetMyWatchlistIds } from '../controllers/watchlist.controller.js';
+import { getMyWatchlistSchema } from '../validations/watchlist.validation.js';
 
 const router = Router();
 
 router.get('/me/kyc', requireAuth, getKycStatus);
 router.get('/me/payments', requireAuth, handleGetMyPayments);
 router.get('/me/bids', requireAuth, handleGetMyBids);
+router.get('/me/watchlist', requireAuth, validate(getMyWatchlistSchema, 'query'), handleGetMyWatchlist);
+router.get('/me/watchlist/ids', requireAuth, handleGetMyWatchlistIds);
 router.patch('/me', requireAuth, uploadAvatar, handleUpdateProfile);
 router.post('/me/kyc/identity-session', requireAuth, createIdentitySession);
 router.post(

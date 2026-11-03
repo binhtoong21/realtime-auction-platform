@@ -16,6 +16,8 @@ import { getAuctions, getAuctionById, getAuctionBids, createAuction, updateAucti
 
 import { handleShipAuction, handleUpdateTracking, handleGetTracking, handleExtendShipping, handleConfirmDelivery, handleExtendDelivery } from '../controllers/fulfillment.controller.js';
 import { shipAuctionSchema, updateTrackingSchema, extendShippingSchema, extendDeliverySchema } from '../validations/fulfillment.validation.js';
+import { handleToggleWatchlist } from '../controllers/watchlist.controller.js';
+import { toggleWatchlistSchema } from '../validations/watchlist.validation.js';
 
 const router = Router();
 
@@ -87,6 +89,9 @@ router.get('/:id/tracking', requireAuth, handleGetTracking);
 
 // Fulfillment — Buyer confirmation & extension
 router.post('/:id/confirm-delivery', requireAuth, handleConfirmDelivery);
+
+// Watchlist toggle
+router.post('/:id/watchlist', requireAuth, validate(toggleWatchlistSchema, 'params'), handleToggleWatchlist);
 router.post('/:id/extend-delivery', requireAuth, validate(extendDeliverySchema), handleExtendDelivery);
 
 export default router;
