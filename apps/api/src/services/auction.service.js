@@ -12,9 +12,11 @@ import { AuctionStatus } from '@auction/shared-constants';
 export const getAuctions = async ({ status, categoryId, sellerId, bidderId, cursor, limit = 20, sort = 'newest', minPrice, maxPrice }) => {
   let query = `
     SELECT a.id, a.title, a.current_price, a.status, a.start_at, a.end_at, a.images, a.created_at,
-           c.name as category_name
+           c.name as category_name,
+           d.id AS "disputeId"
     FROM auctions a
     LEFT JOIN categories c ON a.category_id = c.id
+    LEFT JOIN disputes d ON d.auction_id = a.id
     WHERE 1=1
   `;
   const values = [];
