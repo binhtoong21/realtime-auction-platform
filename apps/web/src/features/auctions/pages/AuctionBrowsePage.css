@@ -21,12 +21,20 @@
   width: 100%;
 }
 
+.status-tabs-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-6);
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
 .status-tabs {
   display: flex;
   flex-direction: row;
   gap: var(--space-5);
-  margin-bottom: var(--space-6);
-  border-bottom: 1px solid var(--color-border);
 }
 
 .status-tab {
@@ -36,7 +44,7 @@
   margin-bottom: -1px;
   color: var(--color-text-secondary);
   font-family: var(--font-body);
-  font-size: var(--text-sm, 13px);
+  font-size: var(--text-sm);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
@@ -50,6 +58,55 @@
   color: var(--color-text-primary);
   font-weight: 500;
   border-bottom-color: var(--color-brand);
+}
+
+.browse-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+  min-width: 220px;
+  margin-bottom: var(--space-2);
+}
+
+.browse-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--color-text-disabled);
+  pointer-events: none;
+}
+
+.browse-search-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 28px 0 32px;
+  font-size: var(--text-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+}
+
+.browse-search-input:focus {
+  outline: none;
+  border-color: var(--color-brand);
+}
+
+.browse-search-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--color-text-disabled);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+}
+
+.browse-search-clear:hover {
+  color: var(--color-text-primary);
 }
 
 .browse-grid {
@@ -74,5 +131,14 @@
 @media (max-width: 768px) {
   .browse-main {
     padding: var(--space-3) var(--space-4);
+  }
+
+  .status-tabs-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .browse-search-wrap {
+    max-width: 100%;
   }
 }
