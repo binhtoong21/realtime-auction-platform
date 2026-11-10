@@ -93,6 +93,26 @@ export function BidForm({
   const minValidAmountDollars = minValidAmountCents / 100;
   const bidIncrementDollars = bidIncrement / 100;
 
+  /**
+   * Prompts user confirmation if bid amount is high value (>= $1,000 USD).
+   * @param {number} amountInCents - Bid amount in cents.
+   * @returns {boolean} True if confirmed or below threshold, false if rejected.
+   */
+  const confirmHighValueBid = (amountInCents) => {
+    if (amountInCents >= 100000) {
+      const formatted = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+      }).format(amountInCents / 100);
+      return window.confirm(`You are about to place a high-value bid of ${formatted}. Are you sure you want to proceed?`);
+    }
+    return true;
+  };
+
+  /**
+   * Submits a bid after verifying authentication, minimum amount, and high-value confirmation.
+   * @param {React.FormEvent} e - Form submission event.
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) {
@@ -111,14 +131,8 @@ export function BidForm({
       return;
     }
 
-    if (amountInCents >= 100000) {
-      const formatted = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-      }).format(amountInCents / 100);
-      if (!window.confirm(`You are about to place a high-value bid of ${formatted}. Are you sure you want to proceed?`)) {
-        return;
-      }
+    if (!confirmHighValueBid(amountInCents)) {
+      return;
     }
 
     try {
@@ -128,16 +142,30 @@ export function BidForm({
     }
   };
 
+  /**
+   * Retries bid submission after a network error, checking high-value confirmation.
+   */
   const handleRetry = () => {
-    submitBid(Math.round(Number(bidAmount) * 100)).catch(() => {});
+    const amountInCents = Math.round(Number(bidAmount) * 100);
+    if (!confirmHighValueBid(amountInCents)) {
+      return;
+    }
+    submitBid(amountInCents).catch(() => {});
   };
 
+  /**
+   * Cancels pending or failed bid submission and resets UI state.
+   */
   const handleCancel = () => {
     resetState();
   };
 
   const isDisabled = isSubmitting || bidState === 'success' || auctionStatus !== 'active';
 
+  /**
+   * Sets bid input based on a multiple of bid increment.
+   * @param {number} multiplier - Number of increments to add.
+   */
   const handleQuickBid = (multiplier) => {
     if (!user) {
       onJoinClick();
@@ -186,7 +214,8 @@ export function BidForm({
 
         <button
           id="place-bid-btn"
-          type="submit"
+          type={!user ? 'button' : 'submit'}
+          onClick={!user ? onJoinClick : undefined}
           className="btn btn--lg btn--primary bid-submit-btn"
           disabled={isDisabled}
         >

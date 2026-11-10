@@ -13,6 +13,12 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { WatchlistButton } from '../components/WatchlistButton';
 import './AuctionDetailPage.css';
 
+/**
+ * Auction Detail Page component (Bid Room).
+ * Displays full auction lot information, image gallery, realtime bids, and bidding controls.
+ * Supports both unauthenticated guests (read-only with login redirect) and active bidders.
+ * @returns {JSX.Element} The rendered component.
+ */
 export function AuctionDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -50,6 +56,9 @@ export function AuctionDetailPage() {
     }
   }, [auction?.bid_increment]);
 
+  /**
+   * Handles realtime outbid event, recalculating minimum bid amount and notifying user.
+   */
   const onOutbid = useCallback(
     (currentPrice) => {
       const minBidCents = Number(currentPrice) + Number(bidIncrementRef.current);
@@ -101,11 +110,17 @@ export function AuctionDetailPage() {
     }
   }, [auction]);
 
+  /**
+   * Closes join modal and refreshes auction data on successful auction join.
+   */
   const handleJoinSuccess = useCallback(() => {
     setShowJoinModal(false);
     refetchAuction();
   }, [refetchAuction]);
 
+  /**
+   * Opens join modal for authenticated users or redirects guests to login page.
+   */
   const handleJoinClick = useCallback(() => {
     if (!user) {
       navigate('/auth/login', {
@@ -116,7 +131,11 @@ export function AuctionDetailPage() {
     setShowJoinModal(true);
   }, [user, navigate, location.pathname, location.search]);
 
-  // Format price for display
+  /**
+   * Formats price from cents to USD currency string.
+   * @param {number} cents - Amount in cents.
+   * @returns {string} Formatted USD string.
+   */
   const formatPrice = (cents) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
