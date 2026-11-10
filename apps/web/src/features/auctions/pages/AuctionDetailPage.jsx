@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../../core/context/AuthContext';
 import { useFetch } from '../../../core/hooks/useFetch';
 import { useAuctionSocket } from '../hooks/useAuctionSocket';
 import { useBidSubmit } from '../hooks/useBidSubmit';
@@ -12,8 +13,17 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { WatchlistButton } from '../components/WatchlistButton';
 import './AuctionDetailPage.css';
 
+/**
+ * Auction Detail Page component (Bid Room).
+ * Displays full auction lot information, image gallery, realtime bids, and bidding controls.
+ * Supports both unauthenticated guests (read-only with login redirect) and active bidders.
+ * @returns {JSX.Element} The rendered component.
+ */
 export function AuctionDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const user = useAuth();
   const { showError } = useToast();
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
@@ -46,6 +56,9 @@ export function AuctionDetailPage() {
     }
   }, [auction?.bid_increment]);
 
+  /**
+   * Handles realtime outbid event, recalculating minimum bid amount and notifying user.
+   */
   const onOutbid = useCallback(
     (currentPrice) => {
       const minBidCents = Number(currentPrice) + Number(bidIncrementRef.current);
@@ -97,16 +110,32 @@ export function AuctionDetailPage() {
     }
   }, [auction]);
 
+  /**
+   * Closes join modal and refreshes auction data on successful auction join.
+   */
   const handleJoinSuccess = useCallback(() => {
     setShowJoinModal(false);
     refetchAuction();
   }, [refetchAuction]);
 
+  /**
+   * Opens join modal for authenticated users or redirects guests to login page.
+   */
   const handleJoinClick = useCallback(() => {
+    if (!user) {
+      navigate('/auth/login', {
+        state: { from: location.pathname + location.search },
+      });
+      return;
+    }
     setShowJoinModal(true);
-  }, []);
+  }, [user, navigate, location.pathname, location.search]);
 
-  // Format price for display
+  /**
+   * Formats price from cents to USD currency string.
+   * @param {number} cents - Amount in cents.
+   * @returns {string} Formatted USD string.
+   */
   const formatPrice = (cents) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -324,7 +353,7 @@ export function AuctionDetailPage() {
                     onClick={handleJoinClick}
                     style={{ marginTop: '1rem' }}
                   >
-                    Join Now to Prepare
+                    {user ? 'Join Now to Prepare' : 'Sign In to Join'}
                   </button>
                 </>
               )}

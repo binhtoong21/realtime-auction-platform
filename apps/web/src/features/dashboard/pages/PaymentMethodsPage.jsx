@@ -114,6 +114,11 @@ function AddCardForm({ onCancel, onSuccess }) {
   );
 }
 
+/**
+ * Payment Methods Page component.
+ * Allows users to view, manage, set default, and add payment cards using Stripe Elements.
+ * @returns {JSX.Element} The rendered component.
+ */
 export function PaymentMethodsPage() {
   const { data: cardsRes, isLoading, error, refetch } = useFetch('/payment-methods');
   const cards = cardsRes?.data || [];
@@ -142,10 +147,33 @@ export function PaymentMethodsPage() {
     };
   }, []);
 
+  /**
+   * Deletes a payment method after refreshing the list to accurately check if it is the last card.
+   * Warns the user about active auction requirements before confirmation.
+   * @param {string} id - The payment method ID to delete.
+   */
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to remove this card?')) return;
-    
     setActionInProgressId(id);
+    let currentCards = cards;
+    try {
+      const freshRes = await refetch();
+      if (Array.isArray(freshRes?.data)) {
+        currentCards = freshRes.data;
+      }
+    } catch {
+      // Fallback to existing cards list if refresh fails
+    }
+
+    const isOnlyCard = currentCards.length <= 1;
+    const confirmMessage = isOnlyCard
+      ? 'Warning: This is your only payment method. You will not be able to participate in auctions without a payment card. Are you sure you want to remove it?'
+      : 'Are you sure you want to remove this card? Note: Removing this card may require updating your payment method for any active auctions.';
+
+    if (!window.confirm(confirmMessage)) {
+      setActionInProgressId(null);
+      return;
+    }
+    
     try {
       const res = await mutateCard({}, { 
         url: `/payment-methods/${id}`, 
@@ -171,6 +199,10 @@ export function PaymentMethodsPage() {
     }
   };
 
+  /**
+   * Sets the specified payment method as default for the user account.
+   * @param {string} id - The payment method ID.
+   */
   const handleSetDefault = async (id) => {
     setActionInProgressId(id);
     try {
@@ -189,6 +221,9 @@ export function PaymentMethodsPage() {
   };
 
 
+  /**
+   * Handles successful card creation and polls until the new card appears in the list.
+   */
   const handleAddSuccess = () => {
     setShowAddForm(false);
     const expectedCount = prevCardCountRef.current;
