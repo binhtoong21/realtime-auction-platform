@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useAuth } from '../../../core/context/AuthContext';
 import { useToast } from '../../../core/context/ToastContext';
 import './BidForm.css';
 
@@ -20,6 +21,7 @@ export function BidForm({
   resetState,
   isSubmitting,
 }) {
+  const user = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const autoResetTimerRef = useRef(null);
 
@@ -93,6 +95,10 @@ export function BidForm({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!user) {
+      onJoinClick();
+      return;
+    }
     const amountInCents = Math.round(Number(bidAmount) * 100);
 
     if (!amountInCents || amountInCents < minValidAmountCents) {
@@ -103,6 +109,16 @@ export function BidForm({
     if (!isJoined) {
       onJoinClick();
       return;
+    }
+
+    if (amountInCents >= 100000) {
+      const formatted = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+      }).format(amountInCents / 100);
+      if (!window.confirm(`You are about to place a high-value bid of ${formatted}. Are you sure you want to proceed?`)) {
+        return;
+      }
     }
 
     try {
@@ -123,6 +139,10 @@ export function BidForm({
   const isDisabled = isSubmitting || bidState === 'success' || auctionStatus !== 'active';
 
   const handleQuickBid = (multiplier) => {
+    if (!user) {
+      onJoinClick();
+      return;
+    }
     if (!isJoined) {
       onJoinClick();
       return;
@@ -174,6 +194,8 @@ export function BidForm({
             ? 'Placing bid...'
             : bidState === 'success'
             ? 'Bid placed!'
+            : !user
+            ? 'Sign In to Bid'
             : !isJoined
             ? 'Join to Bid'
             : 'Place Bid'}

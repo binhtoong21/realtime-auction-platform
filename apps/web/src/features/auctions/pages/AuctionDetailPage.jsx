@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../../core/context/AuthContext';
 import { useFetch } from '../../../core/hooks/useFetch';
 import { useAuctionSocket } from '../hooks/useAuctionSocket';
 import { useBidSubmit } from '../hooks/useBidSubmit';
@@ -14,6 +15,9 @@ import './AuctionDetailPage.css';
 
 export function AuctionDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const user = useAuth();
   const { showError } = useToast();
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
@@ -103,8 +107,14 @@ export function AuctionDetailPage() {
   }, [refetchAuction]);
 
   const handleJoinClick = useCallback(() => {
+    if (!user) {
+      navigate('/auth/login', {
+        state: { from: location.pathname + location.search },
+      });
+      return;
+    }
     setShowJoinModal(true);
-  }, []);
+  }, [user, navigate, location.pathname, location.search]);
 
   // Format price for display
   const formatPrice = (cents) => {
@@ -324,7 +334,7 @@ export function AuctionDetailPage() {
                     onClick={handleJoinClick}
                     style={{ marginTop: '1rem' }}
                   >
-                    Join Now to Prepare
+                    {user ? 'Join Now to Prepare' : 'Sign In to Join'}
                   </button>
                 </>
               )}

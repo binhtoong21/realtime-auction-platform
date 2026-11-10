@@ -143,7 +143,12 @@ export function PaymentMethodsPage() {
   }, []);
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to remove this card?')) return;
+    const isOnlyCard = cards.length === 1;
+    const confirmMessage = isOnlyCard
+      ? 'Warning: This is your only payment method. You will not be able to participate in auctions without a payment card. Are you sure you want to remove it?'
+      : 'Are you sure you want to remove this card?';
+
+    if (!window.confirm(confirmMessage)) return;
     
     setActionInProgressId(id);
     try {
