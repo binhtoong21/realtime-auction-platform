@@ -39,10 +39,11 @@ const STATUS_OPTIONS = [
 
 const KYC_OPTIONS = [
   { value: '', label: 'All KYC Statuses' },
-  { value: 'verified', label: 'Verified' },
-  { value: 'pending', label: 'Pending Review' },
-  { value: 'unverified', label: 'Unverified' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: IdentityStatus.VERIFIED, label: 'Verified' },
+  { value: IdentityStatus.PROCESSING, label: 'Under Review' },
+  { value: IdentityStatus.PENDING, label: 'Pending' },
+  { value: IdentityStatus.FAILED, label: 'Failed' },
+  { value: IdentityStatus.NOT_STARTED, label: 'Not Started' },
 ];
 
 function formatDate(dateStr) {
