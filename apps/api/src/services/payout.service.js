@@ -2,7 +2,7 @@ import stripe from '../config/stripe.js';
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './payment.service.js';
-import { PaymentStatus, EventNames } from '@auction/shared-constants';
+import { PaymentStatus, EventNames, ConnectStatus } from '@auction/shared-constants';
 import { emitToUser } from './socket.service.js';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
@@ -77,7 +77,7 @@ export const createPayout = async (paymentId) => {
 
   const seller = sellerResult.rows[0];
 
-  if (seller.connect_status !== 'payouts_enabled') {
+  if (seller.connect_status !== ConnectStatus.PAYOUTS_ENABLED) {
     console.log(`[Payout] Seller ${payment.seller_id} connect_status='${seller.connect_status}'. Payout deferred.`);
     return { transferred: false, reason: 'connect_not_ready', retry: true };
   }

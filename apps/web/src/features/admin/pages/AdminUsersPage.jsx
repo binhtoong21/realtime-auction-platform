@@ -20,7 +20,7 @@ import {
   ReactivateUserModal,
   KycOverrideModal,
 } from '../components/AdminUserModals';
-import { UserStatus } from '@auction/shared-constants';
+import { UserStatus, IdentityStatus } from '@auction/shared-constants';
 import './AdminUsersPage.css';
 
 const ROLE_OPTIONS = [
@@ -39,10 +39,11 @@ const STATUS_OPTIONS = [
 
 const KYC_OPTIONS = [
   { value: '', label: 'All KYC Statuses' },
-  { value: 'verified', label: 'Verified' },
-  { value: 'pending', label: 'Pending Review' },
-  { value: 'unverified', label: 'Unverified' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: IdentityStatus.VERIFIED, label: 'Verified' },
+  { value: IdentityStatus.PROCESSING, label: 'Under Review' },
+  { value: IdentityStatus.PENDING, label: 'Pending' },
+  { value: IdentityStatus.FAILED, label: 'Failed' },
+  { value: IdentityStatus.NOT_STARTED, label: 'Not Started' },
 ];
 
 function formatDate(dateStr) {
@@ -459,7 +460,7 @@ export function AdminUsersPage() {
                           </button>
                         )}
 
-                        {u.identityStatus !== 'verified' && (
+                        {u.identityStatus !== IdentityStatus.VERIFIED && (
                           <button
                             type="button"
                             className="btn btn--xs btn--secondary text-brand"

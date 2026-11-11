@@ -76,6 +76,21 @@ export const UserRole = {
     ADMIN: 'admin'
 };
 
+export const IdentityStatus = {
+    NOT_STARTED: 'not_started',
+    PENDING: 'pending',
+    PROCESSING: 'processing',
+    VERIFIED: 'verified',
+    FAILED: 'failed',
+};
+
+export const ConnectStatus = {
+    NOT_STARTED: 'not_started',
+    PENDING: 'pending',
+    PAYOUTS_ENABLED: 'payouts_enabled',
+    PAYOUTS_DISABLED: 'payouts_disabled',
+};
+
 export const PaymentStatus = {
     HOLD_PENDING: 'hold_pending',
     AUTHORIZED: 'authorized',

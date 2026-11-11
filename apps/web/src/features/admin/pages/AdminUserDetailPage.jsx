@@ -24,7 +24,7 @@ import {
   ReactivateUserModal,
   KycOverrideModal,
 } from '../components/AdminUserModals';
-import { UserStatus } from '@auction/shared-constants';
+import { UserStatus, IdentityStatus } from '@auction/shared-constants';
 import './AdminUserDetailPage.css';
 
 function formatCurrency(cents) {
@@ -275,7 +275,7 @@ export function AdminUserDetailPage() {
             </button>
           )}
 
-          {user.identityStatus !== 'verified' && (
+          {user.identityStatus !== IdentityStatus.VERIFIED && (
             <button
               type="button"
               className="btn btn--sm btn--primary"
@@ -309,10 +309,11 @@ export function AdminUserDetailPage() {
             <span className={`admin-pill admin-pill--kyc-${user.identityStatus}`}>{user.identityStatus}</span>
           </div>
           <div className="admin-info-card__desc">
-            {user.identityStatus === 'verified' && 'Identity officially verified. Full seller limits unlocked.'}
-            {user.identityStatus === 'pending' && 'Government identity documents pending compliance review.'}
-            {user.identityStatus === 'unverified' && 'Standard trading privileges. Seller limits apply.'}
-            {user.identityStatus === 'rejected' && 'Verification submission rejected due to document mismatch.'}
+            {user.identityStatus === IdentityStatus.VERIFIED && 'Identity officially verified. Full seller limits unlocked.'}
+            {user.identityStatus === IdentityStatus.PROCESSING && 'Identity documents are under review by the verification provider.'}
+            {user.identityStatus === IdentityStatus.PENDING && 'Verification session started but not yet submitted.'}
+            {user.identityStatus === IdentityStatus.FAILED && 'Verification failed. The user may retry with new documents.'}
+            {user.identityStatus === IdentityStatus.NOT_STARTED && 'Identity verification not started. Cannot create auctions.'}
           </div>
         </div>
 

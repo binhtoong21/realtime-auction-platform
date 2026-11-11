@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AuctionStatus, PaymentStatus } from '@auction/shared-constants';
+import { AuctionStatus, PaymentStatus, IdentityStatus, ConnectStatus } from '@auction/shared-constants';
 import { VALID_AUCTION_STATUSES } from '../../src/validations/auction.validation.js';
 
 describe('shared-constants value lock', () => {
@@ -78,6 +78,45 @@ describe('shared-constants value lock', () => {
     });
     it('should have CANCELLED = "cancelled"', () => {
       expect(PaymentStatus.CANCELLED).toBe('cancelled');
+    });
+  });
+
+  describe('IdentityStatus', () => {
+    it('should have NOT_STARTED = "not_started"', () => {
+      expect(IdentityStatus.NOT_STARTED).toBe('not_started');
+    });
+    it('should have PENDING = "pending"', () => {
+      expect(IdentityStatus.PENDING).toBe('pending');
+    });
+    it('should have PROCESSING = "processing"', () => {
+      expect(IdentityStatus.PROCESSING).toBe('processing');
+    });
+    it('should have VERIFIED = "verified"', () => {
+      expect(IdentityStatus.VERIFIED).toBe('verified');
+    });
+    it('should have FAILED = "failed"', () => {
+      expect(IdentityStatus.FAILED).toBe('failed');
+    });
+    it('should have exactly 5 statuses', () => {
+      expect(Object.keys(IdentityStatus).length).toBe(5);
+    });
+  });
+
+  describe('ConnectStatus', () => {
+    it('should have NOT_STARTED = "not_started"', () => {
+      expect(ConnectStatus.NOT_STARTED).toBe('not_started');
+    });
+    it('should have PENDING = "pending"', () => {
+      expect(ConnectStatus.PENDING).toBe('pending');
+    });
+    it('should have PAYOUTS_ENABLED = "payouts_enabled"', () => {
+      expect(ConnectStatus.PAYOUTS_ENABLED).toBe('payouts_enabled');
+    });
+    it('should have PAYOUTS_DISABLED = "payouts_disabled"', () => {
+      expect(ConnectStatus.PAYOUTS_DISABLED).toBe('payouts_disabled');
+    });
+    it('should have exactly 4 statuses', () => {
+      expect(Object.keys(ConnectStatus).length).toBe(4);
     });
   });
 

@@ -3,6 +3,7 @@ import { useFetch } from '../../../core/hooks/useFetch';
 import { useMutation } from '../../../core/hooks/useMutation';
 import { useToast } from '../../../core/context/ToastContext';
 import { StatusBadge } from '../../../components/StatusBadge';
+import { IdentityStatus, ConnectStatus } from '@auction/shared-constants';
 import './KycPage.css';
 
 const stripePublicKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
@@ -136,7 +137,7 @@ export function KycPage() {
   } = kycData;
 
   // Xử lý fail-closed retry logic
-  const isIdentityFailed = identityStatus === 'failed';
+  const isIdentityFailed = identityStatus === IdentityStatus.FAILED;
   const isRetryable = identityRetryCount < 3 && RETRYABLE_MESSAGES.includes(identityFailureReason);
   const showIdentityContactSupport = isIdentityFailed && !isRetryable;
 
@@ -156,14 +157,14 @@ export function KycPage() {
         <div className="kyc-section-content">
           <p>We need to verify your identity before you can sell items. This requires a valid ID document and a selfie.</p>
           
-          {identityStatus === 'verified' && (
+          {identityStatus === IdentityStatus.VERIFIED && (
             <div className="kyc-info-row">
               <span className="kyc-info-label">Verified At</span>
               <span className="kyc-info-value">{new Date(identityVerifiedAt).toLocaleString()}</span>
             </div>
           )}
 
-          {identityStatus === 'processing' && (
+          {identityStatus === IdentityStatus.PROCESSING && (
             <div className="kyc-alert kyc-alert--info">
               Your identity verification is currently under review. This usually takes 1-3 business days.
             </div>
@@ -176,13 +177,13 @@ export function KycPage() {
           )}
 
           <div className="kyc-action-bar">
-            {['not_started', 'pending'].includes(identityStatus) && (
+            {[IdentityStatus.NOT_STARTED, IdentityStatus.PENDING].includes(identityStatus) && (
               <button 
                 className="btn-primary" 
                 onClick={handleStartIdentity}
                 disabled={isCreatingIdentity}
               >
-                {isCreatingIdentity ? 'Loading...' : identityStatus === 'pending' ? 'Continue Verification' : 'Start Verification'}
+                {isCreatingIdentity ? 'Loading...' : identityStatus === IdentityStatus.PENDING ? 'Continue Verification' : 'Start Verification'}
               </button>
             )}
 
@@ -206,7 +207,7 @@ export function KycPage() {
       </div>
 
       {/* Stripe Connect Onboarding Section */}
-      {identityStatus === 'verified' && (
+      {identityStatus === IdentityStatus.VERIFIED && (
         <div className="kyc-section">
           <div className="kyc-section-header">
             <h2>2. Payout Setup</h2>
@@ -215,27 +216,27 @@ export function KycPage() {
           <div className="kyc-section-content">
             <p>Set up your bank account or debit card to receive payouts when your auctions are successfully completed.</p>
             
-            {connectStatus === 'payouts_enabled' && (
+            {connectStatus === ConnectStatus.PAYOUTS_ENABLED && (
               <div className="kyc-info-row">
                 <span className="kyc-info-label">Payouts Enabled At</span>
                 <span className="kyc-info-value">{new Date(connectOnboardedAt).toLocaleString()}</span>
               </div>
             )}
 
-            {connectStatus === 'payouts_disabled' && (
+            {connectStatus === ConnectStatus.PAYOUTS_DISABLED && (
               <div className="kyc-alert kyc-alert--danger">
                 Your payouts have been disabled by Stripe. Please continue setup or contact support.
               </div>
             )}
 
             <div className="kyc-action-bar">
-              {['not_started', 'pending', 'payouts_disabled'].includes(connectStatus) && (
+              {[ConnectStatus.NOT_STARTED, ConnectStatus.PENDING, ConnectStatus.PAYOUTS_DISABLED].includes(connectStatus) && (
                 <button 
                   className="btn-primary" 
                   onClick={handleStartConnect}
                   disabled={isCreatingConnect}
                 >
-                  {isCreatingConnect ? 'Loading...' : connectStatus === 'not_started' ? 'Set Up Payouts' : 'Continue Setup'}
+                  {isCreatingConnect ? 'Loading...' : connectStatus === ConnectStatus.NOT_STARTED ? 'Set Up Payouts' : 'Continue Setup'}
                 </button>
               )}
             </div>
@@ -244,7 +245,7 @@ export function KycPage() {
       )}
 
       {/* Info Notice when identity not verified */}
-      {identityStatus !== 'verified' && (
+      {identityStatus !== IdentityStatus.VERIFIED && (
         <div className="kyc-section" style={{ opacity: 0.6 }}>
           <div className="kyc-section-header">
             <h2>2. Payout Setup</h2>

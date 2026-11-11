@@ -333,7 +333,13 @@
   color: var(--color-warning);
 }
 
-.admin-pill--kyc-rejected {
+.admin-pill--kyc-processing {
+  background-color: var(--color-warning-subtle);
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.admin-pill--kyc-failed {
   background-color: var(--color-danger-subtle);
   border-color: var(--color-danger);
   color: var(--color-danger);

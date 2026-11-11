@@ -1,7 +1,7 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './auditLogger.js';
-import { AuctionStatus } from '@auction/shared-constants';
+import { AuctionStatus, IdentityStatus } from '@auction/shared-constants';
 
 /**
  * Calculate datetime threshold for period
@@ -729,7 +729,7 @@ export const overrideKyc = async ({ userId, adminId, note, ipAddress = null }) =
     const user = checkRes.rows[0];
 
     // Idempotency: if already verified, return early
-    if (user.identity_status === 'verified') {
+    if (user.identity_status === IdentityStatus.VERIFIED) {
       await client.query('COMMIT');
       return user;
     }
@@ -750,7 +750,7 @@ export const overrideKyc = async ({ userId, adminId, note, ipAddress = null }) =
       action: 'admin_kyc_override',
       deltaState: {
         previousIdentityStatus: user.identity_status,
-        newIdentityStatus: 'verified',
+        newIdentityStatus: IdentityStatus.VERIFIED,
         note: note || null,
       },
       actorId: adminId || null,

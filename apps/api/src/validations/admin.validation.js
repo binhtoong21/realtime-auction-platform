@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { IdentityStatus } from '@auction/shared-constants';
 
 export const adminStatsQuerySchema = Joi.object({
   period: Joi.string().valid('1d', '7d', '30d', '90d', 'all').default('7d'),
@@ -10,7 +11,7 @@ export const adminUsersQuerySchema = Joi.object({
   search: Joi.string().allow('').default(''),
   role: Joi.string().valid('user', 'admin').allow(''),
   status: Joi.string().valid('active', 'suspended', 'banned').allow(''),
-  identityStatus: Joi.string().valid('not_started', 'pending', 'verified', 'rejected').allow(''),
+  identityStatus: Joi.string().valid(...Object.values(IdentityStatus)).allow(''),
 });
 
 export const adminBanUserSchema = Joi.object({
