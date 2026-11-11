@@ -1,6 +1,7 @@
 import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { v7 as uuidv7 } from 'uuid';
+import { IdentityStatus, ConnectStatus } from '@auction/shared-constants';
 
 const IDENTITY_MAX_RETRIES = 3;
 
@@ -82,8 +83,8 @@ const getKycStatus = async (userId) => {
     identityFailureReason: user.identity_failure_reason,
     connectStatus: user.connect_status,
     connectOnboardedAt: user.connect_onboarded_at,
-    canCreateAuction: user.identity_status === 'verified',
-    canReceivePayout: user.connect_status === 'payouts_enabled',
+    canCreateAuction: user.identity_status === IdentityStatus.VERIFIED,
+    canReceivePayout: user.connect_status === ConnectStatus.PAYOUTS_ENABLED,
   };
 };
 
@@ -99,28 +100,28 @@ const createIdentitySession = async (userId) => {
   );
   const { identity_status, identity_retry_count } = statusResult.rows[0];
 
-  if (identity_status === 'verified') {
+  if (identity_status === IdentityStatus.VERIFIED) {
     const error = new Error('Identity already verified');
     error.statusCode = 400;
     error.errorCode = 'IDENTITY_ALREADY_VERIFIED';
     throw error;
   }
 
-  if (identity_status === 'processing') {
+  if (identity_status === IdentityStatus.PROCESSING) {
     const error = new Error('Identity verification is being reviewed. Please wait.');
     error.statusCode = 400;
     error.errorCode = 'IDENTITY_PROCESSING';
     throw error;
   }
 
-  if (!['not_started', 'failed', 'pending'].includes(identity_status)) {
+  if (![IdentityStatus.NOT_STARTED, IdentityStatus.FAILED, IdentityStatus.PENDING].includes(identity_status)) {
     const error = new Error('Cannot start identity verification in current state');
     error.statusCode = 400;
     error.errorCode = 'INVALID_KYC_STATE';
     throw error;
   }
 
-  if (identity_status === 'failed' && identity_retry_count >= IDENTITY_MAX_RETRIES) {
+  if (identity_status === IdentityStatus.FAILED && identity_retry_count >= IDENTITY_MAX_RETRIES) {
     const error = new Error('Maximum retry attempts reached. Please contact support.');
     error.statusCode = 403;
     error.errorCode = 'KYC_RETRY_LIMIT_EXCEEDED';
@@ -165,14 +166,14 @@ const createConnectOnboarding = async (userId, { refreshUrl, returnUrl }) => {
 
   const user = statusResult.rows[0];
 
-  if (user.identity_status !== 'verified') {
+  if (user.identity_status !== IdentityStatus.VERIFIED) {
     const error = new Error('Identity must be verified before Connect onboarding');
     error.statusCode = 403;
     error.errorCode = 'KYC_IDENTITY_REQUIRED';
     throw error;
   }
 
-  if (user.connect_status === 'payouts_enabled') {
+  if (user.connect_status === ConnectStatus.PAYOUTS_ENABLED) {
     const error = new Error('Connect onboarding already completed');
     error.statusCode = 400;
     error.errorCode = 'CONNECT_ALREADY_ONBOARDED';
@@ -193,7 +194,7 @@ const createConnectOnboarding = async (userId, { refreshUrl, returnUrl }) => {
       `UPDATE users SET stripe_acct_id = $1, connect_status = 'pending' WHERE id = $2`,
       [stripeAcctId, userId]
     );
-  } else if (user.connect_status === 'not_started') {
+  } else if (user.connect_status === ConnectStatus.NOT_STARTED) {
     await pool.query(
       `UPDATE users SET connect_status = 'pending' WHERE id = $1`,
       [userId]
@@ -312,9 +313,9 @@ const handleConnectAccountUpdated = async (account) => {
 
   let newStatus;
   if (payouts_enabled && charges_enabled && details_submitted) {
-    newStatus = 'payouts_enabled';
+    newStatus = ConnectStatus.PAYOUTS_ENABLED;
   } else {
-    newStatus = user.connect_status === 'not_started' ? 'pending' : 'payouts_disabled';
+    newStatus = user.connect_status === ConnectStatus.NOT_STARTED ? ConnectStatus.PENDING : ConnectStatus.PAYOUTS_DISABLED;
   }
 
   // Only update if status changed
@@ -323,7 +324,7 @@ const handleConnectAccountUpdated = async (account) => {
   const updates = ['connect_status = $1'];
   const values = [newStatus, user.id];
 
-  if (newStatus === 'payouts_enabled') {
+  if (newStatus === ConnectStatus.PAYOUTS_ENABLED) {
     updates.push('connect_onboarded_at = NOW()');
   }
 
@@ -333,7 +334,7 @@ const handleConnectAccountUpdated = async (account) => {
   );
 
   // Alert if disabled after being enabled
-  if (newStatus === 'payouts_disabled' && user.connect_status === 'payouts_enabled') {
+  if (newStatus === ConnectStatus.PAYOUTS_DISABLED && user.connect_status === ConnectStatus.PAYOUTS_ENABLED) {
     console.warn(`[CONNECT ALERT] Payouts disabled for user ${user.id} (account: ${stripeAcctId})`);
   }
 };

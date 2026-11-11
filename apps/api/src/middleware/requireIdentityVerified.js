@@ -1,5 +1,7 @@
+import { IdentityStatus } from '@auction/shared-constants';
+
 const requireIdentityVerified = (req, res, next) => {
-  if (req.user.identityStatus !== 'verified') {
+  if (req.user.identityStatus !== IdentityStatus.VERIFIED) {
     return res.status(403).json({
       success: false,
       error: {

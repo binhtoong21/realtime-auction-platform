@@ -1,6 +1,7 @@
 import { pool } from '../config/database.js';
 import * as s3Service from './s3.service.js';
 import { v7 as uuidv7 } from 'uuid';
+import { IdentityStatus } from '@auction/shared-constants';
 
 /**
  * Update user profile details (displayName, avatar)
@@ -101,7 +102,7 @@ export const getPublicProfile = async (userId) => {
   const completionRate =
     totalConcluded > 0 ? Math.round((completedSales / totalConcluded) * 1000) / 10 : 100;
 
-  const isKycVerified = user.identity_status === 'verified';
+  const isKycVerified = user.identity_status === IdentityStatus.VERIFIED;
   const reputationScore = Math.min(
     100,
     Math.round(completionRate * 0.8 + (isKycVerified ? 20 : 10))
