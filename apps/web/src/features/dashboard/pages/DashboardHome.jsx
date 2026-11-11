@@ -1,9 +1,30 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, Flag, Trophy, Bell, Gavel, Flame, Bookmark } from 'lucide-react';
+import {
+  AlertCircle,
+  Flag,
+  Trophy,
+  Bell,
+  Gavel,
+  Flame,
+  Bookmark,
+} from 'lucide-react';
+import { AuctionStatus } from '@auction/shared-constants';
 import { useFetch } from '../../../core/hooks/useFetch';
 import { useWatchlistIds } from '../hooks/useWatchlist';
 import './DashboardHome.css';
+
+const WINNING_STATUSES = new Set([AuctionStatus.ACTIVE]);
+
+// Statuses where the user's winning bid means they won the auction.
+const WON_STATUSES = new Set([
+  AuctionStatus.ENDED,
+  AuctionStatus.PENDING_PAYMENT,
+  AuctionStatus.AWAITING_SHIP,
+  AuctionStatus.SHIPPED,
+  AuctionStatus.COMPLETED,
+  AuctionStatus.DISPUTED,
+]);
 
 /**
  * Dashboard Home Overview component.
@@ -13,6 +34,7 @@ import './DashboardHome.css';
  */
 export function DashboardHome() {
   // 1. Fetch active auctions user participated in
+  // limit=100 approximates totals until the API exposes count endpoints.
   const {
     data: activeBidsRes,
     isLoading: loadingActive,
@@ -23,10 +45,15 @@ export function DashboardHome() {
   const {
     data: myBidsRes,
     isLoading: loadingMyBids,
+    error: errorMyBids,
   } = useFetch('/users/me/bids?limit=100');
 
   // 3. Fetch user's watchlist item IDs
-  const { watchedIds, isLoading: loadingWatchlist } = useWatchlistIds();
+  const {
+    watchedIds,
+    isLoading: loadingWatchlist,
+    error: errorWatchlist,
+  } = useWatchlistIds();
 
   // 4. Fetch recent notifications
   const {
@@ -44,11 +71,7 @@ export function DashboardHome() {
   const winningBidsCount = useMemo(() => {
     const winningActiveAuctionIds = new Set(
       myBids
-        .filter(
-          (b) =>
-            b.isWinning &&
-            (b.auctionStatus === 'active' || b.auctionStatus === 'scheduled')
-        )
+        .filter((b) => b.isWinning && WINNING_STATUSES.has(b.auctionStatus))
         .map((b) => b.auctionId)
     );
     return winningActiveAuctionIds.size;
@@ -57,14 +80,7 @@ export function DashboardHome() {
   const wonAuctionsCount = useMemo(() => {
     const wonAuctionIds = new Set(
       myBids
-        .filter(
-          (b) =>
-            b.isWinning &&
-            (b.auctionStatus === 'ended' ||
-              b.auctionStatus === 'completed' ||
-              b.auctionStatus === 'awaiting_ship' ||
-              b.auctionStatus === 'shipped')
-        )
+        .filter((b) => b.isWinning && WON_STATUSES.has(b.auctionStatus))
         .map((b) => b.auctionId)
     );
     return wonAuctionIds.size;
@@ -74,7 +90,7 @@ export function DashboardHome() {
 
   const isLoading =
     loadingActive || loadingMyBids || loadingWatchlist || loadingNotifs;
-  const hasError = errorActive || errorNotifs;
+  const hasError = errorActive || errorMyBids || errorWatchlist || errorNotifs;
 
   const isNewUser =
     !isLoading &&
@@ -226,7 +242,9 @@ export function DashboardHome() {
           <span className="metric-value metric-value--success">
             {wonAuctionsCount}
           </span>
-          <span className="metric-subtext">Awaiting delivery / settled</span>
+          <span className="metric-subtext">
+            Pending payment, in delivery or settled
+          </span>
         </Link>
 
         <Link
