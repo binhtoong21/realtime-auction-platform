@@ -14,7 +14,7 @@
     "db:seed": "node script/seed.js",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
+    "test:integration": "vitest run --config vitest.integration.config.js",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -41,8 +41,11 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "^12.2.1",
+    "@testcontainers/redis": "^12.2.1",
     "node-pg-migrate": "^8.0.4",
     "nodemon": "^3.1.0",
+    "testcontainers": "^12.2.1",
     "vitest": "^4.1.6"
   }
 }
