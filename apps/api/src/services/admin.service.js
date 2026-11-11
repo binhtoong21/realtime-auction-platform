@@ -1,6 +1,7 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './auditLogger.js';
+import { AuctionStatus } from '@auction/shared-constants';
 
 /**
  * Calculate datetime threshold for period
@@ -127,7 +128,9 @@ export const getUsers = async ({
 
   if (search && search.trim() !== '') {
     params.push(`%${search.trim()}%`);
-    whereClauses.push(`(u.email ILIKE $${params.length} OR u.display_name ILIKE $${params.length})`);
+    whereClauses.push(
+      `(u.email ILIKE $${params.length} OR u.display_name ILIKE $${params.length})`
+    );
   }
 
   if (role) {
@@ -362,8 +365,8 @@ export const getBanPreview = async ({ userId, adminId }) => {
        p.status, 
        COUNT(*)::int as count, 
        COALESCE(SUM(p.amount), 0)::bigint as total_amount,
-       COUNT(CASE WHEN a.status IN ('paid', 'awaiting_ship') THEN 1 END)::int as awaiting_ship_count,
-       COALESCE(SUM(CASE WHEN a.status IN ('paid', 'awaiting_ship') THEN p.amount ELSE 0 END), 0)::bigint as awaiting_ship_amount
+       COUNT(CASE WHEN a.status = 'awaiting_ship' THEN 1 END)::int as awaiting_ship_count,
+       COALESCE(SUM(CASE WHEN a.status = 'awaiting_ship' THEN p.amount ELSE 0 END), 0)::bigint as awaiting_ship_amount
      FROM payments p
      LEFT JOIN auctions a ON a.id = p.auction_id
      WHERE p.seller_id = $1 AND p.status IN ('authorized', 'grace_period')
@@ -377,10 +380,11 @@ export const getBanPreview = async ({ userId, adminId }) => {
     auctionStatusCounts[r.status] = Number(r.count || 0);
   });
 
-  const scheduledAuctions = auctionStatusCounts['scheduled'] || 0;
-  const activeAuctions = auctionStatusCounts['active'] || 0;
-  const paidAwaitingShip = (auctionStatusCounts['paid'] || 0) + (auctionStatusCounts['awaiting_ship'] || 0);
-  const shippedInTransit = auctionStatusCounts['shipped'] || 0;
+  const scheduledAuctions = auctionStatusCounts[AuctionStatus.SCHEDULED] || 0;
+  const activeAuctions = auctionStatusCounts[AuctionStatus.ACTIVE] || 0;
+  const paidAwaitingShip =
+    auctionStatusCounts[AuctionStatus.AWAITING_SHIP] || 0;
+  const shippedInTransit = auctionStatusCounts[AuctionStatus.SHIPPED] || 0;
   const activeBidsOnSellerAuctions = Number(sellerBidsRes.rows[0]?.count || 0);
   const sellerOpenDisputes = Number(sellerDisputesRes.rows[0]?.count || 0);
 
@@ -409,10 +413,12 @@ export const getBanPreview = async ({ userId, adminId }) => {
   const openDisputes = sellerOpenDisputes + buyerOpenDisputes;
   const authHoldsToRelease = buyerHoldsCount + sellerHoldsCount;
   const totalHoldAmount = Number(buyerHoldsAmount + sellerHoldsAmount);
-  const refundsRequired = paidAwaitingShip + (buyerHoldsCount > 0 ? buyerHoldsCount : 0);
+  const refundsRequired =
+    paidAwaitingShip + (buyerHoldsCount > 0 ? buyerHoldsCount : 0);
 
   const remainingHoldsCount = authHoldsToRelease - awaitingShipHoldsCount;
-  const remainingHoldsAmount = totalHoldAmount - Number(awaitingShipHoldsAmount);
+  const remainingHoldsAmount =
+    totalHoldAmount - Number(awaitingShipHoldsAmount);
 
   // Generate actionable summary bullets
   const actions = [];
@@ -433,20 +439,25 @@ export const getBanPreview = async ({ userId, adminId }) => {
     }
 
     if (winningActiveBids > 0) {
-      actions.push(`Recalculate winning bids on ${winningActiveBids} active auction(s) where user was leading`);
+      actions.push(
+        `Recalculate winning bids on ${winningActiveBids} active auction(s) where user was leading`
+      );
     }
 
     if (paidAwaitingShip > 0) {
-      const amountNote = awaitingShipHoldsAmount > 0n
-        ? ` totaling $${(Number(awaitingShipHoldsAmount) / 100).toFixed(2)}`
-        : '';
+      const amountNote =
+        awaitingShipHoldsAmount > 0n
+          ? ` totaling $${(Number(awaitingShipHoldsAmount) / 100).toFixed(2)}`
+          : '';
       actions.push(
         `Release escrow holds and refund ${paidAwaitingShip} order(s) awaiting shipment${amountNote}`
       );
     }
 
     if (shippedInTransit > 0) {
-      actions.push(`Freeze ${shippedInTransit} in-transit order(s) for delivery dispute investigation`);
+      actions.push(
+        `Freeze ${shippedInTransit} in-transit order(s) for delivery dispute investigation`
+      );
     }
 
     if (remainingHoldsCount > 0) {
@@ -457,7 +468,9 @@ export const getBanPreview = async ({ userId, adminId }) => {
     }
 
     if (openDisputes > 0) {
-      actions.push(`Flag ${openDisputes} active dispute(s) with banned user status for priority admin review`);
+      actions.push(
+        `Flag ${openDisputes} active dispute(s) with banned user status for priority admin review`
+      );
     }
   }
 
@@ -487,7 +500,12 @@ export const getBanPreview = async ({ userId, adminId }) => {
 /**
  * Ban user and cancel their active auctions
  */
-export const banUser = async ({ userId, adminId, reason, ipAddress = null }) => {
+export const banUser = async ({
+  userId,
+  adminId,
+  reason,
+  ipAddress = null,
+}) => {
   if (adminId && adminId === userId) {
     const error = new Error('Admin cannot ban their own account');
     error.statusCode = 403;
@@ -535,10 +553,9 @@ export const banUser = async ({ userId, adminId, reason, ipAddress = null }) => 
     );
 
     // Revoke all active refresh tokens for the banned user
-    await client.query(
-      'DELETE FROM refresh_tokens WHERE user_id = $1',
-      [userId]
-    );
+    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [
+      userId,
+    ]);
 
     await client.query('COMMIT');
 
@@ -571,7 +588,12 @@ export const banUser = async ({ userId, adminId, reason, ipAddress = null }) => 
 /**
  * Suspend user
  */
-export const suspendUser = async ({ userId, adminId, reason, ipAddress = null }) => {
+export const suspendUser = async ({
+  userId,
+  adminId,
+  reason,
+  ipAddress = null,
+}) => {
   if (adminId && adminId === userId) {
     const error = new Error('Admin cannot suspend their own account');
     error.statusCode = 403;
@@ -611,10 +633,9 @@ export const suspendUser = async ({ userId, adminId, reason, ipAddress = null })
     );
 
     // Revoke active refresh tokens
-    await client.query(
-      'DELETE FROM refresh_tokens WHERE user_id = $1',
-      [userId]
-    );
+    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [
+      userId,
+    ]);
 
     await client.query('COMMIT');
 
@@ -709,7 +730,12 @@ export const reactivateUser = async ({ userId, adminId, ipAddress = null }) => {
 /**
  * Admin manual KYC override
  */
-export const overrideKyc = async ({ userId, adminId, note, ipAddress = null }) => {
+export const overrideKyc = async ({
+  userId,
+  adminId,
+  note,
+  ipAddress = null,
+}) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -866,10 +892,21 @@ export const getAuctions = async ({
   };
 };
 
+// Force-cancel only before any payment exists; later states need the refund/dispute flows.
+const ADMIN_CANCELLABLE_STATUSES = new Set([
+  AuctionStatus.SCHEDULED,
+  AuctionStatus.ACTIVE,
+]);
+
 /**
  * Force cancel an auction
  */
-export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = null }) => {
+export const cancelAuction = async ({
+  auctionId,
+  adminId,
+  reason,
+  ipAddress = null,
+}) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -888,14 +925,15 @@ export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = nu
     const auction = checkRes.rows[0];
 
     // Idempotency: if already cancelled, return early
-    if (auction.status === 'cancelled') {
+    if (auction.status === AuctionStatus.CANCELLED) {
       await client.query('COMMIT');
       return auction;
     }
 
-    // Guard: cannot cancel if already completed or refunded
-    if (['completed', 'refunded'].includes(auction.status)) {
-      const error = new Error(`Cannot cancel auction in finalized state: ${auction.status}`);
+    if (!ADMIN_CANCELLABLE_STATUSES.has(auction.status)) {
+      const error = new Error(
+        `Cannot force-cancel auction in status '${auction.status}'. Only scheduled or active auctions can be cancelled; use the refund or dispute flow instead.`
+      );
       error.statusCode = 409;
       error.errorCode = 'INVALID_AUCTION_STATE';
       throw error;
@@ -904,10 +942,19 @@ export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = nu
     const res = await client.query(
       `UPDATE auctions
        SET status = 'cancelled', updated_at = NOW()
-       WHERE id = $1
+       WHERE id = $1 AND status IN ('scheduled', 'active')
        RETURNING id, title, status`,
       [auctionId]
     );
+
+    if (res.rowCount === 0) {
+      const error = new Error(
+        `Cannot force-cancel auction in status '${auction.status}'. Only scheduled or active auctions can be cancelled; use the refund or dispute flow instead.`
+      );
+      error.statusCode = 409;
+      error.errorCode = 'INVALID_AUCTION_STATE';
+      throw error;
+    }
 
     await client.query('COMMIT');
 
@@ -917,7 +964,7 @@ export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = nu
       action: 'admin_auction_force_cancelled',
       deltaState: {
         previousStatus: auction.status,
-        newStatus: 'cancelled',
+        newStatus: AuctionStatus.CANCELLED,
         reason: reason || null,
       },
       actorId: adminId || null,
@@ -982,7 +1029,12 @@ export const createCategory = async ({ name, slug, description }) => {
 /**
  * Update an existing category
  */
-export const updateCategory = async ({ categoryId, name, slug, description }) => {
+export const updateCategory = async ({
+  categoryId,
+  name,
+  slug,
+  description,
+}) => {
   const updates = [];
   const params = [categoryId];
 
@@ -1000,7 +1052,9 @@ export const updateCategory = async ({ categoryId, name, slug, description }) =>
   }
 
   if (updates.length === 0) {
-    const current = await pool.query('SELECT * FROM categories WHERE id = $1', [categoryId]);
+    const current = await pool.query('SELECT * FROM categories WHERE id = $1', [
+      categoryId,
+    ]);
     return current.rows[0];
   }
 
@@ -1100,7 +1154,9 @@ export const mergeCategories = async ({
     );
 
     // 2. Delete source category
-    await client.query('DELETE FROM categories WHERE id = $1', [sourceCategoryId]);
+    await client.query('DELETE FROM categories WHERE id = $1', [
+      sourceCategoryId,
+    ]);
 
     await client.query('COMMIT');
 

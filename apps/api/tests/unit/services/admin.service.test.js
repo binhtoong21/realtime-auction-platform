@@ -125,7 +125,9 @@ describe('admin.service', () => {
             },
           ],
         })
-        .mockResolvedValueOnce({ rows: [{ id: 'auc-1', title: 'Vintage Watch' }] })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'auc-1', title: 'Vintage Watch' }],
+        })
         .mockResolvedValueOnce({ rows: [{ id: 'bid-1', amount: 5000 }] })
         .mockResolvedValueOnce({ rows: [] });
 
@@ -142,7 +144,9 @@ describe('admin.service', () => {
     it('should throw 404 when user is not found', async () => {
       pool.query.mockResolvedValueOnce({ rows: [] });
 
-      await expect(adminService.getUserById('u-nonexistent')).rejects.toThrow('User not found');
+      await expect(adminService.getUserById('u-nonexistent')).rejects.toThrow(
+        'User not found'
+      );
     });
   });
 
@@ -164,7 +168,7 @@ describe('admin.service', () => {
           rows: [
             { status: 'scheduled', count: 1 },
             { status: 'active', count: 2 },
-            { status: 'paid', count: 1 },
+            { status: 'awaiting_ship', count: 1 },
             { status: 'shipped', count: 1 },
           ],
         }) // 2. Seller auctions
@@ -207,10 +211,16 @@ describe('admin.service', () => {
           expect.stringContaining('Revoke all active login sessions'),
           expect.stringContaining('Cancel 3 listing(s)'),
           expect.stringContaining('Notify bidders on 2 cancelled auction(s)'),
-          expect.stringContaining('Recalculate winning bids on 1 active auction(s)'),
-          expect.stringContaining('Release escrow holds and refund 1 order(s) awaiting shipment totaling $500.00'),
+          expect.stringContaining(
+            'Recalculate winning bids on 1 active auction(s)'
+          ),
+          expect.stringContaining(
+            'Release escrow holds and refund 1 order(s) awaiting shipment totaling $500.00'
+          ),
           expect.stringContaining('Freeze 1 in-transit order(s)'),
-          expect.stringContaining('Release 1 other active escrow hold(s) totaling $250.00'),
+          expect.stringContaining(
+            'Release 1 other active escrow hold(s) totaling $250.00'
+          ),
           expect.stringContaining('Flag 1 active dispute(s)'),
         ])
       );
@@ -271,7 +281,9 @@ describe('admin.service', () => {
 
       expect(result.user.status).toBe('banned');
       expect(result.impact.activeAuctions).toBe(0);
-      expect(result.actions).toContain('User is already banned. No active cascade needed.');
+      expect(result.actions).toContain(
+        'User is already banned. No active cascade needed.'
+      );
     });
   });
 
@@ -483,7 +495,13 @@ describe('admin.service', () => {
         .mockResolvedValueOnce({}) // BEGIN
         .mockResolvedValueOnce({
           rowCount: 1,
-          rows: [{ id: 'u-1', email: 'user@example.com', identity_status: 'pending' }],
+          rows: [
+            {
+              id: 'u-1',
+              email: 'user@example.com',
+              identity_status: 'pending',
+            },
+          ],
         }) // check FOR UPDATE
         .mockResolvedValueOnce({
           rowCount: 1,
@@ -521,7 +539,13 @@ describe('admin.service', () => {
         .mockResolvedValueOnce({}) // BEGIN
         .mockResolvedValueOnce({
           rowCount: 1,
-          rows: [{ id: 'u-1', email: 'user@example.com', identity_status: 'verified' }],
+          rows: [
+            {
+              id: 'u-1',
+              email: 'user@example.com',
+              identity_status: 'verified',
+            },
+          ],
         }) // check FOR UPDATE
         .mockResolvedValueOnce({}); // COMMIT
 
@@ -547,7 +571,9 @@ describe('admin.service', () => {
         }) // check FOR UPDATE
         .mockResolvedValueOnce({
           rowCount: 1,
-          rows: [{ id: 'auc-1', title: 'Suspicious Item', status: 'cancelled' }],
+          rows: [
+            { id: 'auc-1', title: 'Suspicious Item', status: 'cancelled' },
+          ],
         }) // UPDATE
         .mockResolvedValueOnce({}); // COMMIT
 
@@ -590,7 +616,7 @@ describe('admin.service', () => {
       expect(writeAuditLog).not.toHaveBeenCalled();
     });
 
-    it('should reject cancelling auction in finalized state (completed/refunded)', async () => {
+    it('should reject cancelling auction outside scheduled/active states', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
         .mockResolvedValueOnce({
@@ -605,7 +631,55 @@ describe('admin.service', () => {
           adminId: 'admin-1',
           reason: 'Too late',
         })
-      ).rejects.toThrow('Cannot cancel auction in finalized state: completed');
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'INVALID_AUCTION_STATE',
+      });
+    });
+
+    it('should reject cancelling auction with held payment (awaiting_ship)', async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ id: 'auc-1', title: 'Sold Item', status: 'awaiting_ship' }],
+        }) // check FOR UPDATE
+        .mockResolvedValueOnce({}); // ROLLBACK
+
+      await expect(
+        adminService.cancelAuction({
+          auctionId: 'auc-1',
+          adminId: 'admin-1',
+          reason: 'Too late',
+        })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'INVALID_AUCTION_STATE',
+      });
+    });
+
+    it('should reject when concurrent update modified status (rowCount 0)', async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ id: 'auc-1', title: 'Active Item', status: 'active' }],
+        }) // check FOR UPDATE
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // UPDATE
+        .mockResolvedValueOnce({}); // ROLLBACK
+
+      await expect(
+        adminService.cancelAuction({
+          auctionId: 'auc-1',
+          adminId: 'admin-1',
+          reason: 'Concurrent race',
+        })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'INVALID_AUCTION_STATE',
+      });
+
+      expect(writeAuditLog).not.toHaveBeenCalled();
     });
 
     it('should throw 404 when auction is not found', async () => {
@@ -648,7 +722,9 @@ describe('admin.service', () => {
 
     it('should create a category', async () => {
       pool.query.mockResolvedValueOnce({
-        rows: [{ id: 'cat-new', name: 'Art', slug: 'art', description: 'Paintings' }],
+        rows: [
+          { id: 'cat-new', name: 'Art', slug: 'art', description: 'Paintings' },
+        ],
       });
 
       const result = await adminService.createCategory({
@@ -662,7 +738,14 @@ describe('admin.service', () => {
 
     it('should update a category', async () => {
       pool.query.mockResolvedValueOnce({
-        rows: [{ id: 'cat-1', name: 'Fine Art', slug: 'fine-art', description: 'Curated' }],
+        rows: [
+          {
+            id: 'cat-1',
+            name: 'Fine Art',
+            slug: 'fine-art',
+            description: 'Curated',
+          },
+        ],
       });
 
       const result = await adminService.updateCategory({
@@ -698,8 +781,14 @@ describe('admin.service', () => {
     it('should merge categories, reassign auctions, and write audit log', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 'cat-src', name: 'Old Art' }] }) // sourceRes FOR UPDATE
-        .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 'cat-tgt', name: 'New Art' }] }) // targetRes FOR UPDATE
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ id: 'cat-src', name: 'Old Art' }],
+        }) // sourceRes FOR UPDATE
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ id: 'cat-tgt', name: 'New Art' }],
+        }) // targetRes FOR UPDATE
         .mockResolvedValueOnce({ rowCount: 4 }) // update auctions
         .mockResolvedValueOnce({ rowCount: 1 }) // delete source
         .mockResolvedValueOnce({}); // COMMIT
