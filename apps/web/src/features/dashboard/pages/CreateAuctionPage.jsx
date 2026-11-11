@@ -5,6 +5,7 @@ import { useToast } from '../../../core/context/ToastContext';
 import { useCategories } from '../../auctions/hooks/useCategories';
 import { useCreateAuction } from '../hooks/useSellerActions';
 import { parseLocalToUTC } from '../../../utils/formatters';
+import { IdentityStatus } from '@auction/shared-constants';
 import './CreateAuctionPage.css';
 
 const MAX_IMAGES = 10;
@@ -44,7 +45,7 @@ export function CreateAuctionPage() {
   const [images, setImages] = useState([]); // [{ file, preview }]
 
   // KYC Guard
-  if (user?.identityStatus !== 'verified') {
+  if (user?.identityStatus !== IdentityStatus.VERIFIED) {
     return <Navigate to="/dashboard/settings/kyc" replace />;
   }
 

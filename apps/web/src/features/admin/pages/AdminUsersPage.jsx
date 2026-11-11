@@ -20,7 +20,7 @@ import {
   ReactivateUserModal,
   KycOverrideModal,
 } from '../components/AdminUserModals';
-import { UserStatus } from '@auction/shared-constants';
+import { UserStatus, IdentityStatus } from '@auction/shared-constants';
 import './AdminUsersPage.css';
 
 const ROLE_OPTIONS = [
@@ -459,7 +459,7 @@ export function AdminUsersPage() {
                           </button>
                         )}
 
-                        {u.identityStatus !== 'verified' && (
+                        {u.identityStatus !== IdentityStatus.VERIFIED && (
                           <button
                             type="button"
                             className="btn btn--xs btn--secondary text-brand"

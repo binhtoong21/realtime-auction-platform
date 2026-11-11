@@ -24,7 +24,7 @@ import {
   ReactivateUserModal,
   KycOverrideModal,
 } from '../components/AdminUserModals';
-import { UserStatus } from '@auction/shared-constants';
+import { UserStatus, IdentityStatus } from '@auction/shared-constants';
 import './AdminUserDetailPage.css';
 
 function formatCurrency(cents) {
@@ -275,7 +275,7 @@ export function AdminUserDetailPage() {
             </button>
           )}
 
-          {user.identityStatus !== 'verified' && (
+          {user.identityStatus !== IdentityStatus.VERIFIED && (
             <button
               type="button"
               className="btn btn--sm btn--primary"

@@ -14,6 +14,7 @@ import { useAuth, useAuthDispatch } from '../../../core/context/AuthContext';
 import { useUpdateProfile } from '../hooks/useUpdateProfile';
 import { useToast } from '../../../core/context/ToastContext';
 import { axiosClient } from '../../../core/api/axiosClient';
+import { IdentityStatus } from '@auction/shared-constants';
 import './ProfileSettingsPage.css';
 
 const PASSWORD_PATTERN = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -341,7 +342,7 @@ export function ProfileSettingsPage() {
                   {user?.role === 'admin' ? 'Administrator' : 'Standard Member'}
                 </span>
                 <span
-                  className={`profile-tag profile-tag--${user?.identityStatus === 'verified' ? 'success' : 'muted'}`}
+                  className={`profile-tag profile-tag--${user?.identityStatus === IdentityStatus.VERIFIED ? 'success' : 'muted'}`}
                 >
                   KYC: {user?.identityStatus || 'pending'}
                 </span>

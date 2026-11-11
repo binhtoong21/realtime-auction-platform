@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useSellerProfile } from '../hooks/useSellerProfile';
 import { AuctionCard } from '../../auctions/components/AuctionCard';
+import { IdentityStatus } from '@auction/shared-constants';
 import './SellerProfilePage.css';
 
 function formatJoinedDate(dateString) {
@@ -102,7 +103,7 @@ export function SellerProfilePage() {
     );
   }
 
-  const isVerified = user.identityStatus === 'verified';
+  const isVerified = user.identityStatus === IdentityStatus.VERIFIED;
   const displayedAuctions = activeTab === 'active' ? activeAuctions : completedAuctions;
 
   return (
