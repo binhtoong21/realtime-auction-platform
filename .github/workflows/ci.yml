@@ -28,6 +28,8 @@ jobs:
         run: npm ci
       - name: Lint JS
         run: npm run lint -w @auction/web
+      - name: Lint CSS
+        run: npm run lint:css -w @auction/web
       - name: Build
         run: npm run build -w @auction/web
 
