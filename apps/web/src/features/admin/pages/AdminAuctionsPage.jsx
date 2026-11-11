@@ -17,6 +17,7 @@ import { useAdminAuctions } from '../hooks/useAdminAuctions';
 import { useAdminCategories } from '../hooks/useAdminCategories';
 import { useAdminAuctionActions } from '../hooks/useAdminAuctionActions';
 import { AdminCancelAuctionModal } from '../components/AdminAuctionModals';
+import { AuctionStatus } from '@auction/shared-constants';
 import './AdminAuctionsPage.css';
 
 const STATUS_OPTIONS = [
@@ -28,6 +29,8 @@ const STATUS_OPTIONS = [
   { value: 'disputed', label: 'Disputed' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
+
+const ADMIN_CANCELLABLE_STATUSES = new Set([AuctionStatus.SCHEDULED, AuctionStatus.ACTIVE]);
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', {
@@ -127,7 +130,7 @@ export function AdminAuctionsPage() {
         closeCancelModal();
         setToastMessage({
           type: 'success',
-          text: `Auction #${auctionId.slice(0, 8)} successfully cancelled. Pre-auth holds released.`,
+          text: `Auction #${auctionId.slice(0, 8)} successfully cancelled.`,
         });
         await refetch();
       } catch (err) {
@@ -289,10 +292,7 @@ export function AdminAuctionsPage() {
             </thead>
             <tbody>
               {auctions.map((auction) => {
-                const isConcluded =
-                  auction.status === 'completed' ||
-                  auction.status === 'cancelled' ||
-                  auction.status === 'refunded';
+                const canCancel = ADMIN_CANCELLABLE_STATUSES.has(auction.status);
                 const timeRemaining = formatTimeRemaining(auction.endAt, auction.status);
 
                 return (
@@ -365,12 +365,12 @@ export function AdminAuctionsPage() {
                         <button
                           type="button"
                           className="btn btn--xs btn--danger admin-btn-action"
-                          disabled={isConcluded || isActionLoading}
+                          disabled={!canCancel || isActionLoading}
                           onClick={() => openCancelModal(auction)}
                           title={
-                            isConcluded
-                              ? 'Auction is already finalized or cancelled'
-                              : 'Force cancel lot and release holds'
+                            canCancel
+                              ? 'Force cancel this auction'
+                              : 'Only scheduled or live auctions can be force-cancelled'
                           }
                         >
                           <Ban size={11} />

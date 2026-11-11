@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
-import { EventNames } from '@auction/shared-constants';
+import { AuctionStatus, EventNames } from '@auction/shared-constants';
 import { emitToUser } from '../services/socket.service.js';
 import { writeAuditLog } from '../services/auditLogger.js';
 import { ensureJobScheduled } from './queue.js';
@@ -47,7 +47,7 @@ async function processShippingReminder(auctionId) {
   if (result.rowCount === 0) return;
   const auction = result.rows[0];
 
-  if (auction.status !== 'awaiting_ship') return;
+  if (auction.status !== AuctionStatus.AWAITING_SHIP) return;
 
   await emitToUser(auction.seller_id, EventNames.SHIPPING_REMINDER, {
     auctionId,
@@ -213,7 +213,7 @@ async function processDeliveryReminder(auctionId, type) {
   if (result.rowCount === 0) return;
   const auction = result.rows[0];
 
-  if (auction.status !== 'shipped') return;
+  if (auction.status !== AuctionStatus.SHIPPED) return;
 
   const daysLeft = type === 'day10' ? 4 : 1;
   const message = `Bạn còn ${daysLeft} ngày để xác nhận nhận hàng hoặc mở khiếu nại. Sau thời gian này hệ thống sẽ tự động chuyển tiền cho người bán.`;
@@ -237,11 +237,11 @@ async function processFulfillmentSweeper() {
   );
 
   for (const auction of auctionsResult.rows) {
-    if (auction.status === 'awaiting_ship') {
+    if (auction.status === AuctionStatus.AWAITING_SHIP) {
       await ensureJobScheduled('shipping-deadline', auction.id, auction.shipping_deadline_at);
       const reminderTime = new Date(auction.shipping_deadline_at).getTime() - (2 * 24 * 60 * 60 * 1000);
       await ensureJobScheduled('shipping-reminder', auction.id, new Date(reminderTime));
-    } else if (auction.status === 'shipped') {
+    } else if (auction.status === AuctionStatus.SHIPPED) {
       await ensureJobScheduled('delivery-auto-confirm', auction.id, auction.delivery_deadline_at);
       
       const deadlineTime = new Date(auction.delivery_deadline_at).getTime();

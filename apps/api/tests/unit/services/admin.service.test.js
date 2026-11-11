@@ -164,7 +164,7 @@ describe('admin.service', () => {
           rows: [
             { status: 'scheduled', count: 1 },
             { status: 'active', count: 2 },
-            { status: 'paid', count: 1 },
+            { status: 'awaiting_ship', count: 1 },
             { status: 'shipped', count: 1 },
           ],
         }) // 2. Seller auctions
@@ -590,7 +590,7 @@ describe('admin.service', () => {
       expect(writeAuditLog).not.toHaveBeenCalled();
     });
 
-    it('should reject cancelling auction in finalized state (completed/refunded)', async () => {
+    it('should reject cancelling auction outside scheduled/active states', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
         .mockResolvedValueOnce({
@@ -605,7 +605,46 @@ describe('admin.service', () => {
           adminId: 'admin-1',
           reason: 'Too late',
         })
-      ).rejects.toThrow('Cannot cancel auction in finalized state: completed');
+      ).rejects.toMatchObject({ statusCode: 409, errorCode: 'INVALID_AUCTION_STATE' });
+    });
+
+    it('should reject cancelling auction with held payment (awaiting_ship)', async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ id: 'auc-1', title: 'Paid Item', status: 'awaiting_ship' }],
+        }) // check FOR UPDATE
+        .mockResolvedValueOnce({}); // ROLLBACK
+
+      await expect(
+        adminService.cancelAuction({
+          auctionId: 'auc-1',
+          adminId: 'admin-1',
+          reason: 'Already paid',
+        })
+      ).rejects.toMatchObject({ statusCode: 409, errorCode: 'INVALID_AUCTION_STATE' });
+    });
+
+    it('should reject when concurrent update changes auction status before cancel', async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ id: 'auc-1', title: 'Active Item', status: 'active' }],
+        }) // check FOR UPDATE
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // UPDATE
+        .mockResolvedValueOnce({}); // ROLLBACK
+
+      await expect(
+        adminService.cancelAuction({
+          auctionId: 'auc-1',
+          adminId: 'admin-1',
+          reason: 'Race condition',
+        })
+      ).rejects.toMatchObject({ statusCode: 409, errorCode: 'INVALID_AUCTION_STATE' });
+
+      expect(writeAuditLog).not.toHaveBeenCalled();
     });
 
     it('should throw 404 when auction is not found', async () => {

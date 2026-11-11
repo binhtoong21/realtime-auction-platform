@@ -1,6 +1,7 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog } from './auditLogger.js';
+import { AuctionStatus } from '@auction/shared-constants';
 
 /**
  * Calculate datetime threshold for period
@@ -362,8 +363,8 @@ export const getBanPreview = async ({ userId, adminId }) => {
        p.status, 
        COUNT(*)::int as count, 
        COALESCE(SUM(p.amount), 0)::bigint as total_amount,
-       COUNT(CASE WHEN a.status IN ('paid', 'awaiting_ship') THEN 1 END)::int as awaiting_ship_count,
-       COALESCE(SUM(CASE WHEN a.status IN ('paid', 'awaiting_ship') THEN p.amount ELSE 0 END), 0)::bigint as awaiting_ship_amount
+       COUNT(CASE WHEN a.status = 'awaiting_ship' THEN 1 END)::int as awaiting_ship_count,
+       COALESCE(SUM(CASE WHEN a.status = 'awaiting_ship' THEN p.amount ELSE 0 END), 0)::bigint as awaiting_ship_amount
      FROM payments p
      LEFT JOIN auctions a ON a.id = p.auction_id
      WHERE p.seller_id = $1 AND p.status IN ('authorized', 'grace_period')
@@ -377,10 +378,10 @@ export const getBanPreview = async ({ userId, adminId }) => {
     auctionStatusCounts[r.status] = Number(r.count || 0);
   });
 
-  const scheduledAuctions = auctionStatusCounts['scheduled'] || 0;
-  const activeAuctions = auctionStatusCounts['active'] || 0;
-  const paidAwaitingShip = (auctionStatusCounts['paid'] || 0) + (auctionStatusCounts['awaiting_ship'] || 0);
-  const shippedInTransit = auctionStatusCounts['shipped'] || 0;
+  const scheduledAuctions = auctionStatusCounts[AuctionStatus.SCHEDULED] || 0;
+  const activeAuctions = auctionStatusCounts[AuctionStatus.ACTIVE] || 0;
+  const paidAwaitingShip = auctionStatusCounts[AuctionStatus.AWAITING_SHIP] || 0;
+  const shippedInTransit = auctionStatusCounts[AuctionStatus.SHIPPED] || 0;
   const activeBidsOnSellerAuctions = Number(sellerBidsRes.rows[0]?.count || 0);
   const sellerOpenDisputes = Number(sellerDisputesRes.rows[0]?.count || 0);
 
@@ -866,6 +867,9 @@ export const getAuctions = async ({
   };
 };
 
+// Force-cancel only before any payment exists; later states need the refund/dispute flows.
+const ADMIN_CANCELLABLE_STATUSES = new Set([AuctionStatus.SCHEDULED, AuctionStatus.ACTIVE]);
+
 /**
  * Force cancel an auction
  */
@@ -888,14 +892,15 @@ export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = nu
     const auction = checkRes.rows[0];
 
     // Idempotency: if already cancelled, return early
-    if (auction.status === 'cancelled') {
+    if (auction.status === AuctionStatus.CANCELLED) {
       await client.query('COMMIT');
       return auction;
     }
 
-    // Guard: cannot cancel if already completed or refunded
-    if (['completed', 'refunded'].includes(auction.status)) {
-      const error = new Error(`Cannot cancel auction in finalized state: ${auction.status}`);
+    if (!ADMIN_CANCELLABLE_STATUSES.has(auction.status)) {
+      const error = new Error(
+        `Cannot force-cancel auction in status '${auction.status}'. Only scheduled or active auctions can be cancelled; use the refund or dispute flow instead.`
+      );
       error.statusCode = 409;
       error.errorCode = 'INVALID_AUCTION_STATE';
       throw error;
@@ -904,10 +909,19 @@ export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = nu
     const res = await client.query(
       `UPDATE auctions
        SET status = 'cancelled', updated_at = NOW()
-       WHERE id = $1
+       WHERE id = $1 AND status IN ('scheduled', 'active')
        RETURNING id, title, status`,
       [auctionId]
     );
+
+    if (res.rowCount === 0) {
+      const error = new Error(
+        `Cannot force-cancel auction in status '${auction.status}'. Only scheduled or active auctions can be cancelled; use the refund or dispute flow instead.`
+      );
+      error.statusCode = 409;
+      error.errorCode = 'INVALID_AUCTION_STATE';
+      throw error;
+    }
 
     await client.query('COMMIT');
 
@@ -917,7 +931,7 @@ export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = nu
       action: 'admin_auction_force_cancelled',
       deltaState: {
         previousStatus: auction.status,
-        newStatus: 'cancelled',
+        newStatus: AuctionStatus.CANCELLED,
         reason: reason || null,
       },
       actorId: adminId || null,
