@@ -128,9 +128,7 @@ export const getUsers = async ({
 
   if (search && search.trim() !== '') {
     params.push(`%${search.trim()}%`);
-    whereClauses.push(
-      `(u.email ILIKE $${params.length} OR u.display_name ILIKE $${params.length})`
-    );
+    whereClauses.push(`(u.email ILIKE $${params.length} OR u.display_name ILIKE $${params.length})`);
   }
 
   if (role) {
@@ -382,8 +380,7 @@ export const getBanPreview = async ({ userId, adminId }) => {
 
   const scheduledAuctions = auctionStatusCounts[AuctionStatus.SCHEDULED] || 0;
   const activeAuctions = auctionStatusCounts[AuctionStatus.ACTIVE] || 0;
-  const paidAwaitingShip =
-    auctionStatusCounts[AuctionStatus.AWAITING_SHIP] || 0;
+  const paidAwaitingShip = auctionStatusCounts[AuctionStatus.AWAITING_SHIP] || 0;
   const shippedInTransit = auctionStatusCounts[AuctionStatus.SHIPPED] || 0;
   const activeBidsOnSellerAuctions = Number(sellerBidsRes.rows[0]?.count || 0);
   const sellerOpenDisputes = Number(sellerDisputesRes.rows[0]?.count || 0);
@@ -413,12 +410,10 @@ export const getBanPreview = async ({ userId, adminId }) => {
   const openDisputes = sellerOpenDisputes + buyerOpenDisputes;
   const authHoldsToRelease = buyerHoldsCount + sellerHoldsCount;
   const totalHoldAmount = Number(buyerHoldsAmount + sellerHoldsAmount);
-  const refundsRequired =
-    paidAwaitingShip + (buyerHoldsCount > 0 ? buyerHoldsCount : 0);
+  const refundsRequired = paidAwaitingShip + (buyerHoldsCount > 0 ? buyerHoldsCount : 0);
 
   const remainingHoldsCount = authHoldsToRelease - awaitingShipHoldsCount;
-  const remainingHoldsAmount =
-    totalHoldAmount - Number(awaitingShipHoldsAmount);
+  const remainingHoldsAmount = totalHoldAmount - Number(awaitingShipHoldsAmount);
 
   // Generate actionable summary bullets
   const actions = [];
@@ -439,25 +434,20 @@ export const getBanPreview = async ({ userId, adminId }) => {
     }
 
     if (winningActiveBids > 0) {
-      actions.push(
-        `Recalculate winning bids on ${winningActiveBids} active auction(s) where user was leading`
-      );
+      actions.push(`Recalculate winning bids on ${winningActiveBids} active auction(s) where user was leading`);
     }
 
     if (paidAwaitingShip > 0) {
-      const amountNote =
-        awaitingShipHoldsAmount > 0n
-          ? ` totaling $${(Number(awaitingShipHoldsAmount) / 100).toFixed(2)}`
-          : '';
+      const amountNote = awaitingShipHoldsAmount > 0n
+        ? ` totaling $${(Number(awaitingShipHoldsAmount) / 100).toFixed(2)}`
+        : '';
       actions.push(
         `Release escrow holds and refund ${paidAwaitingShip} order(s) awaiting shipment${amountNote}`
       );
     }
 
     if (shippedInTransit > 0) {
-      actions.push(
-        `Freeze ${shippedInTransit} in-transit order(s) for delivery dispute investigation`
-      );
+      actions.push(`Freeze ${shippedInTransit} in-transit order(s) for delivery dispute investigation`);
     }
 
     if (remainingHoldsCount > 0) {
@@ -468,9 +458,7 @@ export const getBanPreview = async ({ userId, adminId }) => {
     }
 
     if (openDisputes > 0) {
-      actions.push(
-        `Flag ${openDisputes} active dispute(s) with banned user status for priority admin review`
-      );
+      actions.push(`Flag ${openDisputes} active dispute(s) with banned user status for priority admin review`);
     }
   }
 
@@ -500,12 +488,7 @@ export const getBanPreview = async ({ userId, adminId }) => {
 /**
  * Ban user and cancel their active auctions
  */
-export const banUser = async ({
-  userId,
-  adminId,
-  reason,
-  ipAddress = null,
-}) => {
+export const banUser = async ({ userId, adminId, reason, ipAddress = null }) => {
   if (adminId && adminId === userId) {
     const error = new Error('Admin cannot ban their own account');
     error.statusCode = 403;
@@ -553,9 +536,10 @@ export const banUser = async ({
     );
 
     // Revoke all active refresh tokens for the banned user
-    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [
-      userId,
-    ]);
+    await client.query(
+      'DELETE FROM refresh_tokens WHERE user_id = $1',
+      [userId]
+    );
 
     await client.query('COMMIT');
 
@@ -588,12 +572,7 @@ export const banUser = async ({
 /**
  * Suspend user
  */
-export const suspendUser = async ({
-  userId,
-  adminId,
-  reason,
-  ipAddress = null,
-}) => {
+export const suspendUser = async ({ userId, adminId, reason, ipAddress = null }) => {
   if (adminId && adminId === userId) {
     const error = new Error('Admin cannot suspend their own account');
     error.statusCode = 403;
@@ -633,9 +612,10 @@ export const suspendUser = async ({
     );
 
     // Revoke active refresh tokens
-    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [
-      userId,
-    ]);
+    await client.query(
+      'DELETE FROM refresh_tokens WHERE user_id = $1',
+      [userId]
+    );
 
     await client.query('COMMIT');
 
@@ -730,12 +710,7 @@ export const reactivateUser = async ({ userId, adminId, ipAddress = null }) => {
 /**
  * Admin manual KYC override
  */
-export const overrideKyc = async ({
-  userId,
-  adminId,
-  note,
-  ipAddress = null,
-}) => {
+export const overrideKyc = async ({ userId, adminId, note, ipAddress = null }) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -893,20 +868,12 @@ export const getAuctions = async ({
 };
 
 // Force-cancel only before any payment exists; later states need the refund/dispute flows.
-const ADMIN_CANCELLABLE_STATUSES = new Set([
-  AuctionStatus.SCHEDULED,
-  AuctionStatus.ACTIVE,
-]);
+const ADMIN_CANCELLABLE_STATUSES = new Set([AuctionStatus.SCHEDULED, AuctionStatus.ACTIVE]);
 
 /**
  * Force cancel an auction
  */
-export const cancelAuction = async ({
-  auctionId,
-  adminId,
-  reason,
-  ipAddress = null,
-}) => {
+export const cancelAuction = async ({ auctionId, adminId, reason, ipAddress = null }) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1029,12 +996,7 @@ export const createCategory = async ({ name, slug, description }) => {
 /**
  * Update an existing category
  */
-export const updateCategory = async ({
-  categoryId,
-  name,
-  slug,
-  description,
-}) => {
+export const updateCategory = async ({ categoryId, name, slug, description }) => {
   const updates = [];
   const params = [categoryId];
 
@@ -1052,9 +1014,7 @@ export const updateCategory = async ({
   }
 
   if (updates.length === 0) {
-    const current = await pool.query('SELECT * FROM categories WHERE id = $1', [
-      categoryId,
-    ]);
+    const current = await pool.query('SELECT * FROM categories WHERE id = $1', [categoryId]);
     return current.rows[0];
   }
 
@@ -1154,9 +1114,7 @@ export const mergeCategories = async ({
     );
 
     // 2. Delete source category
-    await client.query('DELETE FROM categories WHERE id = $1', [
-      sourceCategoryId,
-    ]);
+    await client.query('DELETE FROM categories WHERE id = $1', [sourceCategoryId]);
 
     await client.query('COMMIT');
 

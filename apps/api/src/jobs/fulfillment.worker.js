@@ -10,34 +10,31 @@ import { autoConfirmDelivery } from '../services/fulfillment.service.js';
 
 const connection = createRedisConnection('fulfillment-worker');
 
-const fulfillmentWorker = new Worker(
-  'fulfillment',
-  async (job) => {
-    const { name, data } = job;
-    const { auctionId } = data;
 
-    switch (name) {
-      case 'shipping-reminder':
-        await processShippingReminder(auctionId);
-        break;
-      case 'shipping-deadline':
-        await processShippingDeadline(auctionId);
-        break;
-      case 'delivery-auto-confirm':
-        await processDeliveryAutoConfirm(auctionId);
-        break;
-      case 'delivery-reminder':
-        await processDeliveryReminder(auctionId, data.type);
-        break;
-      case 'fulfillment-sweeper':
-        await processFulfillmentSweeper();
-        break;
-      default:
-        console.warn(`[FulfillmentWorker] Unknown job name: ${name}`);
-    }
-  },
-  { connection }
-);
+const fulfillmentWorker = new Worker('fulfillment', async (job) => {
+  const { name, data } = job;
+  const { auctionId } = data;
+
+  switch (name) {
+    case 'shipping-reminder':
+      await processShippingReminder(auctionId);
+      break;
+    case 'shipping-deadline':
+      await processShippingDeadline(auctionId);
+      break;
+    case 'delivery-auto-confirm':
+      await processDeliveryAutoConfirm(auctionId);
+      break;
+    case 'delivery-reminder':
+      await processDeliveryReminder(auctionId, data.type);
+      break;
+    case 'fulfillment-sweeper':
+      await processFulfillmentSweeper();
+      break;
+    default:
+      console.warn(`[FulfillmentWorker] Unknown job name: ${name}`);
+  }
+}, { connection });
 
 async function processShippingReminder(auctionId) {
   const result = await pool.query(
@@ -54,8 +51,7 @@ async function processShippingReminder(auctionId) {
 
   await emitToUser(auction.seller_id, EventNames.SHIPPING_REMINDER, {
     auctionId,
-    message:
-      'Bạn còn 2 ngày để giao hàng. Hãy cập nhật mã vận đơn để tránh bị hủy tự động.',
+    message: 'Bạn còn 2 ngày để giao hàng. Hãy cập nhật mã vận đơn để tránh bị hủy tự động.'
   });
 }
 
@@ -82,9 +78,7 @@ async function processShippingDeadline(auctionId) {
 
     if (lockResult.rowCount === 0) {
       await client.query('ROLLBACK');
-      console.log(
-        `[FulfillmentWorker] shipping-deadline skipped for auction ${auctionId} - not authorized (idempotent guard)`
-      );
+      console.log(`[FulfillmentWorker] shipping-deadline skipped for auction ${auctionId} - not authorized (idempotent guard)`);
       return;
     }
 
@@ -96,11 +90,7 @@ async function processShippingDeadline(auctionId) {
 
     await client.query('COMMIT');
   } catch (err) {
-    try {
-      await client.query('ROLLBACK');
-    } catch (_) {
-      /* ignore */
-    }
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
     throw err;
   } finally {
     client.release();
@@ -114,21 +104,16 @@ async function processShippingDeadline(auctionId) {
       stripeCanceled = true;
     }
   } catch (stripeErr) {
-    console.error(
-      `[FulfillmentWorker] Stripe cancel failed for shipping-deadline ${auctionId}:`,
-      stripeErr.message
-    );
-
+    console.error(`[FulfillmentWorker] Stripe cancel failed for shipping-deadline ${auctionId}:`, stripeErr.message);
+    
     // Check for permanent errors (already canceled/expired)
-    const isPermanent =
+    const isPermanent = 
       stripeErr.code === 'payment_intent_unexpected_state' ||
       stripeErr.type === 'StripeInvalidRequestError' ||
       stripeErr.message?.includes('cannot be canceled');
 
     if (isPermanent) {
-      console.warn(
-        `[FulfillmentWorker] Stripe PI already expired/canceled, proceeding with DB cleanup for ${auctionId}`
-      );
+      console.warn(`[FulfillmentWorker] Stripe PI already expired/canceled, proceeding with DB cleanup for ${auctionId}`);
       stripeCanceled = true;
     } else {
       // Transient error, let BullMQ retry
@@ -152,33 +137,21 @@ async function processShippingDeadline(auctionId) {
         [auctionId]
       );
       if (auctionUpdate.rowCount === 0) {
-        throw new Error(
-          `State mismatch: Auction ${auctionId} was not awaiting_ship during shipping-deadline DB finalize.`
-        );
+        throw new Error(`State mismatch: Auction ${auctionId} was not awaiting_ship during shipping-deadline DB finalize.`);
       }
 
-      await writeAuditLog(
-        {
-          referenceId: paymentId,
-          referenceType: 'payment',
-          action: 'shipping_overdue_refund',
-          deltaState: { status: 'released', auctionStatus: 'no_sale' },
-          actorId: null, // System action
-        },
-        client2
-      );
+      await writeAuditLog({
+        referenceId: paymentId,
+        referenceType: 'payment',
+        action: 'shipping_overdue_refund',
+        deltaState: { status: 'released', auctionStatus: 'no_sale' },
+        actorId: null, // System action
+      }, client2);
 
       await client2.query('COMMIT');
     } catch (dbErr) {
-      try {
-        await client2.query('ROLLBACK');
-      } catch (_) {
-        /* ignore */
-      }
-      console.error(
-        `[FulfillmentWorker] DB cleanup failed after cancel for payment ${paymentId}`,
-        dbErr
-      );
+      try { await client2.query('ROLLBACK'); } catch (_) { /* ignore */ }
+      console.error(`[FulfillmentWorker] DB cleanup failed after cancel for payment ${paymentId}`, dbErr);
       throw dbErr;
     } finally {
       client2.release();
@@ -188,21 +161,16 @@ async function processShippingDeadline(auctionId) {
     Promise.allSettled([
       emitToUser(sellerId, EventNames.SHIPPING_OVERDUE, {
         auctionId,
-        message:
-          'Đơn hàng đã bị hủy do quá hạn giao. Tiền đã được hoàn lại cho người mua.',
+        message: 'Đơn hàng đã bị hủy do quá hạn giao. Tiền đã được hoàn lại cho người mua.'
       }),
       emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
         status: 'refunded',
-        message:
-          'Người bán không giao hàng đúng hạn. Tiền đã được hoàn lại cho bạn.',
-      }),
-    ]).then((results) => {
+        message: 'Người bán không giao hàng đúng hạn. Tiền đã được hoàn lại cho bạn.'
+      })
+    ]).then(results => {
       results.forEach((res, index) => {
         if (res.status === 'rejected') {
-          console.error(
-            `[FulfillmentWorker] shipping-deadline side-effect [${index}] failed:`,
-            res.reason
-          );
+          console.error(`[FulfillmentWorker] shipping-deadline side-effect [${index}] failed:`, res.reason);
         }
       });
     });
@@ -226,9 +194,7 @@ async function processDeliveryAutoConfirm(auctionId) {
   }
 
   if (hasDispute) {
-    console.log(
-      `[FulfillmentWorker] autoConfirmDelivery skipped for auction ${auctionId} - dispute exists`
-    );
+    console.log(`[FulfillmentWorker] autoConfirmDelivery skipped for auction ${auctionId} - dispute exists`);
     return;
   }
 
@@ -254,7 +220,7 @@ async function processDeliveryReminder(auctionId, type) {
 
   await emitToUser(auction.buyer_id, EventNames.DELIVERY_REMINDER, {
     auctionId,
-    message,
+    message
   });
 }
 
@@ -272,42 +238,18 @@ async function processFulfillmentSweeper() {
 
   for (const auction of auctionsResult.rows) {
     if (auction.status === AuctionStatus.AWAITING_SHIP) {
-      await ensureJobScheduled(
-        'shipping-deadline',
-        auction.id,
-        auction.shipping_deadline_at
-      );
-      const reminderTime =
-        new Date(auction.shipping_deadline_at).getTime() -
-        2 * 24 * 60 * 60 * 1000;
-      await ensureJobScheduled(
-        'shipping-reminder',
-        auction.id,
-        new Date(reminderTime)
-      );
+      await ensureJobScheduled('shipping-deadline', auction.id, auction.shipping_deadline_at);
+      const reminderTime = new Date(auction.shipping_deadline_at).getTime() - (2 * 24 * 60 * 60 * 1000);
+      await ensureJobScheduled('shipping-reminder', auction.id, new Date(reminderTime));
     } else if (auction.status === AuctionStatus.SHIPPED) {
-      await ensureJobScheduled(
-        'delivery-auto-confirm',
-        auction.id,
-        auction.delivery_deadline_at
-      );
-
+      await ensureJobScheduled('delivery-auto-confirm', auction.id, auction.delivery_deadline_at);
+      
       const deadlineTime = new Date(auction.delivery_deadline_at).getTime();
-      const reminder10Time = deadlineTime - 4 * 24 * 60 * 60 * 1000; // 14-4=10, 21-4=17 (which is day 10 of extension)
-      const reminder13Time = deadlineTime - 1 * 24 * 60 * 60 * 1000;
-
-      await ensureJobScheduled(
-        'delivery-reminder',
-        auction.id,
-        new Date(reminder10Time),
-        { type: 'day10' }
-      );
-      await ensureJobScheduled(
-        'delivery-reminder',
-        auction.id,
-        new Date(reminder13Time),
-        { type: 'day13' }
-      );
+      const reminder10Time = deadlineTime - (4 * 24 * 60 * 60 * 1000); // 14-4=10, 21-4=17 (which is day 10 of extension)
+      const reminder13Time = deadlineTime - (1 * 24 * 60 * 60 * 1000);
+      
+      await ensureJobScheduled('delivery-reminder', auction.id, new Date(reminder10Time), { type: 'day10' });
+      await ensureJobScheduled('delivery-reminder', auction.id, new Date(reminder13Time), { type: 'day13' });
     }
   }
 
@@ -319,10 +261,7 @@ fulfillmentWorker.on('completed', (job) => {
 });
 
 fulfillmentWorker.on('failed', (job, err) => {
-  console.error(
-    `[FulfillmentWorker] Job ${job?.id} (${job?.name}) failed:`,
-    err.message
-  );
+  console.error(`[FulfillmentWorker] Job ${job?.id} (${job?.name}) failed:`, err.message);
 });
 
 export default fulfillmentWorker;

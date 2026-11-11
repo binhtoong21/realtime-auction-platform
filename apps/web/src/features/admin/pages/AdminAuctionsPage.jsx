@@ -30,10 +30,7 @@ const STATUS_OPTIONS = [
   { value: 'cancelled', label: 'Cancelled' },
 ];
 
-const ADMIN_CANCELLABLE_STATUSES = new Set([
-  AuctionStatus.SCHEDULED,
-  AuctionStatus.ACTIVE,
-]);
+const ADMIN_CANCELLABLE_STATUSES = new Set([AuctionStatus.SCHEDULED, AuctionStatus.ACTIVE]);
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', {
@@ -139,10 +136,7 @@ export function AdminAuctionsPage() {
       } catch (err) {
         setToastMessage({
           type: 'danger',
-          text:
-            err.response?.data?.error?.message ||
-            err.message ||
-            'Failed to cancel auction.',
+          text: err.response?.data?.error?.message || err.message || 'Failed to cancel auction.',
         });
       }
     },
@@ -157,8 +151,7 @@ export function AdminAuctionsPage() {
           <div className="admin-auctions-badge">OPERATIONAL OVERSIGHT</div>
           <h1 className="admin-page-title">Marketplace Auctions & Lots</h1>
           <p className="admin-page-subtitle">
-            Inspect bidding book status, monitor lots across taxonomies, and
-            execute emergency cancellations
+            Inspect bidding book status, monitor lots across taxonomies, and execute emergency cancellations
           </p>
         </div>
 
@@ -181,15 +174,8 @@ export function AdminAuctionsPage() {
 
       {/* Notifications / Toast Banner */}
       {toastMessage && (
-        <div
-          className={`admin-toast-banner admin-toast-banner--${toastMessage.type}`}
-          role="status"
-        >
-          {toastMessage.type === 'success' ? (
-            <CheckCircle2 size={16} />
-          ) : (
-            <AlertTriangle size={16} />
-          )}
+        <div className={`admin-toast-banner admin-toast-banner--${toastMessage.type}`} role="status">
+          {toastMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
           <span>{toastMessage.text}</span>
           <button
             type="button"
@@ -270,23 +256,13 @@ export function AdminAuctionsPage() {
       <section className="admin-table-container">
         {isLoading && auctions.length === 0 ? (
           <div className="admin-state-box">
-            <RotateCw
-              size={24}
-              className="admin-spinner"
-              style={{ margin: '0 auto 8px' }}
-            />
+            <RotateCw size={24} className="admin-spinner" style={{ margin: '0 auto 8px' }} />
             <p>Querying marketplace lots...</p>
           </div>
         ) : error ? (
           <div className="admin-state-box">
-            <AlertTriangle
-              size={24}
-              className="text-danger"
-              style={{ margin: '0 auto 8px' }}
-            />
-            <p className="text-danger">
-              Failed to load marketplace auctions: {error}
-            </p>
+            <AlertTriangle size={24} className="text-danger" style={{ margin: '0 auto 8px' }} />
+            <p className="text-danger">Failed to load marketplace auctions: {error}</p>
             <button
               type="button"
               className="btn btn--sm btn--secondary"
@@ -298,13 +274,7 @@ export function AdminAuctionsPage() {
           </div>
         ) : auctions.length === 0 ? (
           <div className="admin-state-box">
-            <Flame
-              size={24}
-              style={{
-                margin: '0 auto 8px',
-                color: 'var(--color-text-disabled)',
-              }}
-            />
+            <Flame size={24} style={{ margin: '0 auto 8px', color: 'var(--color-text-disabled)' }} />
             <p>No auction listings match the active filter criteria.</p>
           </div>
         ) : (
@@ -322,13 +292,8 @@ export function AdminAuctionsPage() {
             </thead>
             <tbody>
               {auctions.map((auction) => {
-                const canCancel = ADMIN_CANCELLABLE_STATUSES.has(
-                  auction.status
-                );
-                const timeRemaining = formatTimeRemaining(
-                  auction.endAt,
-                  auction.status
-                );
+                const canCancel = ADMIN_CANCELLABLE_STATUSES.has(auction.status);
+                const timeRemaining = formatTimeRemaining(auction.endAt, auction.status);
 
                 return (
                   <tr key={auction.id}>
@@ -344,9 +309,7 @@ export function AdminAuctionsPage() {
                           <span>{auction.title}</span>
                           <ExternalLink size={11} className="text-secondary" />
                         </Link>
-                        <span className="admin-item-id font-mono">
-                          {auction.id}
-                        </span>
+                        <span className="admin-item-id font-mono">{auction.id}</span>
                       </div>
                     </td>
 
@@ -371,9 +334,7 @@ export function AdminAuctionsPage() {
                     </td>
 
                     <td>
-                      <span
-                        className={`admin-status-badge admin-status-badge--${auction.status}`}
-                      >
+                      <span className={`admin-status-badge admin-status-badge--${auction.status}`}>
                         {auction.status}
                       </span>
                     </td>
@@ -392,10 +353,7 @@ export function AdminAuctionsPage() {
                     </td>
 
                     <td>
-                      <div
-                        className="admin-table-actions"
-                        style={{ justifyContent: 'flex-end' }}
-                      >
+                      <div className="admin-table-actions" style={{ justifyContent: 'flex-end' }}>
                         <Link
                           to={`/auctions/${auction.id}`}
                           className="btn btn--xs btn--secondary admin-btn-action"
@@ -432,15 +390,9 @@ export function AdminAuctionsPage() {
       {meta && meta.totalPages > 1 && (
         <footer className="admin-pagination">
           <div>
-            Showing{' '}
-            <span className="font-mono">
-              {(meta.page - 1) * meta.limit + 1}
-            </span>{' '}
-            to{' '}
-            <span className="font-mono">
-              {Math.min(meta.page * meta.limit, meta.total)}
-            </span>{' '}
-            of <span className="font-mono">{meta.total}</span> listings
+            Showing <span className="font-mono">{(meta.page - 1) * meta.limit + 1}</span> to{' '}
+            <span className="font-mono">{Math.min(meta.page * meta.limit, meta.total)}</span> of{' '}
+            <span className="font-mono">{meta.total}</span> listings
           </div>
 
           <div className="admin-pagination-btns">
@@ -460,9 +412,7 @@ export function AdminAuctionsPage() {
               type="button"
               className="btn btn--xs btn--secondary"
               disabled={meta.page >= meta.totalPages || isLoading}
-              onClick={() =>
-                setPage((prev) => Math.min(prev + 1, meta.totalPages))
-              }
+              onClick={() => setPage((prev) => Math.min(prev + 1, meta.totalPages))}
             >
               <span>Next</span>
               <ChevronRight size={13} />
