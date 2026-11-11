@@ -28,27 +28,81 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.metric-card--interactive:hover {
+  border-color: var(--color-brand);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.metric-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .metric-label {
   font-family: var(--font-body);
   font-size: var(--text-xs, 11px);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+.metric-icon {
+  display: flex;
+  align-items: center;
+}
+
+.metric-icon--brand {
+  color: var(--color-brand);
+}
+
+.metric-icon--warning {
+  color: var(--color-warning);
+}
+
+.metric-icon--success {
+  color: var(--color-success);
+}
+
+.metric-icon--secondary {
   color: var(--color-text-secondary);
 }
 
 .metric-value {
   font-family: var(--font-mono);
-  font-size: var(--text-lg, 18px);
+  font-size: var(--text-xl, 22px);
   font-weight: 600;
   color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.metric-value--warning {
+  color: var(--color-warning);
+}
+
+.metric-value--success {
+  color: var(--color-success);
+}
+
+.metric-subtext {
+  font-family: var(--font-body);
+  font-size: var(--text-xs, 12px);
+  color: var(--color-text-secondary);
 }
 
 .skeleton-card {
-  height: 64px;
+  height: 90px;
   background: var(--color-surface-raised);
   border-radius: var(--radius-md);
 }
