@@ -11,6 +11,7 @@ import { JoinAuctionModal } from '../components/JoinAuctionModal';
 import { CountdownTimer } from '../components/CountdownTimer';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { WatchlistButton } from '../components/WatchlistButton';
+import { AuctionStatus } from '@auction/shared-constants';
 import './AuctionDetailPage.css';
 
 /**
@@ -197,8 +198,8 @@ export function AuctionDetailPage() {
   const currentPrice = Number(auction.current_price || 0);
   const bidIncrement = Number(auction.bid_increment || 0);
 
-  const isScheduled = auction.status === 'scheduled';
-  const isActive = auction.status === 'active';
+  const isScheduled = auction.status === AuctionStatus.SCHEDULED;
+  const isActive = auction.status === AuctionStatus.ACTIVE;
   const isJoined = auction.is_joined || false;
 
   return (

@@ -9,6 +9,7 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
 import { useToast } from '../../../core/context/ToastContext';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { PaymentStatus, AuctionStatus } from '@auction/shared-constants';
 import { CreditCard } from 'lucide-react';
 import './PaymentHistoryPage.css';
 
@@ -142,9 +143,9 @@ export function PaymentHistoryPage() {
                     <td><StatusBadge status={payment.status} type="payment" /></td>
                     <td className="date-cell">{formatDate(payment.created_at)}</td>
                     <td className="actions-cell">
-                      {payment.status === 'authorized' && (
+                      {payment.status === PaymentStatus.AUTHORIZED && (
                         <div className="action-buttons">
-                          {payment.auctionStatus === 'shipped' && (
+                          {payment.auctionStatus === AuctionStatus.SHIPPED && (
                             <>
                               <button 
                                 className="btn-primary btn-sm"
@@ -173,7 +174,7 @@ export function PaymentHistoryPage() {
                           </button>
                         </div>
                       )}
-                      {(payment.status === 'frozen' || payment.disputeId) && (
+                      {(payment.status === PaymentStatus.FROZEN || payment.disputeId) && (
                         <div className="action-buttons">
                           <button
                             type="button"
@@ -184,7 +185,7 @@ export function PaymentHistoryPage() {
                           </button>
                         </div>
                       )}
-                      {payment.status === 'grace_period' && (
+                      {payment.status === PaymentStatus.GRACE_PERIOD && (
                         <div className="action-buttons">
                           <button 
                             className="btn-primary btn-sm"

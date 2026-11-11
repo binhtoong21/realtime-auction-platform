@@ -6,6 +6,7 @@ import { useCategories } from '../../auctions/hooks/useCategories';
 import { useEditAuction } from '../hooks/useSellerActions';
 import { useFetch } from '../../../core/hooks/useFetch';
 import { parseLocalToUTC } from '../../../utils/formatters';
+import { AuctionStatus } from '@auction/shared-constants';
 import { ArrowLeft, Upload, X } from 'lucide-react';
 import './CreateAuctionPage.css';
 
@@ -76,7 +77,7 @@ export function EditAuctionPage() {
   const auction = auctionData?.data;
   const isOwner = !auction?.seller?.id || !user?.id || auction.seller.id === user.id;
   const hasBids = Number(auction?.bid_count) > 0;
-  const isEditable = auction && (auction.status === 'scheduled' || auction.status === 'active') && !hasBids && isOwner;
+  const isEditable = auction && (auction.status === AuctionStatus.SCHEDULED || auction.status === AuctionStatus.ACTIVE) && !hasBids && isOwner;
 
 
   const handleImageChange = (e) => {

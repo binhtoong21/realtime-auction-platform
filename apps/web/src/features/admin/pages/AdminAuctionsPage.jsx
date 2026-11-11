@@ -53,7 +53,7 @@ function formatDate(isoString) {
 }
 
 function formatTimeRemaining(endAtIso, status) {
-  if (status !== 'active') return null;
+  if (status !== AuctionStatus.ACTIVE) return null;
   const diff = new Date(endAtIso).getTime() - Date.now();
   if (diff <= 0) return 'Ending soon';
   const hours = Math.floor(diff / (1000 * 60 * 60));

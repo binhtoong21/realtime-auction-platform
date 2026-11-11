@@ -20,6 +20,7 @@ import {
   ReactivateUserModal,
   KycOverrideModal,
 } from '../components/AdminUserModals';
+import { UserStatus } from '@auction/shared-constants';
 import './AdminUsersPage.css';
 
 const ROLE_OPTIONS = [
@@ -422,7 +423,7 @@ export function AdminUsersPage() {
                         </Link>
 
                         {/* Quick Moderation Button */}
-                        {u.status === 'active' && (
+                        {u.status === UserStatus.ACTIVE && (
                           <button
                             type="button"
                             className="btn btn--xs btn--secondary text-warning"
@@ -434,7 +435,7 @@ export function AdminUsersPage() {
                           </button>
                         )}
 
-                        {u.status === 'suspended' && (
+                        {u.status === UserStatus.SUSPENDED && (
                           <button
                             type="button"
                             className="btn btn--xs btn--secondary text-success"
@@ -446,7 +447,7 @@ export function AdminUsersPage() {
                           </button>
                         )}
 
-                        {u.status !== 'banned' && (
+                        {u.status !== UserStatus.BANNED && (
                           <button
                             type="button"
                             className="btn btn--xs btn--destructive"
