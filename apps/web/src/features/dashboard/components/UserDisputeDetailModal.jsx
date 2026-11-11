@@ -4,6 +4,7 @@ import { useDisputeDetails, useUserDisputeActions } from '../hooks/useUserDisput
 import { CountdownTimer } from '../../auctions/components/CountdownTimer';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { useToast } from '../../../core/context/ToastContext';
+import { DisputeStatus } from '@auction/shared-constants';
 import { X, AlertTriangle, ShieldCheck, CheckCircle2, Upload, AlertCircle, FileText } from 'lucide-react';
 import './UserDisputeDetailModal.css';
 
@@ -81,7 +82,7 @@ export function UserDisputeDetailModal({ isOpen, onClose, disputeId, role = 'buy
   // 2. Early return AFTER all hooks
   if (!isOpen || !disputeId) return null;
 
-  const isTerminal = ['resolved_buyer_wins', 'resolved_seller_wins', 'expired', 'withdrawn'].includes(dispute?.status);
+  const isTerminal = [DisputeStatus.RESOLVED_BUYER_WINS, DisputeStatus.RESOLVED_SELLER_WINS, DisputeStatus.EXPIRED, DisputeStatus.WITHDRAWN].includes(dispute?.status);
   const existingCount = dispute?.evidenceUrls?.length || 0;
   const remainingFileSlots = Math.max(0, 3 - existingCount);
 
@@ -131,7 +132,7 @@ export function UserDisputeDetailModal({ isOpen, onClose, disputeId, role = 'buy
         ) : dispute ? (
           <div className="user-dispute-body">
             {/* Status / Outcome Banners */}
-            {dispute.status === 'resolved_buyer_wins' && (
+            {dispute.status === DisputeStatus.RESOLVED_BUYER_WINS && (
               <div className="user-dispute-banner user-dispute-banner--success">
                 <CheckCircle2 size={18} />
                 <div>
@@ -146,7 +147,7 @@ export function UserDisputeDetailModal({ isOpen, onClose, disputeId, role = 'buy
               </div>
             )}
 
-            {dispute.status === 'resolved_seller_wins' && (
+            {dispute.status === DisputeStatus.RESOLVED_SELLER_WINS && (
               <div className="user-dispute-banner user-dispute-banner--success">
                 <CheckCircle2 size={18} />
                 <div>
@@ -161,7 +162,7 @@ export function UserDisputeDetailModal({ isOpen, onClose, disputeId, role = 'buy
               </div>
             )}
 
-            {dispute.status === 'withdrawn' && (
+            {dispute.status === DisputeStatus.WITHDRAWN && (
               <div className="user-dispute-banner user-dispute-banner--neutral">
                 <FileText size={18} />
                 <div>
@@ -264,7 +265,7 @@ export function UserDisputeDetailModal({ isOpen, onClose, disputeId, role = 'buy
 
             {/* Action Section: Evidence Submission Form */}
             {!isTerminal && remainingFileSlots > 0 && (
-              (role === 'buyer' && dispute.status === 'open') ||
+              (role === 'buyer' && dispute.status === DisputeStatus.OPEN) ||
               (role === 'seller' && isSellerWindowActive)
             ) && (
               <form onSubmit={handleSubmitEvidence} className="user-dispute-form">
@@ -326,7 +327,7 @@ export function UserDisputeDetailModal({ isOpen, onClose, disputeId, role = 'buy
             )}
 
             {/* Buyer Withdraw Dispute Section */}
-            {role === 'buyer' && dispute.status === 'open' && (
+            {role === 'buyer' && dispute.status === DisputeStatus.OPEN && (
               <div className="user-dispute-withdraw-box">
                 <div className="user-dispute-withdraw-info">
                   <ShieldCheck size={18} className="text-secondary" />

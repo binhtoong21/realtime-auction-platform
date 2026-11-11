@@ -8,6 +8,7 @@ import { UserDisputeDetailModal } from '../components/UserDisputeDetailModal';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { AuctionStatus } from '@auction/shared-constants';
 import { Package } from 'lucide-react';
 import './MyAuctionsPage.css';
 
@@ -126,14 +127,14 @@ export function MyAuctionsPage() {
                     <td className="date-cell">{formatDate(auction.end_at)}</td>
                     <td className="actions-cell">
                       {/* Active/Scheduled actions */}
-                      {(auction.status === 'active' || auction.status === 'scheduled') && Number(auction.bid_count) === 0 && (
+                      {(auction.status === AuctionStatus.ACTIVE || auction.status === AuctionStatus.SCHEDULED) && Number(auction.bid_count) === 0 && (
                         <div className="action-buttons">
                           <Link to={`/dashboard/auctions/${auction.id}/edit`} className="btn-link">Edit</Link>
                         </div>
                       )}
                       
                       {/* Shipping actions */}
-                      {auction.status === 'awaiting_ship' && (
+                      {auction.status === AuctionStatus.AWAITING_SHIP && (
                         <div className="action-buttons">
                           <button 
                             className="btn-primary btn-sm"
@@ -153,7 +154,7 @@ export function MyAuctionsPage() {
                         </div>
                       )}
 
-                      {auction.status === 'shipped' && (
+                      {auction.status === AuctionStatus.SHIPPED && (
                         <div className="action-buttons">
                           <Link to={`/auctions/${auction.id}/tracking`} className="btn-link">
                             Track
@@ -168,7 +169,7 @@ export function MyAuctionsPage() {
                         </div>
                       )}
 
-                      {(auction.status === 'disputed' || auction.disputeId) && (
+                      {(auction.status === AuctionStatus.DISPUTED || auction.disputeId) && (
                         <div className="action-buttons">
                           <button
                             type="button"

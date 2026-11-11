@@ -24,6 +24,7 @@ import {
   ReactivateUserModal,
   KycOverrideModal,
 } from '../components/AdminUserModals';
+import { UserStatus } from '@auction/shared-constants';
 import './AdminUserDetailPage.css';
 
 function formatCurrency(cents) {
@@ -238,7 +239,7 @@ export function AdminUserDetailPage() {
 
         {/* Action Command Bar */}
         <div className="admin-hero-actions">
-          {user.status === 'active' && (
+          {user.status === UserStatus.ACTIVE && (
             <button
               type="button"
               className="btn btn--sm btn--secondary text-warning"
@@ -250,7 +251,7 @@ export function AdminUserDetailPage() {
             </button>
           )}
 
-          {user.status === 'suspended' && (
+          {user.status === UserStatus.SUSPENDED && (
             <button
               type="button"
               className="btn btn--sm btn--secondary text-success"
@@ -262,7 +263,7 @@ export function AdminUserDetailPage() {
             </button>
           )}
 
-          {user.status !== 'banned' && (
+          {user.status !== UserStatus.BANNED && (
             <button
               type="button"
               className="btn btn--sm btn--destructive"
@@ -296,9 +297,9 @@ export function AdminUserDetailPage() {
             <span className={`admin-pill admin-pill--status-${user.status}`}>{user.status}</span>
           </div>
           <div className="admin-info-card__desc">
-            {user.status === 'active' && 'Account is fully in good standing and can participate in marketplace auctions.'}
-            {user.status === 'suspended' && 'Trading privileges temporarily suspended. Active bids/listings held.'}
-            {user.status === 'banned' && 'Account permanently terminated. Listings purged.'}
+            {user.status === UserStatus.ACTIVE && 'Account is fully in good standing and can participate in marketplace auctions.'}
+            {user.status === UserStatus.SUSPENDED && 'Trading privileges temporarily suspended. Active bids/listings held.'}
+            {user.status === UserStatus.BANNED && 'Account permanently terminated. Listings purged.'}
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { useMyBids } from '../hooks/useBuyerActions';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { formatCurrency } from '../../../utils/formatters';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { AuctionStatus } from '@auction/shared-constants';
 import { Gavel } from 'lucide-react';
 import './MyBidsPage.css';
 
@@ -52,10 +53,10 @@ export function MyBidsPage() {
     const isWinning = bid.isWinning;
     const status = bid.auctionStatus?.toLowerCase();
     
-    if (status === 'active' || status === 'scheduled') {
+    if (status === AuctionStatus.ACTIVE || status === AuctionStatus.SCHEDULED) {
       return isWinning ? 'WINNING' : 'OUTBID';
-    } else if (status === 'no_sale' || status === 'cancelled') {
-      return status === 'no_sale' ? 'NO_SALE' : 'CANCELLED';
+    } else if (status === AuctionStatus.NO_SALE || status === AuctionStatus.CANCELLED) {
+      return status === AuctionStatus.NO_SALE ? 'NO_SALE' : 'CANCELLED';
     } else {
       return isWinning ? 'WON' : 'LOST';
     }

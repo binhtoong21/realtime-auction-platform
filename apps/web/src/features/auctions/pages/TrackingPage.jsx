@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { AuctionStatus } from '@auction/shared-constants';
 import { useTracking } from '../hooks/useTracking';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { EmptyState } from '../../../components/ui/EmptyState';
@@ -95,7 +96,7 @@ export function TrackingPage() {
             <h1 className="tracking-card__title">Shipment Tracking</h1>
             <p className="tracking-card__subtitle">Auction ID: {auctionId}</p>
           </div>
-          <StatusBadge domain="auction" status={tracking.status || 'shipped'} />
+          <StatusBadge domain="auction" status={tracking.status || AuctionStatus.SHIPPED} />
         </div>
 
         <div className="tracking-meta-grid">
@@ -161,7 +162,7 @@ export function TrackingPage() {
         </div>
 
         <div className="tracking-actions">
-          {tracking.status === 'shipped' && (
+          {tracking.status === AuctionStatus.SHIPPED && (
             <>
               <button
                 type="button"

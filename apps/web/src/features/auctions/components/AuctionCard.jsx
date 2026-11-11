@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { AuctionStatus } from '@auction/shared-constants';
 import { CountdownTimer } from './CountdownTimer';
 import { WatchlistButton } from './WatchlistButton';
 import './AuctionCard.css';
@@ -63,12 +64,12 @@ export function AuctionCard({ auction, isWatched, onWatchlistToggle }) {
 
         <div className="auction-card-footer">
           <div className="auction-card-countdown">
-            {auction.status === 'scheduled' ? (
+            {auction.status === AuctionStatus.SCHEDULED ? (
               <>
                 <span className="auction-card-countdown-label">Starts in:</span>
                 <CountdownTimer endAt={auction.start_at || auction.startAt} endedText="Starting..." />
               </>
-            ) : auction.status === 'active' ? (
+            ) : auction.status === AuctionStatus.ACTIVE ? (
               <CountdownTimer endAt={endDate} />
             ) : (
               <span className="auction-card-status-text">{auction.status}</span>

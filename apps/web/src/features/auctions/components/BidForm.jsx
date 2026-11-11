@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { AuctionStatus } from '@auction/shared-constants';
 import { useAuth } from '../../../core/context/AuthContext';
 import { useToast } from '../../../core/context/ToastContext';
 import './BidForm.css';
@@ -160,7 +161,7 @@ export function BidForm({
     resetState();
   };
 
-  const isDisabled = isSubmitting || bidState === 'success' || auctionStatus !== 'active';
+  const isDisabled = isSubmitting || bidState === 'success' || auctionStatus !== AuctionStatus.ACTIVE;
 
   /**
    * Sets bid input based on a multiple of bid increment.

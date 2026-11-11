@@ -5,6 +5,7 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { CountdownTimer } from '../../auctions/components/CountdownTimer';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { useToast } from '../../../core/context/ToastContext';
+import { DisputeStatus } from '@auction/shared-constants';
 import './AdminDisputeListPage.css';
 
 const TABS = [
@@ -150,7 +151,7 @@ export function AdminDisputeListPage() {
               </thead>
               <tbody>
                 {disputes.map((dispute) => {
-                  const isPendingReview = dispute.status === 'open';
+                  const isPendingReview = dispute.status === DisputeStatus.OPEN;
                   const isActionLoading = actioningId === dispute.id;
                   const reasonLabel = REASON_LABELS[dispute.reason] || dispute.reason;
 
@@ -216,10 +217,10 @@ export function AdminDisputeListPage() {
 
                       {/* SLA DEADLINE */}
                       <td className="font-mono text-xs">
-                        {['open', 'under_review'].includes(dispute.status) ? (
+                        {[DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW].includes(dispute.status) ? (
                           <div className="admin-deadline-cell">
                             <CountdownTimer endAt={dispute.deadlineAt} endedText="Expired" />
-                            {dispute.sellerEvidenceDeadlineAt && dispute.status === 'open' && (
+                            {dispute.sellerEvidenceDeadlineAt && dispute.status === DisputeStatus.OPEN && (
                               <span
                                 className={`admin-sub-deadline ${ 
                                   new Date() > new Date(dispute.sellerEvidenceDeadlineAt)

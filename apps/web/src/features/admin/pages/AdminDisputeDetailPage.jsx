@@ -4,7 +4,7 @@ import { useDisputeDetail, useDisputeReview, useDisputeResolve } from '../hooks'
 import { StatusBadge } from '../../../components/StatusBadge';
 import { CountdownTimer } from '../../auctions/components/CountdownTimer';
 import { useToast } from '../../../core/context/ToastContext';
-import { DisputeOutcome, DisputePolicyRule, DisputeRejectionReason } from '@auction/shared-constants';
+import { DisputeOutcome, DisputePolicyRule, DisputeRejectionReason, DisputeStatus } from '@auction/shared-constants';
 import './AdminDisputeDetailPage.css';
 
 const REASON_LABELS = {
@@ -108,9 +108,9 @@ export function AdminDisputeDetailPage() {
     );
   }
 
-  const isTerminal = ['resolved_buyer_wins', 'resolved_seller_wins', 'expired', 'withdrawn'].includes(dispute.status);
-  const isUnderReview = dispute.status === 'under_review';
-  const isOpen = dispute.status === 'open';
+  const isTerminal = [DisputeStatus.RESOLVED_BUYER_WINS, DisputeStatus.RESOLVED_SELLER_WINS, DisputeStatus.EXPIRED, DisputeStatus.WITHDRAWN].includes(dispute.status);
+  const isUnderReview = dispute.status === DisputeStatus.UNDER_REVIEW;
+  const isOpen = dispute.status === DisputeStatus.OPEN;
 
   return (
     <div className="admin-dispute-detail">
