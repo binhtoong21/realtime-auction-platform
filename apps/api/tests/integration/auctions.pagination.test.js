@@ -3,19 +3,33 @@ import { pool } from '../../src/config/database.js';
 import { getAuctions } from '../../src/services/auction.service.js';
 import { resetDb, createUser, createAuction } from './helpers/db.js';
 
-const SORTS = ['newest', 'ending_soon', 'price_asc', 'price_desc'];
 const TIED_END = new Date('2030-01-01T00:00:00.000Z');
-const ids = [];
+const fixtures = [];
+
+const cmpId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+// Expected ordering per sort mode, mirroring the ORDER BY in getAuctions
+const EXPECTED_ORDER = {
+  newest: (a, b) => -cmpId(a, b),
+  ending_soon: (a, b) => a.endAt - b.endAt || cmpId(a, b),
+  price_asc: (a, b) => a.price - b.price || cmpId(a, b),
+  price_desc: (a, b) => b.price - a.price || -cmpId(a, b),
+};
+
+async function addAuction(sellerId, price, endAt) {
+  const id = await createAuction({ sellerId, currentPrice: price, endAt });
+  fixtures.push({ id, price, endAt: endAt.getTime() });
+}
 
 beforeAll(async () => {
   await resetDb();
   const sellerId = await createUser();
   // 5 auctions share the same price and end time (tie-breaker must use id)
   for (let i = 0; i < 5; i++) {
-    ids.push(await createAuction({ sellerId, currentPrice: 100, endAt: TIED_END }));
+    await addAuction(sellerId, 100, TIED_END);
   }
-  ids.push(await createAuction({ sellerId, currentPrice: 50, endAt: new Date('2029-06-01T00:00:00.000Z') }));
-  ids.push(await createAuction({ sellerId, currentPrice: 200, endAt: new Date('2031-01-01T00:00:00.000Z') }));
+  await addAuction(sellerId, 50, new Date('2029-06-01T00:00:00.000Z'));
+  await addAuction(sellerId, 200, new Date('2031-01-01T00:00:00.000Z'));
 });
 
 afterAll(async () => {
@@ -28,6 +42,7 @@ async function collectAllPages(sort, limit) {
   let pages = 0;
   do {
     const { items, nextCursor } = await getAuctions({ sort, limit, cursor });
+    expect(items.length).toBeLessThanOrEqual(limit);
     seen.push(...items.map((a) => a.id));
     cursor = nextCursor;
     pages += 1;
@@ -35,11 +50,11 @@ async function collectAllPages(sort, limit) {
   return seen;
 }
 
-describe.each(SORTS)('getAuctions cursor pagination (sort=%s)', (sort) => {
-  it.each([1, 2, 3])('returns every auction exactly once with limit=%i', async (limit) => {
+describe.each(Object.keys(EXPECTED_ORDER))('getAuctions cursor pagination (sort=%s)', (sort) => {
+  it.each([1, 2, 3])('returns every auction exactly once, in order, with limit=%i', async (limit) => {
     const seen = await collectAllPages(sort, limit);
-    expect(seen).toHaveLength(ids.length);
-    expect(new Set(seen).size).toBe(ids.length);
-    expect([...seen].sort()).toEqual([...ids].sort());
+    const expected = [...fixtures].sort(EXPECTED_ORDER[sort]).map((f) => f.id);
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(seen).toEqual(expected);
   });
 });
