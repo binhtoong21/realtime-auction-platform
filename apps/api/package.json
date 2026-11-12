@@ -45,6 +45,7 @@
     "@testcontainers/redis": "^12.2.1",
     "node-pg-migrate": "^8.0.4",
     "nodemon": "^3.1.0",
+    "supertest": "^7.3.2",
     "testcontainers": "^12.2.1",
     "vitest": "^4.1.6"
   }
