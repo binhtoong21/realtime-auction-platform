@@ -186,7 +186,7 @@ describe('processAuctionEnd and concurrent bids', () => {
 describe('auction-end job on a real BullMQ queue', () => {
   it('runs again after an anti-snipe extension and closes the auction', async () => {
     const sellerId = await createUser();
-    const auctionId = await createAuction({ sellerId, endAt: new Date(Date.now() + 1000) });
+    const auctionId = await createAuction({ sellerId, endAt: new Date(Date.now() + 60 * 60 * 1000) });
 
     const queueName = `auction-end-test-${uuidv7()}`;
     const queueConn = createRedisConnection('test-queue');
@@ -205,19 +205,34 @@ describe('auction-end job on a real BullMQ queue', () => {
     );
 
     try {
-      await queue.add('auction-end', { auctionId }, { jobId: `auction_end_${auctionId}`, delay: 1000 });
-      // Anti-snipe extension before the job fires
-      await pool.query("UPDATE auctions SET end_at = now() + interval '3 seconds' WHERE id = $1", [auctionId]);
+      // Deadline far ahead, as if an anti-snipe extension already happened
+      await pool.query("UPDATE auctions SET end_at = now() + interval '1 hour' WHERE id = $1", [auctionId]);
+      const jobId = `auction_end_${auctionId}`;
+      await queue.add('auction-end', { auctionId }, { jobId });
 
+      // First run must see the extension and move the same job back to delayed
       const deadline = Date.now() + 15000;
+      let state = await (await queue.getJob(jobId))?.getState();
+      while ((runs < 1 || state !== 'delayed') && Date.now() < deadline) {
+        await sleep(100);
+        state = await (await queue.getJob(jobId))?.getState();
+      }
+      expect(runs).toBe(1);
+      expect(state).toBe('delayed');
+      expect((await getAuction(auctionId)).status).toBe('active');
+
+      // Deadline passes: promote the delayed job instead of waiting an hour
+      await pool.query("UPDATE auctions SET end_at = now() - interval '1 second' WHERE id = $1", [auctionId]);
+      await (await queue.getJob(jobId)).promote();
+
       let auction = await getAuction(auctionId);
       while (auction.status === 'active' && Date.now() < deadline) {
-        await sleep(250);
+        await sleep(100);
         auction = await getAuction(auctionId);
       }
 
       expect(auction.status).toBe('no_sale');
-      expect(runs).toBeGreaterThanOrEqual(2);
+      expect(runs).toBe(2);
     } finally {
       await worker.close();
       await queue.obliterate({ force: true });
