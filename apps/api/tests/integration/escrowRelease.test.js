@@ -259,4 +259,83 @@ describe('escrow money out (release, auto-confirm, dispute, refund)', () => {
       { idempotencyKey: `refund_${paymentId}` }
     );
   });
+
+  it('9. concurrent opposite resolveDispute calls -> exactly one fulfils, the other rejects with 409', async () => {
+    const { buyerId, auctionId, paymentId } = await setupEscrowFixture({ auctionStatus: 'shipped', paymentStatus: 'frozen' });
+    const admin1 = await createUser();
+    const admin2 = await createUser();
+    const disputeId = uuidv7();
+
+    await pool.query(
+      `INSERT INTO disputes (id, payment_id, auction_id, opened_by, reason, description, evidence_urls, status, deadline_at)
+       VALUES ($1, $2, $3, $4, $5, 'Testing race', $6, 'under_review', NOW() + INTERVAL '7 days')`,
+      [disputeId, paymentId, auctionId, buyerId, DisputeReason.ITEM_NOT_AS_DESCRIBED, ['https://example.com/item.jpg']]
+    );
+
+    stripe.refunds.create.mockResolvedValue({ id: 're_race', status: 'succeeded' });
+
+    const [r1, r2] = await Promise.allSettled([
+      resolveDispute({
+        disputeId,
+        adminId: admin1,
+        outcome: 'seller_wins',
+        resolutionNote: 'Seller proof',
+        rejectionReason: 'INSUFFICIENT_EVIDENCE',
+      }),
+      resolveDispute({
+        disputeId,
+        adminId: admin2,
+        outcome: 'buyer_wins',
+        resolutionNote: 'Buyer claim',
+        policyRule: 'ITEM_NOT_AS_DESCRIBED',
+      }),
+    ]);
+
+    const fulfilled = [r1, r2].filter((r) => r.status === 'fulfilled');
+    const rejected = [r1, r2].filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason.statusCode).toBe(409);
+
+    const winnerOutcome = fulfilled[0].value.status;
+    const payment = await getPayment(paymentId);
+    if (winnerOutcome === 'resolved_seller_wins') {
+      expect(payment.status).toBe('captured');
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+    } else {
+      expect(payment.status).toBe('refunded');
+      expect(schedulePayoutJob).not.toHaveBeenCalled();
+    }
+  });
+
+  it('10. resolveDispute buyer_wins where refunds.create throws connection error -> resolves successfully, payment stays releasing', async () => {
+    const { buyerId, auctionId, paymentId } = await setupEscrowFixture({ auctionStatus: 'shipped', paymentStatus: 'frozen' });
+    const adminId = await createUser();
+    const disputeId = uuidv7();
+
+    await pool.query(
+      `INSERT INTO disputes (id, payment_id, auction_id, opened_by, reason, description, evidence_urls, status, deadline_at)
+       VALUES ($1, $2, $3, $4, $5, 'Testing network timeout', $6, 'under_review', NOW() + INTERVAL '7 days')`,
+      [disputeId, paymentId, auctionId, buyerId, DisputeReason.ITEM_NOT_AS_DESCRIBED, ['https://example.com/item.jpg']]
+    );
+
+    const connectionErr = Object.assign(new Error('Network timeout'), { type: 'StripeConnectionError' });
+    stripe.refunds.create.mockRejectedValueOnce(connectionErr);
+
+    const resolved = await resolveDispute({
+      disputeId,
+      adminId,
+      outcome: 'buyer_wins',
+      resolutionNote: 'Refund approved',
+      policyRule: 'ITEM_NOT_AS_DESCRIBED',
+    });
+
+    expect(resolved.status).toBe('resolved_buyer_wins');
+
+    const payment = await getPayment(paymentId);
+    expect(payment.status).toBe('releasing');
+
+    const auction = await getAuction(auctionId);
+    expect(auction.status).toBe('refunded');
+  });
 });
