@@ -95,8 +95,9 @@ export const reconcilePendingAttempts = async () => {
         const now = Date.now();
         const neverRequested = !current.stripe_requested_at
           && now - new Date(current.created_at).getTime() > 10 * 60 * 1000;
-        const requestExpired = current.stripe_requested_at
-          && now - new Date(current.stripe_requested_at).getTime() > 60 * 60 * 1000;
+        const lastRequestedAt = current.stripe_last_requested_at || current.stripe_requested_at;
+        const requestExpired = lastRequestedAt
+          && now - new Date(lastRequestedAt).getTime() > 60 * 60 * 1000;
         if (neverRequested || requestExpired) {
           resolved = await applyChargeFailure(current, new Error('no_charge_created'));
         }

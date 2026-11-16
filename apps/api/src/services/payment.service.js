@@ -341,13 +341,15 @@ export const processOrphanRefund = async (stripePiId) => {
       return false;
     }
 
-    const refund =
-      obligation.status === 'refund_pending'
-        ? await stripe.refunds.retrieve(obligation.stripe_refund_id)
-        : await stripe.refunds.create(
-            { payment_intent: stripePiId },
-            { idempotencyKey: `refund_${stripePiId}` }
-          );
+    let refund;
+    if (obligation.status === 'refund_pending') {
+      refund = await stripe.refunds.retrieve(obligation.stripe_refund_id);
+    } else {
+      const existingRefunds = await stripe.refunds.list({ payment_intent: stripePiId, limit: 10 });
+      const reusable = existingRefunds.data.find((r) => ['succeeded', 'pending', 'requires_action'].includes(r.status));
+      refund = reusable
+        ?? await stripe.refunds.create({ payment_intent: stripePiId }, { idempotencyKey: `refund_${stripePiId}` });
+    }
     const succeeded = refund.status === 'succeeded';
     const failed = ['failed', 'canceled'].includes(refund.status);
     const status = succeeded ? 'refunded' : failed ? 'failed' : 'refund_pending';
@@ -474,7 +476,8 @@ export const runChargeAttempt = async (attempt) => {
       // This statement commits before Stripe can receive the create request.
       const requested = await pool.query(
         `UPDATE payment_attempts
-         SET stripe_requested_at = COALESCE(stripe_requested_at, NOW())
+         SET stripe_requested_at = COALESCE(stripe_requested_at, NOW()),
+             stripe_last_requested_at = NOW()
          WHERE id = $1 AND status = 'pending' AND locked_until = $2::timestamptz
          RETURNING id`,
         [current.id, current.lease_token]
@@ -675,6 +678,7 @@ export const createEscrowCharge = async ({ auctionId, winnerId, sellerId, amount
   const paymentId = uuidv7();
   const client = await pool.connect();
   let attempt;
+  let duplicate = false;
   try {
     await client.query('BEGIN');
     await client.query(
@@ -693,9 +697,16 @@ export const createEscrowCharge = async ({ auctionId, winnerId, sellerId, amount
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
-    throw err;
+    if (err.code === '23505' && err.constraint === 'uq_payments_auction_id') {
+      duplicate = true;
+    } else {
+      throw err;
+    }
   } finally {
     client.release();
+  }
+  if (duplicate) {
+    return continueExistingAuctionPayment(auctionId);
   }
   return escrowAttemptResult(attempt);
 };
@@ -713,6 +724,26 @@ export const resumeEscrowCharge = async (paymentId) => {
 };
 
 /**
+ * Another execution already created the payment for this auction (one payment per auction).
+ * Continue that payment instead of charging a second time.
+ */
+const continueExistingAuctionPayment = async (auctionId) => {
+  const { rows } = await pool.query(
+    'SELECT id, status FROM payments WHERE auction_id = $1',
+    [auctionId]
+  );
+  const existing = rows[0];
+  if (existing.status === PaymentStatus.HOLD_PENDING) {
+    return resumeEscrowCharge(existing.id);
+  }
+  return {
+    paymentId: existing.id,
+    holdSuccess: existing.status === PaymentStatus.HELD,
+    stripeError: null,
+  };
+};
+
+/**
  * Handle case where winner has no payment method at all.
  * Directly creates a hold_failed → grace_period payment.
  */
@@ -721,12 +752,19 @@ const handleNoPaymentMethod = async ({ auctionId, winnerId, sellerId, amountInCe
   const paymentId = uuidv7();
   const graceExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  await pool.query(
-    `INSERT INTO payments (id, auction_id, buyer_id, seller_id, amount, platform_fee_amount,
-                           status, grace_expires_at, capture_attempts)
-     VALUES ($1, $2, $3, $4, $5, $6, 'grace_period', $7, 1)`,
-    [paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, graceExpiresAt]
-  );
+  try {
+    await pool.query(
+      `INSERT INTO payments (id, auction_id, buyer_id, seller_id, amount, platform_fee_amount,
+                             status, grace_expires_at, capture_attempts)
+       VALUES ($1, $2, $3, $4, $5, $6, 'grace_period', $7, 1)`,
+      [paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, graceExpiresAt]
+    );
+  } catch (err) {
+    if (err.code === '23505' && err.constraint === 'uq_payments_auction_id') {
+      return continueExistingAuctionPayment(auctionId);
+    }
+    throw err;
+  }
 
   await pool.query(
     `UPDATE auctions SET status = 'pending_payment', updated_at = NOW()

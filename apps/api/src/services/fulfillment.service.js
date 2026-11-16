@@ -624,11 +624,15 @@ export const expireShippingDeadline = async (auctionId) => {
   Promise.allSettled([
     emitToUser(payment.seller_id, EventNames.SHIPPING_OVERDUE, {
       auctionId,
-      message: 'Đơn hàng đã bị hủy do quá hạn giao. Tiền đã được hoàn lại cho người mua.'
+      message: refundSucceeded
+        ? 'Đơn hàng đã bị hủy do quá hạn giao. Tiền đã được hoàn lại cho người mua.'
+        : 'Đơn hàng đã bị hủy do quá hạn giao. Hệ thống đang hoàn tiền cho người mua.'
     }),
     emitToUser(payment.buyer_id, EventNames.PAYMENT_STATUS, {
       status: refundSucceeded ? PaymentStatus.REFUNDED : PaymentStatus.RELEASING,
-      message: 'Người bán không giao hàng đúng hạn. Tiền đã được hoàn lại cho bạn.'
+      message: refundSucceeded
+        ? 'Người bán không giao hàng đúng hạn. Tiền đã được hoàn lại cho bạn.'
+        : 'Người bán không giao hàng đúng hạn. Hệ thống đang xử lý hoàn tiền cho bạn.'
     })
   ]).then(results => {
     results.forEach((res, index) => {
