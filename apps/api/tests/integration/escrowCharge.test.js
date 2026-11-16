@@ -12,7 +12,12 @@ import { resetDb, createUser, createAuction } from './helpers/db.js';
 
 vi.mock('../../src/config/stripe.js', () => ({
   default: {
-    paymentIntents: { create: vi.fn(), cancel: vi.fn(async () => ({})), retrieve: vi.fn(), search: vi.fn() },
+    paymentIntents: {
+      create: vi.fn(),
+      cancel: vi.fn(async () => ({})),
+      retrieve: vi.fn(async (id) => ({ id, amount: 5000, status: 'succeeded' })),
+      search: vi.fn(),
+    },
     paymentMethods: { retrieve: vi.fn() },
     refunds: {
       create: vi.fn(async () => ({ id: 're_orphan', status: 'succeeded' })),
@@ -471,8 +476,13 @@ describe('attempt execution safety', () => {
        VALUES ('pi_refund_existing', $1, 'pending', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '6 minutes')`,
       [attempt.id]
     );
+    stripe.paymentIntents.retrieve.mockResolvedValueOnce({
+      id: 'pi_refund_existing',
+      status: 'succeeded',
+      amount: 5000,
+    });
     stripe.refunds.list.mockResolvedValueOnce({
-      data: [{ id: 're_old', status: 'succeeded' }],
+      data: [{ id: 're_old', status: 'succeeded', amount: 5000 }],
     });
     await retryOrphanRefunds();
     const { rows: [refund] } = await pool.query(
@@ -481,6 +491,38 @@ describe('attempt execution safety', () => {
     expect(refund.status).toBe('refunded');
     expect(refund.stripe_refund_id).toBe('re_old');
     expect(stripe.refunds.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a new refund when only a partial refund exists for an orphan obligation', async () => {
+    const { attempt } = await pendingAttempt();
+    await pool.query(
+      `INSERT INTO orphan_refunds (stripe_pi_id, attempt_id, status, created_at, updated_at)
+       VALUES ('pi_refund_partial', $1, 'pending', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '6 minutes')`,
+      [attempt.id]
+    );
+    stripe.paymentIntents.retrieve.mockResolvedValueOnce({
+      id: 'pi_refund_partial',
+      status: 'succeeded',
+      amount: 5000,
+    });
+    stripe.refunds.list.mockResolvedValueOnce({
+      data: [{ id: 're_partial', status: 'succeeded', amount: 500 }],
+    });
+    stripe.refunds.create.mockResolvedValueOnce({
+      id: 're_created',
+      status: 'succeeded',
+      amount: 5000,
+    });
+    await retryOrphanRefunds();
+    const { rows: [refund] } = await pool.query(
+      `SELECT * FROM orphan_refunds WHERE stripe_pi_id = 'pi_refund_partial'`
+    );
+    expect(stripe.refunds.create).toHaveBeenCalledWith(
+      { payment_intent: 'pi_refund_partial' },
+      { idempotencyKey: 'refund_pi_refund_partial' }
+    );
+    expect(refund.status).toBe('refunded');
+    expect(refund.stripe_refund_id).toBe('re_created');
   });
 
   it('does not report an uncommitted success after another executor takes the lease', async () => {

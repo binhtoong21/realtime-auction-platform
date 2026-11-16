@@ -345,8 +345,11 @@ export const processOrphanRefund = async (stripePiId) => {
     if (obligation.status === 'refund_pending') {
       refund = await stripe.refunds.retrieve(obligation.stripe_refund_id);
     } else {
+      const paymentIntent = await stripe.paymentIntents.retrieve(stripePiId);
       const existingRefunds = await stripe.refunds.list({ payment_intent: stripePiId, limit: 10 });
-      const reusable = existingRefunds.data.find((r) => ['succeeded', 'pending', 'requires_action'].includes(r.status));
+      const reusable = existingRefunds.data.find(
+        (r) => r.amount === paymentIntent?.amount && ['succeeded', 'pending', 'requires_action'].includes(r.status)
+      );
       refund = reusable
         ?? await stripe.refunds.create({ payment_intent: stripePiId }, { idempotencyKey: `refund_${stripePiId}` });
     }
