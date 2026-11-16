@@ -16,7 +16,7 @@ import './PaymentHistoryPage.css';
 
 const STATUS_TABS = [
   { value: '', label: 'All' },
-  { value: 'authorized', label: 'Authorized' },
+  { value: 'held', label: 'Held in escrow' },
   { value: 'captured', label: 'Captured' },
   { value: 'transferred', label: 'Transferred' },
   { value: 'frozen', label: 'Disputed' },
@@ -143,7 +143,7 @@ export function PaymentHistoryPage() {
                     <td><StatusBadge status={payment.status} type="payment" /></td>
                     <td className="date-cell">{formatDate(payment.created_at)}</td>
                     <td className="actions-cell">
-                      {payment.status === PaymentStatus.AUTHORIZED && (
+                      {payment.status === PaymentStatus.HELD && (
                         <div className="action-buttons">
                           {payment.auctionStatus === AuctionStatus.SHIPPED && (
                             <>

@@ -1,7 +1,6 @@
 import { Worker } from 'bullmq';
 import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
-import stripe from '../config/stripe.js';
 import { v7 as uuidv7 } from 'uuid';
 import { DisputeStatus, PaymentStatus, EventNames } from '@auction/shared-constants';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
@@ -26,14 +25,13 @@ const expireDispute = async (disputeInfo) => {
   console.log(`[DisputeWorker] Expiring dispute: ${disputeInfo.id}`);
   
   let payment;
-  let originalPaymentStatus;
 
-  const client1 = await pool.connect();
+  const client = await pool.connect();
   try {
-    await client1.query('BEGIN');
+    await client.query('BEGIN');
     
     // DB Lock
-    const res = await client1.query(
+    const res = await client.query(
       `SELECT d.*, p.status as p_status, p.stripe_pi_id, p.buyer_id, p.seller_id, p.amount, p.id as p_id
        FROM disputes d
        JOIN payments p ON d.payment_id = p.id
@@ -42,7 +40,7 @@ const expireDispute = async (disputeInfo) => {
     );
 
     if (res.rowCount === 0) {
-      await client1.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return;
     }
 
@@ -55,95 +53,41 @@ const expireDispute = async (disputeInfo) => {
       seller_id: row.seller_id,
       amount: row.amount
     };
-    originalPaymentStatus = payment.status;
 
     if (row.status !== DisputeStatus.OPEN && row.status !== DisputeStatus.UNDER_REVIEW) {
-      await client1.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return;
     }
 
-    if (payment.status === PaymentStatus.FROZEN) {
-      const updateRes = await client1.query(
-        `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
-        [PaymentStatus.CAPTURE_PENDING, payment.id, PaymentStatus.FROZEN]
-      );
-      if (updateRes.rowCount === 0) {
-        await client1.query('ROLLBACK');
-        return;
-      }
-    }
-
-    await client1.query('COMMIT');
-  } catch (err) {
-    await client1.query('ROLLBACK');
-    throw err;
-  } finally {
-    client1.release();
-  }
-
-  // Stripe Capture if needed
-  if (originalPaymentStatus === PaymentStatus.FROZEN) {
-    try {
-      await stripe.paymentIntents.capture(payment.stripe_pi_id);
-    } catch (stripeErr) {
-      console.error(`[DisputeWorker] Stripe capture failed for dispute expiry ${disputeInfo.id}:`, stripeErr.message);
-      throw stripeErr;
-    }
-  }
-
-  // DB Confirm
-  const client2 = await pool.connect();
-  try {
-    await client2.query('BEGIN');
-
-    const lockRes = await client2.query(
-      `SELECT d.status as d_status, p.status as p_status 
-       FROM disputes d
-       JOIN payments p ON d.payment_id = p.id
-       WHERE d.id = $1 FOR UPDATE OF d, p`,
-      [disputeInfo.id]
-    );
-
-    if (lockRes.rowCount === 0) {
-      await client2.query('ROLLBACK');
-      return;
-    }
-
-    const { d_status, p_status } = lockRes.rows[0];
-
-    if (d_status !== DisputeStatus.OPEN && d_status !== DisputeStatus.UNDER_REVIEW) {
-      await client2.query('ROLLBACK');
-      return;
-    }
-
-    if (originalPaymentStatus !== PaymentStatus.FROZEN) {
-      if (p_status === PaymentStatus.CAPTURE_PENDING) {
-        await client2.query('ROLLBACK');
-        throw new Error(`Payment ${payment.id} is stuck in capture_pending. Aborting dispute expiry so sweeper can retry.`);
-      }
-      if (p_status !== PaymentStatus.CAPTURED) {
-        await client2.query('ROLLBACK');
-        throw new Error(`Payment ${payment.id} is not CAPTURED (status: ${p_status}). Aborting dispute expiry.`);
-      }
-    }
-
-    await client2.query(
+    const updateDisputeRes = await client.query(
       `UPDATE disputes SET 
         status = $1, 
         resolved_at = NOW(),
         updated_at = NOW()
-       WHERE id = $2`,
-      [DisputeStatus.EXPIRED, disputeInfo.id]
+       WHERE id = $2 AND status IN ($3, $4) RETURNING id`,
+      [DisputeStatus.EXPIRED, disputeInfo.id, DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW]
     );
 
-    if (originalPaymentStatus === PaymentStatus.FROZEN) {
-      await client2.query(
-        `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
-        [PaymentStatus.CAPTURED, payment.id]
-      );
+    if (updateDisputeRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return;
     }
 
-    await client2.query(
+    if (payment.status === PaymentStatus.FROZEN) {
+      const updateRes = await client.query(
+        `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
+        [PaymentStatus.CAPTURED, payment.id, PaymentStatus.FROZEN]
+      );
+      if (updateRes.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return;
+      }
+    } else if (payment.status !== PaymentStatus.CAPTURED) {
+      await client.query('ROLLBACK');
+      throw new Error(`Payment ${payment.id} is not FROZEN or CAPTURED (status: ${payment.status}). Aborting dispute expiry.`);
+    }
+
+    await client.query(
       `UPDATE auctions SET status = 'completed', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW() WHERE id = $1`,
       [disputeInfo.auction_id]
     );
@@ -157,10 +101,10 @@ const expireDispute = async (disputeInfo) => {
         payment_id: payment.id
       },
       actorId: null
-    }, client2);
+    }, client);
 
     const payloadStr = JSON.stringify({ status: DisputeStatus.EXPIRED, message: 'Dispute expired automatically' });
-    await client2.query(
+    await client.query(
       `INSERT INTO notifications (id, user_id, type, reference_id, reference_type, payload)
        VALUES ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)`,
       [
@@ -169,12 +113,12 @@ const expireDispute = async (disputeInfo) => {
       ]
     );
 
-    await client2.query('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    await client2.query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
     throw err;
   } finally {
-    client2.release();
+    client.release();
   }
 
   // Side effects

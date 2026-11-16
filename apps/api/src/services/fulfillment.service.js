@@ -378,70 +378,32 @@ export const extendShipping = async ({ auctionId, sellerId, reason, ipAddress })
 
 /**
  * Buyer confirms delivery of the item.
- * Triggers Stripe capture and sets auction to completed.
+ * Releases held escrow to captured and sets auction to completed.
  */
 export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
-  let paymentId;
-  let stripePiId;
-  let amount;
-  let sellerId;
-
-  // STEP 1: DB Lock (outside of main transaction to avoid holding lock during I/O)
-  const lockResult = await pool.query(
-    `UPDATE payments p
-     SET status = 'capture_pending', updated_at = NOW()
-     FROM auctions a
-     WHERE p.auction_id = a.id
-       AND p.auction_id = $1
-       AND p.buyer_id = $2
-       AND p.status = 'authorized'
-       AND a.status = 'shipped'
-     RETURNING p.id, p.stripe_pi_id, p.seller_id, p.amount`,
-    [auctionId, buyerId]
-  );
-
-  if (lockResult.rowCount === 0) {
-    const err = new Error('Invalid state for confirming delivery or already processed');
-    err.statusCode = 409;
-    err.errorCode = 'INVALID_PAYMENT_STATE';
-    throw err;
-  }
-
-  paymentId = lockResult.rows[0].id;
-  stripePiId = lockResult.rows[0].stripe_pi_id;
-  sellerId = lockResult.rows[0].seller_id;
-  amount = lockResult.rows[0].amount;
-
-  // STEP 2: Stripe Capture (I/O call)
-  try {
-    await stripe.paymentIntents.capture(stripePiId);
-  } catch (stripeErr) {
-    console.error(`[Fulfillment] Stripe capture failed for payment ${paymentId}:`, stripeErr.message);
-    
-    // Fallback: Sweeper will retry later. Emit WS to both parties.
-    Promise.allSettled([
-      emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
-        status: PaymentStatus.CAPTURE_PENDING,
-        message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
-      }),
-      emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
-        status: PaymentStatus.CAPTURE_PENDING,
-        message: 'Hệ thống đang xử lý xác nhận nhận hàng, vui lòng chờ trong giây lát.',
-      })
-    ]).catch(e => console.error('[Fulfillment] WS emit fallback failed:', e));
-
-    return { captured: false, message: 'Đang xử lý...' };
-  }
-
-  // STEP 3: DB Transaction (Commit)
   const client = await pool.connect();
+  let payment;
   try {
     await client.query('BEGIN');
-
-    await client.query(
-      `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1`,
-      [paymentId]
+    const lockResult = await client.query(
+      `UPDATE payments p
+       SET status = 'captured', updated_at = NOW()
+       FROM auctions a
+       WHERE p.auction_id = a.id
+         AND p.auction_id = $1
+         AND p.buyer_id = $2
+         AND p.status = 'held'
+         AND a.status = 'shipped'
+       RETURNING p.id, p.stripe_pi_id, p.seller_id, p.amount`,
+      [auctionId, buyerId]
     );
+    if (lockResult.rowCount === 0) {
+      const err = new Error('Invalid state for confirming delivery or already processed');
+      err.statusCode = 409;
+      err.errorCode = 'INVALID_PAYMENT_STATE';
+      throw err;
+    }
+    payment = lockResult.rows[0];
 
     const auctionUpdate = await client.query(
       `UPDATE auctions SET status = 'completed', delivered_at = NOW(), updated_at = NOW() WHERE id = $1 AND status = 'shipped'`,
@@ -453,28 +415,27 @@ export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
     }
 
     await writeAuditLog({
-      referenceId: paymentId,
+      referenceId: payment.id,
       referenceType: 'payment',
-      action: 'delivery_confirmed_capture',
-      deltaState: { amount, stripe_pi_id: stripePiId },
+      action: 'delivery_confirmed_release',
+      deltaState: { amount: payment.amount, stripe_pi_id: payment.stripe_pi_id },
       actorId: buyerId,
       ipAddress,
     }, client);
 
     await client.query('COMMIT');
-  } catch (dbErr) {
+  } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
-    console.error(`[Fulfillment] DB update failed after capture for payment ${paymentId}`, dbErr);
-    throw dbErr;
+    throw err;
   } finally {
     client.release();
   }
 
   // STEP 4: Post-transaction Side Effects
   Promise.allSettled([
-    schedulePayoutJob(paymentId, auctionId),
+    schedulePayoutJob(payment.id, auctionId),
     removeDeliveryJobs(auctionId),
-    emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
+    emitToUser(payment.seller_id, EventNames.PAYMENT_STATUS, {
       status: PaymentStatus.CAPTURED,
       message: 'Buyer đã xác nhận nhận hàng. Tiền đang được chuyển.',
     })
@@ -492,29 +453,25 @@ export const confirmDelivery = async ({ auctionId, buyerId, ipAddress }) => {
 /**
  * System auto-confirms delivery if buyer does not respond after deadline.
  * Called by BullMQ worker `delivery-auto-confirm`.
- * Idempotent: relies on payment.status = 'authorized' and auction.status = 'shipped'.
+ * Idempotent: relies on payment.status = 'held' and auction.status = 'shipped'.
  */
 export const autoConfirmDelivery = async (auctionId) => {
   console.log(`[Fulfillment] Executing autoConfirmDelivery for auction: ${auctionId}`);
   let paymentId;
-  let stripePiId;
   let sellerId;
   let buyerId;
-  let amountCents;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // STEP 1: Lock and Guard
-    // Uses the same guard as confirmDelivery, but no buyerId check since system initiates.
     const lockResult = await client.query(
       `UPDATE payments p
-       SET status = 'capture_pending', updated_at = NOW()
+       SET status = 'captured', updated_at = NOW()
        FROM auctions a
        WHERE p.auction_id = a.id
          AND p.auction_id = $1
-         AND p.status = 'authorized'
+         AND p.status = 'held'
          AND a.status = 'shipped'
          AND a.delivery_deadline_at <= NOW()
        RETURNING p.id, p.stripe_pi_id, p.seller_id, p.buyer_id, p.amount`,
@@ -523,82 +480,16 @@ export const autoConfirmDelivery = async (auctionId) => {
 
     if (lockResult.rowCount === 0) {
       await client.query('ROLLBACK');
-      console.log(`[Fulfillment] autoConfirmDelivery skipped for auction ${auctionId} - not authorized/shipped (idempotent guard)`);
+      console.log(`[Fulfillment] autoConfirmDelivery skipped for auction ${auctionId} - not held/shipped (idempotent guard)`);
       return { captured: false, skipped: true };
     }
 
     const payment = lockResult.rows[0];
     paymentId = payment.id;
-    stripePiId = payment.stripe_pi_id;
     sellerId = payment.seller_id;
     buyerId = payment.buyer_id;
-    amountCents = payment.amount;
 
-    await client.query('COMMIT');
-  } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
-    throw err;
-  } finally {
-    client.release();
-  }
-
-  // STEP 2: Stripe Capture
-  try {
-    const captureResult = await stripe.paymentIntents.capture(stripePiId, {
-      amount_to_capture: amountCents,
-    });
-
-    if (captureResult.status !== 'succeeded') {
-      throw new Error(`Stripe capture failed with status: ${captureResult.status}`);
-    }
-  } catch (stripeErr) {
-    console.error(`[Fulfillment] Stripe capture failed for autoConfirmDelivery ${auctionId}:`, stripeErr.message);
-    
-    // Transient or permanent error -> fallback to payment sweeper.
-    // Ensure both parties know the system attempted auto-confirm but is waiting on payment processing.
-    Promise.allSettled([
-      emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
-        status: PaymentStatus.CAPTURE_PENDING,
-        message: 'Hệ thống đang tự động xác nhận thanh toán do quá hạn. Xin vui lòng chờ giây lát.',
-      }),
-      emitToUser(sellerId, EventNames.PAYMENT_STATUS, {
-        status: PaymentStatus.CAPTURE_PENDING,
-        message: 'Hệ thống đang tự động xác nhận thanh toán do quá hạn. Đang chờ xử lý từ Stripe.',
-      }),
-      writeAuditLog({
-        referenceId: paymentId,
-        referenceType: 'payment',
-        action: 'auto_confirm_capture_failed',
-        deltaState: { error: stripeErr.message },
-        actorId: null, // System action
-      }),
-    ]).then(results => {
-      results.forEach((res, index) => {
-        if (res.status === 'rejected') {
-          console.error(`[Fulfillment] autoConfirmDelivery fallback side-effect [${index}] failed:`, res.reason);
-        }
-      });
-    });
-
-    return { captured: false, pendingRetry: true };
-  }
-
-  // STEP 3: DB Finalize
-  const client2 = await pool.connect();
-  try {
-    await client2.query('BEGIN');
-
-    const paymentUpdate = await client2.query(
-      `UPDATE payments SET status = 'captured', capture_attempts = capture_attempts + 1, updated_at = NOW() 
-       WHERE id = $1 AND status = 'capture_pending'`,
-      [paymentId]
-    );
-
-    if (paymentUpdate.rowCount === 0) {
-      throw new Error(`State mismatch: Payment ${paymentId} was not capture_pending during DB finalize.`);
-    }
-
-    const auctionUpdate = await client2.query(
+    const auctionUpdate = await client.query(
       `UPDATE auctions SET status = 'completed', delivered_at = NOW(), updated_at = NOW() 
        WHERE id = $1 AND status = 'shipped' AND delivery_deadline_at <= NOW()`,
       [auctionId]
@@ -614,15 +505,14 @@ export const autoConfirmDelivery = async (auctionId) => {
       action: 'auto_confirm_delivery',
       deltaState: { status: PaymentStatus.CAPTURED, auctionStatus: AuctionStatus.COMPLETED },
       actorId: null, // System action
-    }, client2);
+    }, client);
 
-    await client2.query('COMMIT');
-  } catch (dbErr) {
-    try { await client2.query('ROLLBACK'); } catch (_) { /* ignore */ }
-    console.error(`[Fulfillment] DB update failed after auto-capture for payment ${paymentId}`, dbErr);
-    throw dbErr;
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+    throw err;
   } finally {
-    client2.release();
+    client.release();
   }
 
   // STEP 4: Post-transaction Side Effects
@@ -645,6 +535,114 @@ export const autoConfirmDelivery = async (auctionId) => {
   });
 
   return { captured: true };
+};
+
+/**
+ * System expires shipping deadline if seller has not shipped before shipping_deadline_at.
+ * Idempotent: transitions payment 'held' -> 'releasing' -> 'refunded' and auction -> 'no_sale'.
+ */
+export const expireShippingDeadline = async (auctionId) => {
+  const client = await pool.connect();
+  let payment;
+
+  try {
+    await client.query('BEGIN');
+
+    const lockResult = await client.query(
+      `UPDATE payments p
+       SET status = 'releasing', updated_at = NOW()
+       FROM auctions a
+       WHERE p.auction_id = a.id
+         AND p.auction_id = $1
+         AND p.status = 'held'
+         AND a.status = 'awaiting_ship'
+         AND a.shipping_deadline_at <= NOW()
+       RETURNING p.id, p.stripe_pi_id, p.seller_id, p.buyer_id, p.amount`,
+      [auctionId]
+    );
+
+    if (lockResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      console.log(`[Fulfillment] shipping-deadline skipped for auction ${auctionId} - not held/awaiting_ship (idempotent guard)`);
+      return { refunded: false, skipped: true };
+    }
+
+    payment = lockResult.rows[0];
+
+    const auctionUpdate = await client.query(
+      `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1 AND status = 'awaiting_ship'`,
+      [auctionId]
+    );
+    if (auctionUpdate.rowCount === 0) {
+      throw new Error(`State mismatch: Auction ${auctionId} was not awaiting_ship during shipping-deadline DB finalize.`);
+    }
+
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'shipping_overdue_refund_started',
+      deltaState: { status: PaymentStatus.RELEASING, auctionStatus: AuctionStatus.NO_SALE },
+      actorId: null,
+    }, client);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  let refund;
+  try {
+    refund = await stripe.refunds.create(
+      { payment_intent: payment.stripe_pi_id },
+      { idempotencyKey: `refund_${payment.id}` }
+    );
+  } catch (stripeErr) {
+    console.error(`[Fulfillment] Stripe refund failed for shipping-deadline ${auctionId}:`, stripeErr.message);
+    if (stripeErr.type !== 'StripeInvalidRequestError') {
+      throw stripeErr;
+    }
+  }
+
+  const refundSucceeded = refund?.status === 'succeeded';
+  if (refundSucceeded) {
+    await pool.query(
+      `UPDATE payments SET status = 'refunded', updated_at = NOW() WHERE id = $1 AND status = 'releasing'`,
+      [payment.id]
+    );
+    await writeAuditLog({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: 'shipping_overdue_refund',
+      deltaState: { stripe_refund_id: refund.id },
+      actorId: null,
+    });
+  }
+
+  Promise.allSettled([
+    emitToUser(payment.seller_id, EventNames.SHIPPING_OVERDUE, {
+      auctionId,
+      message: refundSucceeded
+        ? 'Đơn hàng đã bị hủy do quá hạn giao. Tiền đã được hoàn lại cho người mua.'
+        : 'Đơn hàng đã bị hủy do quá hạn giao. Hệ thống đang hoàn tiền cho người mua.'
+    }),
+    emitToUser(payment.buyer_id, EventNames.PAYMENT_STATUS, {
+      status: refundSucceeded ? PaymentStatus.REFUNDED : PaymentStatus.RELEASING,
+      message: refundSucceeded
+        ? 'Người bán không giao hàng đúng hạn. Tiền đã được hoàn lại cho bạn.'
+        : 'Người bán không giao hàng đúng hạn. Hệ thống đang xử lý hoàn tiền cho bạn.'
+    })
+  ]).then(results => {
+    results.forEach((res, index) => {
+      if (res.status === 'rejected') {
+        console.error(`[Fulfillment] shipping-deadline side-effect [${index}] failed:`, res.reason);
+      }
+    });
+  });
+
+  return { refunded: refundSucceeded };
 };
 
 /**

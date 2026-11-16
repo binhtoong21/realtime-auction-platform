@@ -123,22 +123,8 @@ export const paymentQueue = new Queue('payment', {
   }
 });
 
-const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
-
-/**
- * Schedule an emergency-capture job 6 days after Auth Hold success.
- * If a dispute is open near auth expiry (Day 7), this job force-captures.
- */
-export const scheduleEmergencyCapture = async (paymentId, auctionId) => {
-  await paymentQueue.add('emergency-capture', { paymentId, auctionId }, {
-    jobId: `emergency_capture_${paymentId}`,
-    delay: SIX_DAYS_MS,
-  });
-
-  console.log(`[Queue] Scheduled emergency-capture for payment ${paymentId} in 6 days`);
-};
 
 /**
  * Schedule a grace-period-expiry job 24h after Auth Hold failure.
@@ -213,7 +199,7 @@ export const startWebhookReaper = async () => {
  * Register a repeatable payment sweeper job.
  *
  * Runs every 10 minutes to reconcile payments stuck in transitional states
- * (capture_pending, hold_pending) that indicate a crash between a Stripe
+ * (hold_pending, releasing) that indicate a crash between a Stripe
  * API call and the subsequent DB update.
  *
  * BullMQ deduplicates repeatables by name + repeat config hash,

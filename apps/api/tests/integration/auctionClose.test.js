@@ -5,7 +5,7 @@ import { pool } from '../../src/config/database.js';
 import { createRedisConnection, redisClient } from '../../src/config/redis.js';
 import { processBid } from '../../src/services/bidding.service.js';
 import { processAuctionEnd } from '../../src/jobs/auctionEnd.processor.js';
-import { createAuthHold } from '../../src/services/payment.service.js';
+import { createEscrowCharge } from '../../src/services/payment.service.js';
 import { ErrorCodes } from '@auction/shared-constants';
 import { resetDb, createUser, createAuction } from './helpers/db.js';
 
@@ -16,7 +16,8 @@ vi.mock('../../src/services/socket.service.js', () => ({
 }));
 
 vi.mock('../../src/services/payment.service.js', () => ({
-  createAuthHold: vi.fn(async () => ({ paymentId: uuidv7(), holdSuccess: true })),
+  createEscrowCharge: vi.fn(async () => ({ paymentId: uuidv7(), holdSuccess: true })),
+  resumeEscrowCharge: vi.fn(async () => null),
   schedulePostHoldJobs: vi.fn(async () => {}),
 }));
 
@@ -125,7 +126,7 @@ describe('processBid under concurrency', () => {
     const after = await getAuction(auctionId);
     expect(after.status).toBe('ended');
     expect(after.winner_id).toBe(bidders[topIndex]);
-    expect(createAuthHold).toHaveBeenCalledWith(
+    expect(createEscrowCharge).toHaveBeenCalledWith(
       expect.objectContaining({ auctionId, winnerId: bidders[topIndex], amountInCents: 130 }),
     );
   });

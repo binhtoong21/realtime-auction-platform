@@ -35,6 +35,7 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
     payment: {
       LABELS: {
         AUTHORIZED: 'Authorized',
+        HELD: 'Held in escrow',
         CAPTURED: 'Captured',
         TRANSFERRED: 'Paid Out',
         REFUNDED: 'Refunded',
@@ -44,10 +45,12 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
         FROZEN: 'Disputed',
         HOLD_PENDING: 'Processing',
         CAPTURE_PENDING: 'Processing',
+        RELEASING: 'Refunding',
         RELEASED: 'Released'
       },
       TOKENS: {
         AUTHORIZED: 'status-badge--brand',     // Extrapolated: active hold = brand
+        HELD: 'status-badge--brand',
         CAPTURED: 'status-badge--success',     // Extrapolated: success state
         TRANSFERRED: 'status-badge--success',  // Extrapolated: final success
         REFUNDED: 'status-badge--danger',      // Literal §8.4: danger
@@ -57,6 +60,7 @@ export function StatusBadge({ status, type = 'auction', className = '' }) {
         FROZEN: 'status-badge--warning',       // Extrapolated: disputed pattern
         HOLD_PENDING: 'status-badge--secondary', // Extrapolated: in-flight processing
         CAPTURE_PENDING: 'status-badge--secondary',// Extrapolated: in-flight processing
+        RELEASING: 'status-badge--secondary',
         RELEASED: 'status-badge--disabled'     // Extrapolated: terminal inactive
       }
     },

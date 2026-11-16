@@ -53,8 +53,8 @@ export const createDisputeFromRequest = async ({ id, buyerId, paymentId, reason,
       throw err;
     }
 
-    if (payment.payment_status !== PaymentStatus.AUTHORIZED) {
-      const err = new Error('Payment is not in a valid state to open a dispute. Disputes are only allowed during Escrow (Authorized).');
+    if (payment.payment_status !== PaymentStatus.HELD) {
+      const err = new Error('Payment is not in a valid state to open a dispute. Disputes are only allowed during Escrow (Held).');
       err.statusCode = 422;
       err.errorCode = 'INVALID_PAYMENT_STATE';
       throw err;
@@ -405,12 +405,12 @@ export const withdrawDispute = async ({ disputeId, buyerId }) => {
       [DisputeStatus.WITHDRAWN, disputeId]
     );
 
-    // 2. Unfreeze payment (revert to authorized)
-    // Assert: Payment was AUTHORIZED before dispute (we enforce this in openDispute).
+    // 2. Unfreeze payment (revert to held)
+    // Assert: Payment was HELD before dispute (we enforce this in openDispute).
     // Once payout (captured) happens, the escrow lifecycle ends.
     const unfreezeRes = await client.query(
       `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
-      [PaymentStatus.AUTHORIZED, dispute.payment_id, PaymentStatus.FROZEN]
+      [PaymentStatus.HELD, dispute.payment_id, PaymentStatus.FROZEN]
     );
 
     if (unfreezeRes.rowCount === 0) {
@@ -543,14 +543,16 @@ export const reviewDispute = async ({ disputeId, adminId }) => {
 export const resolveDispute = async ({ disputeId, adminId, outcome, resolutionNote, policyRule, rejectionReason, ipAddress }) => {
   let dispute;
   let payment;
-  let originalPaymentStatus;
 
-  const client1 = await pool.connect();
+  const client = await pool.connect();
+  let updatedDispute;
+  const newDisputeStatus = outcome === 'buyer_wins' ? DisputeStatus.RESOLVED_BUYER_WINS : DisputeStatus.RESOLVED_SELLER_WINS;
+
   try {
-    await client1.query('BEGIN');
+    await client.query('BEGIN');
 
     // STEP 1: SELECT + Validate
-    const res = await client1.query(
+    const res = await client.query(
       `SELECT d.*, p.id as p_id, p.status as p_status, p.stripe_pi_id, p.buyer_id, p.seller_id, p.amount 
        FROM disputes d
        JOIN payments p ON d.payment_id = p.id
@@ -589,73 +591,8 @@ export const resolveDispute = async ({ disputeId, adminId, outcome, resolutionNo
       throw err;
     }
 
-    // STEP 2: DB Lock (intermediate state)
-    originalPaymentStatus = payment.status;
-    if (outcome === 'buyer_wins') {
-      if (payment.status === PaymentStatus.FROZEN || payment.status === PaymentStatus.CAPTURED) {
-        const updateRes = await client1.query(
-          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
-          [PaymentStatus.RELEASING, payment.id, payment.status]
-        );
-        if (updateRes.rowCount === 0) {
-          const err = new Error('Payment state changed concurrently');
-          err.statusCode = 409;
-          err.errorCode = 'INVALID_PAYMENT_STATE';
-          throw err;
-        }
-      }
-    } else if (outcome === 'seller_wins') {
-      if (payment.status === PaymentStatus.FROZEN) {
-        const updateRes = await client1.query(
-          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
-          [PaymentStatus.CAPTURE_PENDING, payment.id, PaymentStatus.FROZEN]
-        );
-        if (updateRes.rowCount === 0) {
-          const err = new Error('Payment state changed concurrently');
-          err.statusCode = 409;
-          err.errorCode = 'INVALID_PAYMENT_STATE';
-          throw err;
-        }
-      }
-    }
-
-    await client1.query('COMMIT');
-  } catch (err) {
-    await client1.query('ROLLBACK');
-    throw err;
-  } finally {
-    client1.release();
-  }
-
-  // STEP 3: Stripe call (OUTSIDE transaction)
-  let stripeRefundId = null;
-  try {
-    if (outcome === 'buyer_wins') {
-      if (payment.status === PaymentStatus.FROZEN) {
-        await stripe.paymentIntents.cancel(payment.stripe_pi_id);
-      } else if (payment.status === PaymentStatus.CAPTURED) {
-        const refund = await stripe.refunds.create({ payment_intent: payment.stripe_pi_id });
-        stripeRefundId = refund.id;
-      }
-    } else if (outcome === 'seller_wins') {
-      if (payment.status === PaymentStatus.FROZEN) {
-        await stripe.paymentIntents.capture(payment.stripe_pi_id);
-      }
-    }
-  } catch (stripeErr) {
-    console.error(`[DisputeResolution] Stripe call failed for dispute ${dispute.id}:`, stripeErr.message);
-    throw stripeErr;
-  }
-
-  // STEP 4: DB Confirm (in transaction)
-  const client2 = await pool.connect();
-  let updatedDispute;
-  const newDisputeStatus = outcome === 'buyer_wins' ? DisputeStatus.RESOLVED_BUYER_WINS : DisputeStatus.RESOLVED_SELLER_WINS;
-  
-  try {
-    await client2.query('BEGIN');
-
-    const updateDisputeRes = await client2.query(
+    // 1. UPDATE disputes SET status = ... WHERE id = $6 AND status = $7
+    const updateDisputeRes = await client.query(
       `UPDATE disputes SET 
         status = $1, 
         resolution_note = $2, 
@@ -677,7 +614,6 @@ export const resolveDispute = async ({ disputeId, adminId, outcome, resolutionNo
     );
 
     if (updateDisputeRes.rowCount === 0) {
-      await client2.query('ROLLBACK');
       const err = new Error('Dispute is no longer under review and may have been resolved concurrently');
       err.statusCode = 409;
       err.errorCode = 'INVALID_DISPUTE_STATE';
@@ -686,52 +622,98 @@ export const resolveDispute = async ({ disputeId, adminId, outcome, resolutionNo
 
     updatedDispute = updateDisputeRes.rows[0];
 
-    if (outcome === 'buyer_wins') {
-      await client2.query(
-        `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
-        [PaymentStatus.REFUNDED, payment.id]
+    // 2. State updates per outcome
+    if (outcome === 'seller_wins') {
+      const updatePaymentRes = await client.query(
+        `UPDATE payments SET status = 'captured', updated_at = NOW() WHERE id = $1 AND status = 'frozen' RETURNING id`,
+        [payment.id]
       );
-      await client2.query(
-        `UPDATE auctions SET status = 'refunded', updated_at = NOW() WHERE id = $1`,
-        [dispute.auction_id]
-      );
-    } else if (outcome === 'seller_wins') {
-      if (originalPaymentStatus === PaymentStatus.FROZEN) {
-        await client2.query(
-          `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2`,
-          [PaymentStatus.CAPTURED, payment.id]
-        );
+      if (updatePaymentRes.rowCount === 0) {
+        const err = new Error('Payment state changed concurrently');
+        err.statusCode = 409;
+        err.errorCode = 'INVALID_PAYMENT_STATE';
+        throw err;
       }
-      await client2.query(
+      await client.query(
         `UPDATE auctions SET status = 'completed', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW() WHERE id = $1`,
         [dispute.auction_id]
       );
+      await writeAuditLog({
+        referenceId: dispute.id,
+        referenceType: 'dispute',
+        action: 'dispute_resolved_seller_wins',
+        deltaState: { 
+          status: newDisputeStatus,
+          rejectionReason,
+          payment_id: payment.id,
+        },
+        actorId: adminId,
+        ipAddress
+      }, client);
+    } else if (outcome === 'buyer_wins') {
+      const updatePaymentRes = await client.query(
+        `UPDATE payments SET status = 'releasing', updated_at = NOW() WHERE id = $1 AND status IN ('frozen', 'captured') RETURNING id`,
+        [payment.id]
+      );
+      if (updatePaymentRes.rowCount === 0) {
+        const err = new Error('Payment state changed concurrently');
+        err.statusCode = 409;
+        err.errorCode = 'INVALID_PAYMENT_STATE';
+        throw err;
+      }
+      await client.query(
+        `UPDATE auctions SET status = 'refunded', updated_at = NOW() WHERE id = $1`,
+        [dispute.auction_id]
+      );
+      await writeAuditLog({
+        referenceId: dispute.id,
+        referenceType: 'dispute',
+        action: 'dispute_resolved_buyer_wins',
+        deltaState: { 
+          status: newDisputeStatus,
+          policyRule,
+          payment_id: payment.id,
+        },
+        actorId: adminId,
+        ipAddress
+      }, client);
     }
 
-    await writeAuditLog({
-      referenceId: dispute.id,
-      referenceType: 'dispute',
-      action: outcome === 'buyer_wins' ? 'dispute_resolved_buyer_wins' : 'dispute_resolved_seller_wins',
-      deltaState: { 
-        status: newDisputeStatus,
-        policyRule,
-        rejectionReason,
-        payment_id: payment.id,
-        stripe_refund_id: stripeRefundId
-      },
-      actorId: adminId,
-      ipAddress
-    }, client2);
-
-    await client2.query('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    await client2.query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
     throw err;
   } finally {
-    client2.release();
+    client.release();
   }
 
-  // STEP 5: Side effects
+  // After COMMIT:
+  if (outcome === 'buyer_wins') {
+    try {
+      const refund = await stripe.refunds.create(
+        { payment_intent: payment.stripe_pi_id },
+        { idempotencyKey: `refund_${payment.id}` }
+      );
+      if (refund?.status === 'succeeded') {
+        await pool.query(
+          `UPDATE payments SET status = 'refunded', updated_at = NOW() WHERE id = $1 AND status = 'releasing'`,
+          [payment.id]
+        );
+        await writeAuditLog({
+          referenceId: dispute.id,
+          referenceType: 'dispute',
+          action: 'dispute_refund_completed',
+          deltaState: { stripe_refund_id: refund.id },
+          actorId: adminId,
+          ipAddress
+        });
+      }
+    } catch (stripeErr) {
+      console.error(`[DisputeResolution] Stripe refund call failed for dispute ${dispute.id}:`, stripeErr.message);
+    }
+  }
+
+  // Side effects
   try {
     if (outcome === 'seller_wins') {
       await schedulePayoutJob(payment.id, dispute.auction_id);
