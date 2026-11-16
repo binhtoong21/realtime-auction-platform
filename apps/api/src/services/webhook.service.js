@@ -2,7 +2,6 @@ import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { writeAuditLog, applyChargeSuccess, refundOrphanChargeIfNeeded } from './payment.service.js';
 import { emitToUser, emitToAdmin } from './socket.service.js';
-import { paymentQueue, schedulePayoutJob } from '../jobs/queue.js';
 import { PaymentStatus, AuctionStatus } from '@auction/shared-constants';
 import {
   handleIdentityVerified,
@@ -82,10 +81,10 @@ const PAYMENT_TERMINAL_STATES = [
 ];
 
 /**
- * Handle payment_intent.succeeded — Stripe confirms capture was successful.
+ * Handle payment_intent.succeeded — Stripe confirms payment succeeded.
  *
- * State Guard accepts: authorized, capture_pending
- * capture_pending covers crash recovery for emergency capture worker.
+ * Escrow payments are captured at auction end and sit in 'held'.
+ * This handler reconciles payment attempts and orphan refunds, and never triggers a payout.
  */
 async function handlePaymentIntentSucceeded(paymentIntent) {
   const stripepiId = paymentIntent.id;
@@ -120,57 +119,7 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
   }
 
   const payment = lookupResult.rows[0];
-
-  // Skip if already captured or transferred (idempotent)
-  if (payment.status === PaymentStatus.CAPTURED || payment.status === PaymentStatus.TRANSFERRED) {
-    console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} already '${payment.status}'. Skipping.`);
-    return;
-  }
-
-  // Escrow charges succeed at auction end and stay in the platform balance (status 'held').
-  // Only legacy manual-capture payments are moved to captured (and paid out) here.
-  if (payment.status !== PaymentStatus.AUTHORIZED && payment.status !== PaymentStatus.CAPTURE_PENDING) {
-    console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} is '${payment.status}'. No payout triggered.`);
-    return;
-  }
-
-  // State Guard: only transition from authorized or capture_pending
-  const guardResult = await pool.query(
-    `UPDATE payments SET status = 'captured', updated_at = NOW()
-     WHERE stripe_pi_id = $1 AND status IN ('authorized', 'capture_pending')
-     RETURNING id, auction_id`,
-    [stripepiId]
-  );
-
-  if (guardResult.rowCount === 0) {
-    const error = new Error(
-      `State guard blocked: payment ${payment.id} is '${payment.status}', expected authorized/capture_pending`
-    );
-    error.code = 'STATE_GUARD_FAILED';
-    throw error;
-  }
-
-  await writeAuditLog({
-    referenceId: payment.id,
-    referenceType: 'payment',
-    action: 'payment_captured_via_webhook',
-    deltaState: {
-      stripe_pi_id: stripepiId,
-      amount: Number(payment.amount),
-      from_status: payment.status,
-    },
-    actorId: null,
-  });
-
-  console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} captured via webhook.`);
-
-  // Dispatch payout job (async, isolated side effect)
-  try {
-    await schedulePayoutJob(payment.id, payment.auction_id);
-  } catch (scheduleErr) {
-    // Payout sweeper will pick up — don't fail the webhook
-    console.error(`[Webhook] Failed to schedule payout for ${payment.id}:`, scheduleErr.message);
-  }
+  console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} is '${payment.status}'. No payout triggered.`);
 }
 
 /**
@@ -273,10 +222,10 @@ async function handlePaymentIntentCanceled(paymentIntent) {
   try {
     await client.query('BEGIN');
 
-    // State Guard: only transition from authorized or capture_pending
+    // State Guard: only transition from authorized
     const guardResult = await client.query(
       `UPDATE payments SET status = 'released', updated_at = NOW()
-       WHERE stripe_pi_id = $1 AND status IN ('authorized', 'capture_pending')
+       WHERE stripe_pi_id = $1 AND status = 'authorized'
        RETURNING id, auction_id, buyer_id, seller_id`,
       [stripepiId]
     );
@@ -284,7 +233,7 @@ async function handlePaymentIntentCanceled(paymentIntent) {
     if (guardResult.rowCount === 0) {
       await client.query('ROLLBACK');
       const error = new Error(
-        `State guard blocked: payment ${payment.id} is '${payment.status}', expected authorized/capture_pending`
+        `State guard blocked: payment ${payment.id} is '${payment.status}', expected authorized`
       );
       error.code = 'STATE_GUARD_FAILED';
       throw error;
@@ -342,9 +291,8 @@ async function handlePaymentIntentCanceled(paymentIntent) {
  * the buyer contacts their issuing bank directly.
  *
  * Actions:
- *  1. Cancel emergency-capture BullMQ job to prevent capturing during dispute
- *  2. Write audit log
- *  3. Alert admin
+ *  1. Write audit log
+ *  2. Alert admin
  */
 async function handleChargeDisputeCreated(dispute) {
   const stripepiId = dispute.payment_intent;
@@ -368,22 +316,6 @@ async function handleChargeDisputeCreated(dispute) {
 
   const payment = lookupResult.rows[0];
 
-  // Cancel emergency-capture job if it exists to prevent capturing during dispute
-  let emergencyCaptureCancelled = false;
-  try {
-    const job = await paymentQueue.getJob(`emergency_capture_${payment.id}`);
-    if (job) {
-      await job.remove();
-      emergencyCaptureCancelled = true;
-      console.log(`[Webhook] Cancelled emergency-capture job for payment ${payment.id}`);
-    }
-  } catch (jobErr) {
-    console.error(
-      `[Webhook] Failed to cancel emergency-capture job for payment ${payment.id}:`,
-      jobErr.message
-    );
-  }
-
   await writeAuditLog({
     referenceId: payment.id,
     referenceType: 'payment',
@@ -394,7 +326,6 @@ async function handleChargeDisputeCreated(dispute) {
       amount: dispute.amount,
       currency: dispute.currency,
       payment_status: payment.status,
-      emergency_capture_cancelled: emergencyCaptureCancelled,
     },
     actorId: null,
   });
@@ -409,7 +340,6 @@ async function handleChargeDisputeCreated(dispute) {
       reason: dispute.reason,
       buyerId: payment.buyer_id,
       sellerId: payment.seller_id,
-      emergencyCaptureCancelled,
     });
   } catch (emitErr) {
     console.error(`[Webhook] Failed to emit admin alert for dispute ${dispute.id}:`, emitErr);
