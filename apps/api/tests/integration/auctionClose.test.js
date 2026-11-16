@@ -46,6 +46,22 @@ async function getAuction(id) {
   return rows[0];
 }
 
+// Wait until another backend is blocked on a lock held by `holder` (bounded)
+async function waitForLockWaiter(holder, timeoutMs = 5000) {
+  const { rows } = await holder.query('SELECT pg_backend_pid() AS pid');
+  const holderPid = rows[0].pid;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await pool.query(
+      'SELECT COUNT(*)::int AS count FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+      [holderPid],
+    );
+    if (res.rows[0].count > 0) return;
+    await sleep(20);
+  }
+  throw new Error('No query is waiting for the row lock');
+}
+
 function fakeJob(auctionId) {
   return { id: `auction_end_${auctionId}`, data: { auctionId }, moveToDelayed: vi.fn(async () => {}) };
 }
@@ -144,7 +160,7 @@ describe('processAuctionEnd and concurrent bids', () => {
 
     const job = fakeJob(auctionId);
     const closing = processAuctionEnd(job, 'token');
-    await sleep(300);
+    await waitForLockWaiter(holder);
 
     // Simulates a bid that committed just before the deadline and extended it
     await holder.query("UPDATE auctions SET end_at = now() + interval '5 minutes' WHERE id = $1", [auctionId]);
@@ -170,7 +186,7 @@ describe('processAuctionEnd and concurrent bids', () => {
     await holder.query('SELECT id FROM auctions WHERE id = $1 FOR UPDATE', [auctionId]);
 
     const bidding = processBid({ auctionId, userId: bidder, amount: 101, idempotencyKey: uuidv7() });
-    await sleep(300);
+    await waitForLockWaiter(holder);
 
     // Simulates the close job finishing while the bid waits
     await holder.query("UPDATE auctions SET status = 'no_sale' WHERE id = $1", [auctionId]);
