@@ -1,12 +1,10 @@
 import { Worker } from 'bullmq';
 import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
-import stripe from '../config/stripe.js';
 import { AuctionStatus, EventNames } from '@auction/shared-constants';
 import { emitToUser } from '../services/socket.service.js';
-import { writeAuditLog } from '../services/auditLogger.js';
 import { ensureJobScheduled } from './queue.js';
-import { autoConfirmDelivery } from '../services/fulfillment.service.js';
+import { autoConfirmDelivery, expireShippingDeadline } from '../services/fulfillment.service.js';
 
 const connection = createRedisConnection('fulfillment-worker');
 
@@ -56,125 +54,7 @@ async function processShippingReminder(auctionId) {
 }
 
 async function processShippingDeadline(auctionId) {
-  const client = await pool.connect();
-  let paymentId, stripePiId, sellerId, buyerId;
-
-  try {
-    await client.query('BEGIN');
-
-    // 1. Lock and transition to releasing
-    const lockResult = await client.query(
-      `UPDATE payments p
-       SET status = 'releasing', updated_at = NOW()
-       FROM auctions a
-       WHERE p.auction_id = a.id
-         AND p.auction_id = $1
-         AND p.status = 'authorized'
-         AND a.status = 'awaiting_ship'
-         AND a.shipping_deadline_at <= NOW()
-       RETURNING p.id, p.stripe_pi_id, p.seller_id, p.buyer_id`,
-      [auctionId]
-    );
-
-    if (lockResult.rowCount === 0) {
-      await client.query('ROLLBACK');
-      console.log(`[FulfillmentWorker] shipping-deadline skipped for auction ${auctionId} - not authorized (idempotent guard)`);
-      return;
-    }
-
-    const payment = lockResult.rows[0];
-    paymentId = payment.id;
-    stripePiId = payment.stripe_pi_id;
-    sellerId = payment.seller_id;
-    buyerId = payment.buyer_id;
-
-    await client.query('COMMIT');
-  } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
-    throw err;
-  } finally {
-    client.release();
-  }
-
-  // 2. Stripe Cancel
-  let stripeCanceled = false;
-  try {
-    const cancelResult = await stripe.paymentIntents.cancel(stripePiId);
-    if (cancelResult.status === 'canceled') {
-      stripeCanceled = true;
-    }
-  } catch (stripeErr) {
-    console.error(`[FulfillmentWorker] Stripe cancel failed for shipping-deadline ${auctionId}:`, stripeErr.message);
-    
-    // Check for permanent errors (already canceled/expired)
-    const isPermanent = 
-      stripeErr.code === 'payment_intent_unexpected_state' ||
-      stripeErr.type === 'StripeInvalidRequestError' ||
-      stripeErr.message?.includes('cannot be canceled');
-
-    if (isPermanent) {
-      console.warn(`[FulfillmentWorker] Stripe PI already expired/canceled, proceeding with DB cleanup for ${auctionId}`);
-      stripeCanceled = true;
-    } else {
-      // Transient error, let BullMQ retry
-      throw stripeErr;
-    }
-  }
-
-  // 3. DB Finalize
-  if (stripeCanceled) {
-    const client2 = await pool.connect();
-    try {
-      await client2.query('BEGIN');
-
-      await client2.query(
-        `UPDATE payments SET status = 'released', updated_at = NOW() WHERE id = $1`,
-        [paymentId]
-      );
-
-      const auctionUpdate = await client2.query(
-        `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1 AND status = 'awaiting_ship'`,
-        [auctionId]
-      );
-      if (auctionUpdate.rowCount === 0) {
-        throw new Error(`State mismatch: Auction ${auctionId} was not awaiting_ship during shipping-deadline DB finalize.`);
-      }
-
-      await writeAuditLog({
-        referenceId: paymentId,
-        referenceType: 'payment',
-        action: 'shipping_overdue_refund',
-        deltaState: { status: 'released', auctionStatus: 'no_sale' },
-        actorId: null, // System action
-      }, client2);
-
-      await client2.query('COMMIT');
-    } catch (dbErr) {
-      try { await client2.query('ROLLBACK'); } catch (_) { /* ignore */ }
-      console.error(`[FulfillmentWorker] DB cleanup failed after cancel for payment ${paymentId}`, dbErr);
-      throw dbErr;
-    } finally {
-      client2.release();
-    }
-
-    // 4. Notifications
-    Promise.allSettled([
-      emitToUser(sellerId, EventNames.SHIPPING_OVERDUE, {
-        auctionId,
-        message: 'Đơn hàng đã bị hủy do quá hạn giao. Tiền đã được hoàn lại cho người mua.'
-      }),
-      emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
-        status: 'refunded',
-        message: 'Người bán không giao hàng đúng hạn. Tiền đã được hoàn lại cho bạn.'
-      })
-    ]).then(results => {
-      results.forEach((res, index) => {
-        if (res.status === 'rejected') {
-          console.error(`[FulfillmentWorker] shipping-deadline side-effect [${index}] failed:`, res.reason);
-        }
-      });
-    });
-  }
+  return expireShippingDeadline(auctionId);
 }
 
 async function processDeliveryAutoConfirm(auctionId) {

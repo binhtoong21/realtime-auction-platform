@@ -343,7 +343,7 @@ export const getBanPreview = async ({ userId, adminId }) => {
   const buyerPaymentsRes = await pool.query(
     `SELECT status, COUNT(*)::int as count, COALESCE(SUM(amount), 0)::bigint as total_amount
      FROM payments
-     WHERE buyer_id = $1 AND status IN ('authorized', 'grace_period', 'frozen')
+     WHERE buyer_id = $1 AND status IN ('authorized', 'grace_period', 'frozen', 'held')
      GROUP BY status`,
     [userId]
   );
@@ -367,7 +367,7 @@ export const getBanPreview = async ({ userId, adminId }) => {
        COALESCE(SUM(CASE WHEN a.status = 'awaiting_ship' THEN p.amount ELSE 0 END), 0)::bigint as awaiting_ship_amount
      FROM payments p
      LEFT JOIN auctions a ON a.id = p.auction_id
-     WHERE p.seller_id = $1 AND p.status IN ('authorized', 'grace_period')
+     WHERE p.seller_id = $1 AND p.status IN ('authorized', 'grace_period', 'held')
      GROUP BY p.status`,
     [userId]
   );

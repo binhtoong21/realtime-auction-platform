@@ -1,7 +1,6 @@
 import { Worker } from 'bullmq';
 import { createRedisConnection } from '../config/redis.js';
 import { pool } from '../config/database.js';
-import stripe from '../config/stripe.js';
 import { v7 as uuidv7 } from 'uuid';
 import { DisputeStatus, PaymentStatus, EventNames } from '@auction/shared-constants';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
@@ -65,7 +64,7 @@ const expireDispute = async (disputeInfo) => {
     if (payment.status === PaymentStatus.FROZEN) {
       const updateRes = await client1.query(
         `UPDATE payments SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING id`,
-        [PaymentStatus.CAPTURE_PENDING, payment.id, PaymentStatus.FROZEN]
+        [PaymentStatus.CAPTURED, payment.id, PaymentStatus.FROZEN]
       );
       if (updateRes.rowCount === 0) {
         await client1.query('ROLLBACK');
@@ -79,16 +78,6 @@ const expireDispute = async (disputeInfo) => {
     throw err;
   } finally {
     client1.release();
-  }
-
-  // Stripe Capture if needed
-  if (originalPaymentStatus === PaymentStatus.FROZEN) {
-    try {
-      await stripe.paymentIntents.capture(payment.stripe_pi_id);
-    } catch (stripeErr) {
-      console.error(`[DisputeWorker] Stripe capture failed for dispute expiry ${disputeInfo.id}:`, stripeErr.message);
-      throw stripeErr;
-    }
   }
 
   // DB Confirm
@@ -116,15 +105,9 @@ const expireDispute = async (disputeInfo) => {
       return;
     }
 
-    if (originalPaymentStatus !== PaymentStatus.FROZEN) {
-      if (p_status === PaymentStatus.CAPTURE_PENDING) {
-        await client2.query('ROLLBACK');
-        throw new Error(`Payment ${payment.id} is stuck in capture_pending. Aborting dispute expiry so sweeper can retry.`);
-      }
-      if (p_status !== PaymentStatus.CAPTURED) {
-        await client2.query('ROLLBACK');
-        throw new Error(`Payment ${payment.id} is not CAPTURED (status: ${p_status}). Aborting dispute expiry.`);
-      }
+    if (p_status !== PaymentStatus.CAPTURED) {
+      await client2.query('ROLLBACK');
+      throw new Error(`Payment ${payment.id} is not CAPTURED (status: ${p_status}). Aborting dispute expiry.`);
     }
 
     await client2.query(
