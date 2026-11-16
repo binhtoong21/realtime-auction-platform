@@ -3,7 +3,6 @@ import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
 import { calculatePlatformFee } from './platformFee.service.js';
 import {
-  scheduleEmergencyCapture,
   scheduleGracePeriodExpiry,
 } from '../jobs/queue.js';
 import { emitToUser } from './socket.service.js';
@@ -35,27 +34,177 @@ const resolveStripeCustomerDefensively = async (userId, stripePmId) => {
 };
 
 
+// Card failures that will not succeed on a plain retry (move to grace period / no sale)
+const isPermanentStripeError = (err) =>
+  err?.type === 'StripeCardError' || err?.type === 'StripeInvalidRequestError';
+
 /**
- * Create an Auth Hold (PaymentIntent with capture_method: manual) for the auction winner.
+ * Charge a card immediately (automatic capture). Funds stay in the platform balance
+ * until they are paid out to the seller or refunded to the buyer.
+ *
+ * The idempotency key makes a repeated attempt return the same PaymentIntent, so
+ * crash recovery and retries never charge twice.
+ * A PaymentIntent that does not end in `succeeded` (e.g. needs 3DS while off-session)
+ * is cancelled and reported as a card error.
+ */
+const createEscrowPaymentIntent = async ({ paymentId, amount, stripeCusId, stripePmId, idempotencyKey, metadata }) => {
+  const paymentIntent = await stripe.paymentIntents.create(
+    {
+      amount,
+      currency: CURRENCY,
+      customer: stripeCusId,
+      payment_method: stripePmId,
+      confirm: true,
+      off_session: true,
+      metadata: {
+        ...metadata,
+        payment_id: paymentId,
+        platform: 'realtime-auction',
+      },
+    },
+    { idempotencyKey }
+  );
+
+  if (paymentIntent.status !== 'succeeded') {
+    try {
+      await stripe.paymentIntents.cancel(paymentIntent.id);
+    } catch (cancelErr) {
+      console.error(`[Payment] Failed to cancel non-succeeded PI ${paymentIntent.id}:`, cancelErr.message);
+    }
+    const err = new Error(`Payment was not completed (Stripe status: ${paymentIntent.status})`);
+    err.type = 'StripeCardError';
+    err.code = 'payment_not_completed';
+    throw err;
+  }
+
+  return paymentIntent;
+};
+
+/**
+ * Audit logging must never change a financial outcome: failures are logged only.
+ */
+const writeAuditLogSafely = async (entry) => {
+  try {
+    await writeAuditLog(entry);
+  } catch (auditErr) {
+    console.error(`[Payment] Audit log '${entry.action}' failed for ${entry.referenceId}:`, auditErr.message);
+  }
+};
+
+/**
+ * Charge the auction winner and move the payment from hold_pending to held.
+ *
+ * Errors other than card failures (network, Stripe outage, DB failure after the
+ * charge) are thrown: the auction-end job retries and resumeEscrowCharge() repeats
+ * the call with the same idempotency key.
+ */
+const chargeWinner = async ({ paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, feeRate, stripeCusId, stripePmId }) => {
+  let paymentIntent;
+  try {
+    paymentIntent = await createEscrowPaymentIntent({
+      paymentId,
+      amount: amountInCents,
+      stripeCusId,
+      stripePmId,
+      idempotencyKey: `charge_${paymentId}`,
+      metadata: {
+        auction_id: auctionId,
+        buyer_id: winnerId,
+        seller_id: sellerId,
+        fee_rate: String(feeRate),
+      },
+    });
+  } catch (err) {
+    if (!isPermanentStripeError(err)) throw err;
+
+    console.error(`[Payment] Escrow charge failed for auction ${auctionId}:`, err.message);
+    const graceExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await pool.query(
+      `UPDATE payments
+       SET status = 'grace_period',
+           grace_expires_at = $1,
+           capture_attempts = capture_attempts + 1,
+           updated_at = NOW()
+       WHERE id = $2 AND status = 'hold_pending'`,
+      [graceExpiresAt, paymentId]
+    );
+    await pool.query(
+      `UPDATE auctions SET status = 'pending_payment', updated_at = NOW()
+       WHERE id = $1 AND status = 'ended'`,
+      [auctionId]
+    );
+    await writeAuditLogSafely({
+      referenceId: paymentId,
+      referenceType: 'payment',
+      action: 'escrow_charge_failed',
+      deltaState: {
+        error: err.message,
+        stripe_code: err.code || null,
+        amount: amountInCents,
+        buyer_id: winnerId,
+        grace_expires_at: graceExpiresAt.toISOString(),
+      },
+      actorId: null,
+    });
+    return { paymentId, holdSuccess: false, stripeError: err };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE payments
+       SET status = 'held', stripe_pi_id = $1, updated_at = NOW()
+       WHERE id = $2 AND status = 'hold_pending'`,
+      [paymentIntent.id, paymentId]
+    );
+    const auctionUpdate = await client.query(
+      `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
+       WHERE id = $1 AND status IN ('ended', 'pending_payment')`,
+      [auctionId]
+    );
+    if (auctionUpdate.rowCount === 0) {
+      throw new Error(`Invalid state transition: Auction ${auctionId} could not be updated to awaiting_ship`);
+    }
+    await client.query('COMMIT');
+  } catch (dbErr) {
+    await client.query('ROLLBACK');
+    console.error(`[Payment] DB update failed after escrow charge ${paymentIntent.id} for auction ${auctionId}; will retry with the same idempotency key.`, dbErr.message);
+    throw dbErr;
+  } finally {
+    client.release();
+  }
+
+  await writeAuditLogSafely({
+    referenceId: paymentId,
+    referenceType: 'payment',
+    action: 'escrow_charge_success',
+    deltaState: {
+      stripe_pi_id: paymentIntent.id,
+      amount: amountInCents,
+      fee: feeAmount,
+      buyer_id: winnerId,
+    },
+    actorId: null,
+  });
+
+  return { paymentId, holdSuccess: true, stripeError: null };
+};
+
+/**
+ * Create the escrow charge for the auction winner.
  *
  * Flow:
- *   1. Look up winner's payment method from auction_participants
+ *   1. Look up the winner's payment method and Stripe customer
  *   2. Calculate platform fee
- *   3. Create payment record (status = hold_pending)
- *   4. Call Stripe PaymentIntent.create
- *   5a. Success → status = authorized, schedule emergency-capture (6d)
- *   5b. Failure → status = hold_failed → grace_period, schedule grace-period-expiry (24h)
- *   6. Write financial audit log
+ *   3. Insert payment (status = hold_pending)
+ *   4. Charge immediately (automatic capture, idempotent)
+ *   5a. Success → status = held, auction → awaiting_ship
+ *   5b. Card failure → status = grace_period, auction → pending_payment
  *
- * @param {Object} params
- * @param {string} params.auctionId
- * @param {string} params.winnerId - bidder_id of the winner
- * @param {string} params.sellerId
- * @param {number} params.amountInCents - final auction price in cents
- * @returns {Object} { payment, holdSuccess }
+ * @returns {Object} { paymentId, holdSuccess, stripeError }
  */
-export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCents }) => {
-  // 1. Retrieve winner's payment method
+export const createEscrowCharge = async ({ auctionId, winnerId, sellerId, amountInCents }) => {
   const pmResult = await pool.query(
     `SELECT ap.payment_method_id, pm.stripe_pm_id
      FROM auction_participants ap
@@ -66,13 +215,11 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
   );
 
   if (pmResult.rows.length === 0) {
-    // Winner has no valid payment method — immediate hold fail
     return await handleNoPaymentMethod({ auctionId, winnerId, sellerId, amountInCents });
   }
 
   const { payment_method_id: localPmId, stripe_pm_id: stripePmId } = pmResult.rows[0];
 
-  // 2. Get Stripe customer ID
   const userResult = await pool.query(
     'SELECT stripe_cus_id FROM users WHERE id = $1',
     [winnerId]
@@ -86,10 +233,8 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
     }
   }
 
-  // 3. Calculate platform fee
   const { feeAmount, feeRate } = await calculatePlatformFee(amountInCents);
 
-  // 4. Insert payment record as hold_pending
   const paymentId = uuidv7();
   await pool.query(
     `INSERT INTO payments (id, auction_id, buyer_id, seller_id, amount, platform_fee_amount,
@@ -98,120 +243,44 @@ export const createAuthHold = async ({ auctionId, winnerId, sellerId, amountInCe
     [paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, localPmId]
   );
 
-  // 5. Attempt Stripe PaymentIntent.create
-  let holdSuccess = false;
-  let stripeError = null;
+  return chargeWinner({ paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, feeRate, stripeCusId, stripePmId });
+};
 
-  try {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInCents,
-      currency: CURRENCY,
-      customer: stripeCusId,
-      payment_method: stripePmId,
-      capture_method: 'manual',
-      confirm: true,
-      off_session: true,
-      metadata: {
-        auction_id: auctionId,
-        buyer_id: winnerId,
-        seller_id: sellerId,
-        platform: 'realtime-auction',
-        fee_rate: String(feeRate),
-      },
-    });
+/**
+ * Resume an escrow charge interrupted by a crash or a transient error
+ * (payment still hold_pending). Uses the same idempotency key as the first attempt.
+ */
+export const resumeEscrowCharge = async (paymentId) => {
+  const result = await pool.query(
+    `SELECT p.id, p.auction_id, p.buyer_id, p.seller_id, p.amount, p.platform_fee_amount,
+            pm.stripe_pm_id, u.stripe_cus_id
+     FROM payments p
+     JOIN payment_methods pm ON pm.id = p.payment_method_id
+     JOIN users u ON u.id = p.buyer_id
+     WHERE p.id = $1 AND p.status = 'hold_pending'`,
+    [paymentId]
+  );
 
-    // Hold succeeded - DB updates must be atomic
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(
-        `UPDATE payments
-         SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
-         WHERE id = $2`,
-        [paymentIntent.id, paymentId]
-      );
-
-      // Update auction status to awaiting_ship (Hold is successful, waiting for shipment)
-      const auctionUpdate = await client.query(
-        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
-         WHERE id = $1 AND status IN ('ended', 'pending_payment')`,
-        [auctionId]
-      );
-
-      if (auctionUpdate.rowCount === 0) {
-        throw new Error(`Invalid state transition: Auction ${auctionId} could not be updated to awaiting_ship`);
-      }
-      await client.query('COMMIT');
-    } catch (dbErr) {
-      await client.query('ROLLBACK');
-      console.error(`[Payment] DB update failed after Stripe hold for auction ${auctionId}. Canceling hold.`, dbErr.message);
-      try {
-        await stripe.paymentIntents.cancel(paymentIntent.id);
-      } catch (cancelErr) {
-        console.error(`[Payment] CRITICAL: Failed to cancel orphaned Stripe PI ${paymentIntent.id}:`, cancelErr.message);
-      }
-      throw dbErr;
-    } finally {
-      client.release();
-    }
-
-    holdSuccess = true;
-
-    // Audit log
-    await writeAuditLog({
-      referenceId: paymentId,
-      referenceType: 'payment',
-      action: 'auth_hold_success',
-      deltaState: {
-        stripe_pi_id: paymentIntent.id,
-        amount: amountInCents,
-        fee: feeAmount,
-        buyer_id: winnerId,
-      },
-      actorId: null, // system action
-    });
-
-  } catch (err) {
-    stripeError = err;
-    console.error(`[Payment] Auth Hold failed for auction ${auctionId}:`, err.message);
-
-    // Hold failed → transition to grace_period
-    const graceExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    await pool.query(
-      `UPDATE payments
-       SET status = 'grace_period',
-           grace_expires_at = $1,
-           capture_attempts = capture_attempts + 1,
-           updated_at = NOW()
-       WHERE id = $2`,
-      [graceExpiresAt, paymentId]
-    );
-
-    // Update auction status to pending_payment (waiting for buyer to retry)
-    await pool.query(
-      `UPDATE auctions SET status = 'pending_payment', updated_at = NOW()
-       WHERE id = $1 AND status = 'ended'`,
-      [auctionId]
-    );
-
-    // Audit log
-    await writeAuditLog({
-      referenceId: paymentId,
-      referenceType: 'payment',
-      action: 'auth_hold_failed',
-      deltaState: {
-        error: err.message,
-        stripe_code: err.code || null,
-        amount: amountInCents,
-        buyer_id: winnerId,
-        grace_expires_at: graceExpiresAt.toISOString(),
-      },
-      actorId: null,
-    });
+  if (result.rows.length === 0) {
+    console.log(`[Payment] resumeEscrowCharge: payment ${paymentId} is not hold_pending. Skipping.`);
+    return null;
   }
 
-  return { paymentId, holdSuccess, stripeError };
+  const p = result.rows[0];
+  const amountInCents = Number(p.amount);
+  const { feeRate } = await calculatePlatformFee(amountInCents);
+
+  return chargeWinner({
+    paymentId: p.id,
+    auctionId: p.auction_id,
+    winnerId: p.buyer_id,
+    sellerId: p.seller_id,
+    amountInCents,
+    feeAmount: Number(p.platform_fee_amount),
+    feeRate,
+    stripeCusId: p.stripe_cus_id,
+    stripePmId: p.stripe_pm_id,
+  });
 };
 
 /**
@@ -253,13 +322,12 @@ const handleNoPaymentMethod = async ({ auctionId, winnerId, sellerId, amountInCe
 };
 
 /**
- * Schedule follow-up jobs AFTER the DB transaction has committed.
+ * Schedule follow-up jobs AFTER the payment state has been committed.
  * Called outside of the transaction to avoid scheduling jobs for rolled-back data.
  */
 export const schedulePostHoldJobs = async ({ paymentId, auctionId, holdSuccess }) => {
-  if (holdSuccess) {
-    await scheduleEmergencyCapture(paymentId, auctionId);
-  } else {
+  // Held funds do not expire, so a successful charge needs no follow-up job
+  if (!holdSuccess) {
     await scheduleGracePeriodExpiry(paymentId, auctionId);
   }
 };
@@ -282,7 +350,7 @@ const writeAuditLog = async ({ referenceId, referenceType, action, deltaState, a
  */
 export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
   const paymentResult = await pool.query(
-    `SELECT p.id, p.auction_id, p.buyer_id, p.seller_id, p.amount, p.status, p.payment_method_id, p.grace_expires_at, u.stripe_cus_id
+    `SELECT p.id, p.auction_id, p.buyer_id, p.seller_id, p.amount, p.status, p.payment_method_id, p.grace_expires_at, p.capture_attempts, u.stripe_cus_id
      FROM payments p
      JOIN users u ON u.id = p.buyer_id
      WHERE p.id = $1`,
@@ -353,20 +421,19 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
   }
 
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
+    // Same key while the attempt counter is unchanged: a retry after a timeout
+    // returns the charge that may already have succeeded instead of charging again
+    const paymentIntent = await createEscrowPaymentIntent({
+      paymentId,
       amount: Number(payment.amount),
-      currency: CURRENCY,
-      customer: stripeCusId,
-      payment_method: stripePmId,
-      capture_method: 'manual',
-      confirm: true,
-      off_session: true,
+      stripeCusId,
+      stripePmId,
+      idempotencyKey: `charge_${paymentId}_retry_${payment.capture_attempts}`,
       metadata: {
         auction_id: payment.auction_id,
         buyer_id: payment.buyer_id,
         seller_id: payment.seller_id,
-        platform: 'realtime-auction',
-        retry: 'true'
+        retry: 'true',
       },
     });
 
@@ -376,7 +443,7 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
       await client.query('BEGIN');
       await client.query(
         `UPDATE payments
-         SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
+         SET status = 'held', stripe_pi_id = $1, updated_at = NOW()
          WHERE id = $2`,
         [paymentIntent.id, paymentId]
       );
@@ -393,31 +460,27 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
       await client.query('COMMIT');
     } catch (dbErr) {
       await client.query('ROLLBACK');
-      console.error(`[Payment] DB update failed after Stripe hold for auction ${payment.auction_id}. Canceling hold.`, dbErr.message);
-      try {
-        await stripe.paymentIntents.cancel(paymentIntent.id);
-      } catch (cancelErr) {
-        console.error(`[Payment] CRITICAL: Failed to cancel orphaned Stripe PI ${paymentIntent.id}:`, cancelErr.message);
-      }
+      // No compensation: the payment returns to grace_period with the same attempt
+      // counter, so the buyer's next retry reuses this charge via the idempotency key
+      console.error(`[Payment] DB update failed after escrow charge ${paymentIntent.id} for auction ${payment.auction_id}.`, dbErr.message);
       throw dbErr;
     } finally {
       client.release();
     }
 
-    await writeAuditLog({
+    await writeAuditLogSafely({
       referenceId: paymentId,
       referenceType: 'payment',
-      action: 'auth_hold_retry_success',
+      action: 'escrow_charge_retry_success',
       deltaState: { stripe_pi_id: paymentIntent.id },
       actorId: buyerId,
     });
 
     // Isolate side effects
     try {
-      await scheduleEmergencyCapture(paymentId, payment.auction_id);
       await emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
         auctionId: payment.auction_id,
-        status: 'authorized',
+        status: PaymentStatus.HELD,
         amount: Number(payment.amount)
       });
     } catch (sideEffectError) {
@@ -576,19 +639,16 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
 
   // Step 3: Stripe call (OUTSIDE transaction)
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
+    const paymentIntent = await createEscrowPaymentIntent({
+      paymentId: payment.id,
       amount: Number(payment.second_chance_amount),
-      currency: CURRENCY,
-      customer: stripeCusId,
-      payment_method: stripePmId,
-      capture_method: 'manual',
-      confirm: true,
-      off_session: true,
+      stripeCusId,
+      stripePmId,
+      idempotencyKey: `charge_${payment.id}_sc_${userId}`,
       metadata: {
         auction_id: auctionId,
         buyer_id: userId,
         seller_id: payment.seller_id,
-        platform: 'realtime-auction',
         second_chance: 'true',
       },
     });
@@ -618,7 +678,7 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
       // Update payment: swap buyer, amount, PI
       await client.query(
         `UPDATE payments
-         SET status = 'authorized',
+         SET status = 'held',
              buyer_id = $1,
              amount = second_chance_amount,
              platform_fee_amount = $2,
@@ -663,29 +723,13 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
       await client.query('COMMIT');
     } catch (txErr) {
       await client.query('ROLLBACK');
-
-      // Compensating action: cancel the live Stripe hold
-      try {
-        await stripe.paymentIntents.cancel(paymentIntent.id);
-        // PI cancelled — safe to let runner-up retry
-        await pool.query(
-          `UPDATE payments SET status = 'second_chance', updated_at = NOW() WHERE id = $1`,
-          [payment.id]
-        );
-        console.error(`[Payment] DB TX failed for auction ${auctionId}, cancelled PI ${paymentIntent.id}`);
-      } catch (cancelErr) {
-        // Orphan hold — transition to no_sale, sweeper will reconcile
-        console.error(`[Payment] CRITICAL: Failed to cancel PI ${paymentIntent.id}:`, cancelErr.message);
-        await pool.query(
-          `UPDATE payments SET status = 'no_sale', stripe_pi_id = $1, updated_at = NOW() WHERE id = $2`,
-          [paymentIntent.id, payment.id]
-        );
-        await pool.query(
-          `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
-          [auctionId]
-        );
-      }
-
+      // No compensation: back to second_chance; accepting again reuses this charge
+      // through the idempotency key instead of charging twice
+      console.error(`[Payment] DB TX failed after escrow charge ${paymentIntent.id} for auction ${auctionId}:`, txErr.message);
+      await pool.query(
+        `UPDATE payments SET status = 'second_chance', updated_at = NOW() WHERE id = $1 AND status = 'hold_pending'`,
+        [payment.id]
+      );
       throw { status: 503, code: 'SYSTEM_ERROR', message: 'Payment system is temporarily unavailable, please try again' };
     } finally {
       client.release();
@@ -693,14 +737,12 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
 
     // Side effects AFTER commit (isolated)
     try {
-      await scheduleEmergencyCapture(payment.id, auctionId);
-
       const sellerReceives = Number(payment.second_chance_amount) - feeAmount;
 
       await emitToUser(userId, 'auction:won', {
         auctionId,
         finalPrice: Number(payment.second_chance_amount),
-        paymentStatus: PaymentStatus.AUTHORIZED,
+        paymentStatus: PaymentStatus.HELD,
         paymentId: payment.id,
       });
 
@@ -718,7 +760,7 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
 
     return {
       paymentId: payment.id,
-      status: PaymentStatus.AUTHORIZED,
+      status: PaymentStatus.HELD,
       amount: Number(payment.second_chance_amount),
     };
 

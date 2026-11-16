@@ -93,6 +93,7 @@ export const ConnectStatus = {
 
 export const PaymentStatus = {
     HOLD_PENDING: 'hold_pending',
+    HELD: 'held',
     AUTHORIZED: 'authorized',
     HOLD_FAILED: 'hold_failed',
     GRACE_PERIOD: 'grace_period',

@@ -110,6 +110,13 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
     return;
   }
 
+  // Escrow charges succeed at auction end and stay in the platform balance (status 'held').
+  // Only legacy manual-capture payments are moved to captured (and paid out) here.
+  if (payment.status !== PaymentStatus.AUTHORIZED && payment.status !== PaymentStatus.CAPTURE_PENDING) {
+    console.log(`[Webhook] payment_intent.succeeded: Payment ${payment.id} is '${payment.status}'. No payout triggered.`);
+    return;
+  }
+
   // State Guard: only transition from authorized or capture_pending
   const guardResult = await pool.query(
     `UPDATE payments SET status = 'captured', updated_at = NOW()

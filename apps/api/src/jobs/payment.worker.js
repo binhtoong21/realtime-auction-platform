@@ -964,13 +964,13 @@ async function sweepReleasing(payment, pi) {
  * Reconcile a payment stuck in hold_pending.
  */
 async function sweepHoldPending(payment, pi) {
-  if (pi.status === 'requires_capture') {
-    // Hold succeeded on Stripe but DB wasn't updated — sync to authorized
+  if (pi.status === 'succeeded') {
+    // Charge succeeded on Stripe but DB wasn't updated — sync to held
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       const updateResult = await client.query(
-        `UPDATE payments SET status = 'authorized', stripe_pi_id = $1, updated_at = NOW()
+        `UPDATE payments SET status = 'held', stripe_pi_id = $1, updated_at = NOW()
          WHERE id = $2 AND status = 'hold_pending' RETURNING id`,
         [payment.stripe_pi_id, payment.id]
       );
@@ -988,8 +988,8 @@ async function sweepHoldPending(payment, pi) {
         action: 'sweeper_capture_synced',
         deltaState: {
           stripe_pi_id: payment.stripe_pi_id,
-          stripe_pi_status: 'requires_capture',
-          synced_to: PaymentStatus.AUTHORIZED,
+          stripe_pi_status: 'succeeded',
+          synced_to: PaymentStatus.HELD,
           auction_id: payment.auction_id,
         },
         actorId: null,
