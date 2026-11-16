@@ -1,6 +1,6 @@
 import { pool } from '../config/database.js';
 import { v7 as uuidv7 } from 'uuid';
-import { writeAuditLog } from './payment.service.js';
+import { writeAuditLog, applyChargeSuccess, refundOrphanChargeIfNeeded } from './payment.service.js';
 import { emitToUser, emitToAdmin } from './socket.service.js';
 import { paymentQueue, schedulePayoutJob } from '../jobs/queue.js';
 import { PaymentStatus, AuctionStatus } from '@auction/shared-constants';
@@ -89,6 +89,23 @@ const PAYMENT_TERMINAL_STATES = [
  */
 async function handlePaymentIntentSucceeded(paymentIntent) {
   const stripepiId = paymentIntent.id;
+
+  if (paymentIntent.metadata?.attempt_id) {
+    const attempt = await pool.query(
+      `SELECT *
+       FROM payment_attempts
+       WHERE id = $1`,
+      [paymentIntent.metadata.attempt_id]
+    );
+    if (attempt.rows.length) {
+      const current = attempt.rows[0];
+      if (current.status === 'pending') {
+        await applyChargeSuccess(current, paymentIntent);
+      }
+      await refundOrphanChargeIfNeeded(current, paymentIntent);
+      return;
+    }
+  }
 
   // Lookup payment
   const lookupResult = await pool.query(

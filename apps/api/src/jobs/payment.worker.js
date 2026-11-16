@@ -4,6 +4,7 @@ import { pool } from '../config/database.js';
 import stripe from '../config/stripe.js';
 import { PaymentStatus } from '@auction/shared-constants';
 import { writeAuditLog } from '../services/payment.service.js';
+import { reconcilePendingAttempts, retryOrphanRefunds } from '../services/paymentReconciler.service.js';
 import { createPayout } from '../services/payout.service.js';
 import { emitToUser, emitToAdmin } from '../services/socket.service.js';
 import { scheduleSecondChanceExpiry } from './queue.js';
@@ -611,6 +612,9 @@ async function processSecondChanceExpiry({ paymentId, auctionId }) {
 async function processPaymentSweeper() {
   console.log('[PaymentWorker] Running payment sweeper...');
 
+  await retryOrphanRefunds();
+  await reconcilePendingAttempts();
+
   const stuckResult = await pool.query(
     `SELECT id, status, stripe_pi_id, auction_id, buyer_id, seller_id, amount, updated_at
      FROM payments
@@ -643,6 +647,17 @@ async function processPaymentSweeper() {
  * Reconcile a single stuck payment with Stripe.
  */
 async function sweepSinglePayment(payment) {
+  if (payment.status === PaymentStatus.HOLD_PENDING) {
+    const pending = await pool.query(
+      `SELECT id
+       FROM payment_attempts
+       WHERE payment_id = $1 AND status = 'pending'`,
+      [payment.id]
+    );
+    if (pending.rows.length) {
+      return;
+    }
+  }
   // Atomic DB claim to prevent concurrent worker races
   const claimResult = await pool.query(
     `UPDATE payments SET updated_at = NOW()

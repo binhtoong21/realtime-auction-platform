@@ -5,11 +5,565 @@ import { calculatePlatformFee } from './platformFee.service.js';
 import {
   scheduleGracePeriodExpiry,
 } from '../jobs/queue.js';
-import { emitToUser } from './socket.service.js';
+import { emitToUser, emitToAdmin } from './socket.service.js';
 import { EventNames, PaymentStatus, AuctionStatus } from '@auction/shared-constants';
 
 const CURRENCY = process.env.STRIPE_CURRENCY || 'usd';
 const SHIPPING_DEADLINE_DAYS = 5;
+
+const insertChargeAttempt = async (
+  client,
+  { paymentId, kind, buyerId, amount, feeAmount, paymentMethodId }
+) => {
+  const { rows } = await client.query(
+    `INSERT INTO payment_attempts (id, payment_id, kind, buyer_id, amount, platform_fee_amount, payment_method_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [uuidv7(), paymentId, kind, buyerId, amount, feeAmount, paymentMethodId]
+  );
+  return rows[0];
+};
+
+// Lock the attempt before the payment in both outcome paths.
+const lockChargeAttempt = async (client, attempt) => {
+  const result = await client.query(
+    `SELECT *
+     FROM payment_attempts
+     WHERE id = $1 AND status = 'pending'
+       AND ($2::text IS NULL OR locked_until = $2::timestamptz)
+     FOR UPDATE`,
+    [attempt.id, attempt.lease_token || null]
+  );
+  if (!result.rows.length) {
+    return null;
+  }
+  const current = result.rows[0];
+  const payment = await client.query(
+    `SELECT *
+     FROM payments
+     WHERE id = $1 AND status = 'hold_pending'
+     FOR UPDATE`,
+    [current.payment_id]
+  );
+  return payment.rows.length ? { attempt: current, payment: payment.rows[0] } : null;
+};
+
+/** Finalize a pending attempt and its payment together, ignoring stale outcomes. */
+export const applyChargeSuccess = async (attempt, pi) => {
+  if (pi.status !== 'succeeded') {
+    throw new Error('PaymentIntent has not succeeded');
+  }
+  const client = await pool.connect();
+  let current, payment;
+  try {
+    await client.query('BEGIN');
+    const locked = await lockChargeAttempt(client, attempt);
+    if (!locked) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    ({ attempt: current, payment } = locked);
+    await client.query(
+      `UPDATE payment_attempts SET status = 'succeeded', stripe_pi_id = $2, locked_until = NULL, updated_at = NOW()
+       WHERE id = $1 AND status = 'pending'`,
+      [current.id, pi.id]
+    );
+    await client.query(
+      `UPDATE payments SET status = 'held', stripe_pi_id = $2, buyer_id = $3, amount = $4,
+       platform_fee_amount = $5, payment_method_id = $6, updated_at = NOW()
+       WHERE id = $1 AND status = 'hold_pending'`,
+      [
+        payment.id,
+        pi.id,
+        current.buyer_id,
+        current.amount,
+        current.platform_fee_amount,
+        current.payment_method_id,
+      ]
+    );
+    let auctionUpdate;
+    if (current.kind === 'second_chance') {
+      auctionUpdate = await client.query(
+        `UPDATE auctions SET status = 'awaiting_ship', winner_id = $2, current_price = $3,
+         shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
+         WHERE id = $1 AND status = 'second_chance'`,
+        [payment.auction_id, current.buyer_id, current.amount]
+      );
+      await client.query(
+        `UPDATE bids SET is_winning = false
+         WHERE auction_id = $1 AND bidder_id = $2 AND is_winning = true`,
+        [payment.auction_id, payment.buyer_id]
+      );
+      await client.query(
+        `UPDATE bids SET is_winning = true
+         WHERE auction_id = $1 AND bidder_id = $2 AND amount = $3 AND is_winning = false`,
+        [payment.auction_id, current.buyer_id, current.amount]
+      );
+      await writeAuditLog(
+        {
+          referenceId: payment.id,
+          referenceType: 'payment',
+          action: 'second_chance_accepted',
+          deltaState: {
+            old_buyer_id: payment.buyer_id,
+            old_amount: Number(payment.amount),
+            old_stripe_pi_id: payment.stripe_pi_id,
+            new_buyer_id: current.buyer_id,
+            new_amount: Number(current.amount),
+            new_stripe_pi_id: pi.id,
+            new_fee: Number(current.platform_fee_amount),
+          },
+          actorId: current.buyer_id,
+        },
+        client
+      );
+    } else {
+      auctionUpdate = await client.query(
+        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
+         WHERE id = $1 AND status IN ('ended', 'pending_payment')`,
+        [payment.auction_id]
+      );
+    }
+    if (!auctionUpdate.rowCount) {
+      throw new Error('Invalid state transition: Auction could not be updated to awaiting_ship');
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  if (current.kind !== 'second_chance') {
+    await writeAuditLogSafely({
+      referenceId: payment.id,
+      referenceType: 'payment',
+      action: current.kind === 'retry' ? 'escrow_charge_retry_success' : 'escrow_charge_success',
+      deltaState: {
+        stripe_pi_id: pi.id,
+        amount: Number(current.amount),
+        fee: Number(current.platform_fee_amount),
+        buyer_id: current.buyer_id,
+      },
+      actorId: current.kind === 'retry' ? current.buyer_id : null,
+    });
+  }
+  try {
+    if (current.kind === 'retry') {
+      await emitToUser(current.buyer_id, EventNames.PAYMENT_STATUS, {
+        auctionId: payment.auction_id,
+        status: PaymentStatus.HELD,
+        amount: Number(current.amount),
+      });
+    } else if (current.kind === 'second_chance') {
+      await emitToUser(current.buyer_id, 'auction:won', {
+        auctionId: payment.auction_id,
+        finalPrice: Number(current.amount),
+        paymentStatus: PaymentStatus.HELD,
+        paymentId: payment.id,
+      });
+      await emitToUser(payment.seller_id, 'auction:second-chance-accepted', {
+        auctionId: payment.auction_id,
+        amount: Number(current.amount),
+        platformFee: Number(current.platform_fee_amount),
+        sellerReceives: Number(current.amount) - Number(current.platform_fee_amount),
+        status: AuctionStatus.AWAITING_SHIP,
+        message: 'A new buyer has accepted the offer. Please prepare for shipping.',
+      });
+    }
+  } catch (err) {
+    console.error('[Payment] Charge success side-effects failed:', err.message);
+  }
+  return true;
+};
+
+/** Record one definitive failure without changing a newer attempt or its counter. */
+export const applyChargeFailure = async (attempt, err) => {
+  const client = await pool.connect();
+  let current, payment;
+  try {
+    await client.query('BEGIN');
+    const locked = await lockChargeAttempt(client, attempt);
+    if (!locked) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    ({ attempt: current, payment } = locked);
+    await client.query(
+      `UPDATE payment_attempts SET status = 'failed', error = $2, locked_until = NULL, updated_at = NOW()
+       WHERE id = $1 AND status = 'pending'`,
+      [current.id, err.message]
+    );
+    if (current.kind === 'second_chance') {
+      await client.query(
+        `UPDATE payments SET status = 'no_sale', updated_at = NOW()
+         WHERE id = $1 AND status = 'hold_pending'`,
+        [payment.id]
+      );
+      await client.query(
+        `UPDATE auctions SET status = 'no_sale', updated_at = NOW()
+         WHERE id = $1`,
+        [payment.auction_id]
+      );
+    } else {
+      await client.query(
+        `UPDATE payments SET status = 'grace_period', capture_attempts = capture_attempts + 1,
+         grace_expires_at = CASE WHEN $2 = 'initial' THEN NOW() + INTERVAL '24 hours' ELSE grace_expires_at END,
+         updated_at = NOW() WHERE id = $1 AND status = 'hold_pending'`,
+        [payment.id, current.kind]
+      );
+      if (current.kind === 'initial') {
+        await client.query(
+          `UPDATE auctions SET status = 'pending_payment', updated_at = NOW()
+           WHERE id = $1 AND status = 'ended'`,
+          [payment.auction_id]
+        );
+      }
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await writeAuditLogSafely({
+    referenceId: payment.id,
+    referenceType: 'payment',
+    action:
+      current.kind === 'second_chance'
+        ? 'second_chance_hold_failed'
+        : current.kind === 'retry'
+          ? 'auth_hold_retry_failed'
+          : 'escrow_charge_failed',
+    deltaState: {
+      error: err.message,
+      stripe_code: err.code || null,
+      runner_up_id: current.buyer_id,
+      original_buyer_id: payment.buyer_id,
+      reason: `stripe_error: ${err.message}`,
+    },
+    actorId: null,
+  });
+  if (current.kind === 'second_chance') {
+    try {
+      await emitToUser(payment.seller_id, 'auction:no-sale', {
+        auctionId: payment.auction_id,
+        message: 'Payment from the runner-up failed. No buyer found for your auction.',
+      });
+      await emitToUser(current.buyer_id, 'auction:second-chance-failed', {
+        auctionId: payment.auction_id,
+        message: 'Your payment could not be processed. The auction will end without a sale.',
+      });
+      await emitToUser(payment.buyer_id, 'auction:no-sale', {
+        auctionId: payment.auction_id,
+        message: 'The auction has ended without a sale.',
+      });
+    } catch (error) {
+      console.error('[Payment] Charge failure notifications failed:', error.message);
+    }
+  }
+  return true;
+};
+
+/** Serialize Stripe execution across inline requests and the reconciler. */
+export const claimChargeAttempt = async (attemptId) => {
+  const { rows } = await pool.query(
+    `UPDATE payment_attempts
+     SET locked_until = NOW() + INTERVAL '10 minutes', updated_at = NOW()
+     WHERE id = $1 AND status = 'pending'
+       AND (locked_until IS NULL OR locked_until < NOW())
+     RETURNING *, locked_until::text AS lease_token`,
+    [attemptId]
+  );
+  return rows[0] || null;
+};
+
+/** Release only this execution's lease, leaving a newer executor untouched. */
+export const releaseChargeAttempt = async (attempt) => {
+  await pool.query(
+    `UPDATE payment_attempts
+     SET locked_until = NULL
+     WHERE id = $1 AND status = 'pending' AND locked_until = $2::timestamptz`,
+    [attempt.id, attempt.lease_token]
+  );
+};
+
+/** Refund a late or duplicate success after checking the durable outcome again. */
+export const refundOrphanChargeIfNeeded = async (attempt, pi) => {
+  if (pi?.status !== 'succeeded') {
+    return false;
+  }
+  const { rows } = await pool.query(
+    `SELECT pa.*, p.auction_id
+     FROM payment_attempts pa
+     JOIN payments p ON p.id = pa.payment_id
+     WHERE pa.id = $1`,
+    [attempt.id]
+  );
+  const current = rows[0];
+  if (
+    !current ||
+    (current.status !== 'failed' && !(current.status === 'succeeded' && current.stripe_pi_id !== pi.id))
+  ) {
+    return false;
+  }
+
+  // A failed insert must propagate: the refund obligation is not durable yet.
+  await pool.query(
+    `INSERT INTO orphan_refunds (stripe_pi_id, attempt_id)
+     VALUES ($1, $2)
+     ON CONFLICT (stripe_pi_id) DO NOTHING`,
+    [pi.id, current.id]
+  );
+  return processOrphanRefund(pi.id);
+};
+
+/** Confirm the Stripe refund lifecycle without recreating in-flight or failed refunds. */
+export const processOrphanRefund = async (stripePiId) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.*, pa.payment_id, pa.status AS attempt_status, p.auction_id
+       FROM orphan_refunds r
+       LEFT JOIN payment_attempts pa ON pa.id = r.attempt_id
+       LEFT JOIN payments p ON p.id = pa.payment_id
+       WHERE r.stripe_pi_id = $1`,
+      [stripePiId]
+    );
+    const obligation = rows[0];
+    if (!obligation) {
+      return false;
+    }
+    if (obligation.status === 'refunded') {
+      return true;
+    }
+    if (obligation.status === 'failed') {
+      return false;
+    }
+
+    const refund =
+      obligation.status === 'refund_pending'
+        ? await stripe.refunds.retrieve(obligation.stripe_refund_id)
+        : await stripe.refunds.create(
+            { payment_intent: stripePiId },
+            { idempotencyKey: `refund_${stripePiId}` }
+          );
+    const succeeded = refund.status === 'succeeded';
+    const failed = ['failed', 'canceled'].includes(refund.status);
+    const status = succeeded ? 'refunded' : failed ? 'failed' : 'refund_pending';
+    const error = failed ? refund.failure_reason || `Stripe refund status: ${refund.status}` : null;
+    const update = await pool.query(
+      `UPDATE orphan_refunds
+       SET status = $3, stripe_refund_id = $2, error = $4, updated_at = NOW()
+       WHERE stripe_pi_id = $1 AND status = $5
+       RETURNING stripe_pi_id`,
+      [stripePiId, refund.id, status, error, obligation.status]
+    );
+    if (!update.rowCount) {
+      return false;
+    }
+    if (!succeeded && !failed) {
+      return false;
+    }
+
+    if (succeeded) {
+      await writeAuditLogSafely({
+        referenceId: obligation.payment_id || obligation.attempt_id || uuidv7(),
+        referenceType: obligation.payment_id ? 'payment' : 'orphan_refund',
+        action: 'orphan_charge_refunded',
+        deltaState: {
+          attempt_id: obligation.attempt_id,
+          stripe_pi_id: stripePiId,
+          refund_id: refund.id,
+          attempt_status: obligation.attempt_status,
+        },
+        actorId: null,
+      });
+    }
+    try {
+      await emitToAdmin('payment:reconciliation-alert', {
+        paymentId: obligation.payment_id,
+        auctionId: obligation.auction_id,
+        attemptId: obligation.attempt_id,
+        stripePaymentIntentId: stripePiId,
+        reason: failed ? 'orphan_refund_failed' : 'orphan_charge_refunded',
+        stripeRefundId: refund.id,
+        error,
+      });
+    } catch (err) {
+      console.error(`[Payment] Orphan refund notification failed for ${stripePiId}:`, err.message);
+    }
+    return succeeded;
+  } catch (err) {
+    try {
+      await pool.query(
+        `UPDATE orphan_refunds
+         SET error = $2, updated_at = NOW()
+         WHERE stripe_pi_id = $1 AND status IN ('pending', 'refund_pending')`,
+        [stripePiId, err.message]
+      );
+    } catch (dbErr) {
+      console.error(`[Payment] Failed to record refund error for ${stripePiId}:`, dbErr.message);
+    }
+    console.error(`[Payment] Orphan refund remains pending for ${stripePiId}:`, err.message);
+    return false;
+  }
+};
+
+/** Classify a known PI without abandoning an unsettled charge or failed cancel. */
+export const classifyChargePaymentIntent = async (paymentIntent, { reconciling = false } = {}) => {
+  if (paymentIntent.status === 'succeeded') {
+    return { outcome: 'succeeded', paymentIntent, error: null };
+  }
+  const error = new Error(`Payment was not completed (Stripe status: ${paymentIntent.status})`);
+  if (
+    paymentIntent.status === 'canceled' ||
+    (reconciling && paymentIntent.status === 'requires_payment_method')
+  ) {
+    return { outcome: 'failed', paymentIntent, error };
+  }
+  if (
+    ['requires_payment_method', 'requires_action', 'requires_confirmation'].includes(paymentIntent.status)
+  ) {
+    try {
+      await stripe.paymentIntents.cancel(paymentIntent.id);
+      return { outcome: 'failed', paymentIntent, error };
+    } catch (cancelErr) {
+      return { outcome: 'uncertain', paymentIntent, error: cancelErr };
+    }
+  }
+  return { outcome: 'uncertain', paymentIntent, error };
+};
+
+/** Reuse a known PI or a retained key; never create beyond the safe replay window. */
+export const runChargeAttempt = async (attempt) => {
+  const current = await claimChargeAttempt(attempt.id);
+  if (!current) {
+    return { outcome: 'uncertain', paymentIntent: null, error: processingError() };
+  }
+
+  let result;
+  try {
+    if (current.stripe_pi_id) {
+      const pi = await stripe.paymentIntents.retrieve(current.stripe_pi_id);
+      result = await classifyChargePaymentIntent(pi);
+    } else if (
+      current.stripe_requested_at &&
+      Date.now() - new Date(current.stripe_requested_at).getTime() > 23 * 60 * 60 * 1000
+    ) {
+      const found = await stripe.paymentIntents.search({ query: `metadata['attempt_id']:'${current.id}'` });
+      result = found.data[0]
+        ? await classifyChargePaymentIntent(found.data[0])
+        : { outcome: 'uncertain', paymentIntent: null, error: processingError() };
+    } else if (!current.payment_method_id && !current.stripe_requested_at) {
+      result = { outcome: 'failed', paymentIntent: null, error: new Error('payment_method_removed') };
+    } else {
+      const { rows } = await pool.query(
+        `SELECT p.auction_id, p.seller_id, pm.stripe_pm_id, u.stripe_cus_id
+         FROM payments p
+         LEFT JOIN payment_methods pm ON pm.id = $2
+         JOIN users u ON u.id = $3
+         WHERE p.id = $1 AND p.status = 'hold_pending'`,
+        [current.payment_id, current.payment_method_id, current.buyer_id]
+      );
+      const payment = rows[0];
+      if (!payment?.stripe_pm_id) {
+        return { outcome: 'uncertain', paymentIntent: null, error: processingError() };
+      }
+
+      // This statement commits before Stripe can receive the create request.
+      const requested = await pool.query(
+        `UPDATE payment_attempts
+         SET stripe_requested_at = COALESCE(stripe_requested_at, NOW())
+         WHERE id = $1 AND status = 'pending' AND locked_until = $2::timestamptz
+         RETURNING id`,
+        [current.id, current.lease_token]
+      );
+      if (!requested.rowCount) {
+        return { outcome: 'uncertain', paymentIntent: null, error: processingError() };
+      }
+      result = await createEscrowPaymentIntent({
+        paymentId: current.payment_id,
+        amount: Number(current.amount),
+        stripeCusId: payment.stripe_cus_id,
+        stripePmId: payment.stripe_pm_id,
+        idempotencyKey: current.id,
+        metadata: {
+          attempt_id: current.id,
+          auction_id: payment.auction_id,
+          buyer_id: current.buyer_id,
+          seller_id: payment.seller_id,
+        },
+      });
+    }
+
+    if (result.paymentIntent?.id) {
+      try {
+        await pool.query(
+          `UPDATE payment_attempts
+           SET stripe_pi_id = $2
+           WHERE id = $1 AND status = 'pending' AND locked_until = $3::timestamptz`,
+          [current.id, result.paymentIntent.id, current.lease_token]
+        );
+      } catch (err) {
+        // Reconciliation can still search by attempt_id.
+      }
+    }
+    let applied = true;
+    if (result.outcome === 'succeeded') {
+      applied = await applyChargeSuccess(current, result.paymentIntent);
+      await refundOrphanChargeIfNeeded(current, result.paymentIntent);
+    } else if (result.outcome === 'failed') {
+      applied = await applyChargeFailure(current, result.error);
+    }
+    if (!applied) {
+      const { rows } = await pool.query(
+        `SELECT status, stripe_pi_id, error
+         FROM payment_attempts
+         WHERE id = $1`,
+        [current.id]
+      );
+      const committed = rows[0];
+      if (committed?.status === 'succeeded' && committed.stripe_pi_id === result.paymentIntent?.id) {
+        return { ...result, outcome: 'succeeded', error: null };
+      }
+      if (committed?.status === 'failed') {
+        return { ...result, outcome: 'failed', error: new Error(committed.error || 'Payment failed') };
+      }
+      return { ...result, outcome: 'uncertain', error: processingError() };
+    }
+    return result;
+  } catch (error) {
+    return { outcome: 'uncertain', paymentIntent: result?.paymentIntent || null, error };
+  } finally {
+    try {
+      await releaseChargeAttempt(current);
+    } catch (err) {
+      console.error(`[Payment] Failed to release attempt ${current.id}:`, err.message);
+    }
+  }
+};
+
+const processingError = () => ({
+  status: 503,
+  code: 'PAYMENT_PROCESSING',
+  message: 'Payment is being confirmed, please check again shortly',
+});
+
+const escrowAttemptResult = async (attempt) => {
+  const result = await runChargeAttempt(attempt);
+  if (!result) {
+    return null;
+  }
+  if (result.outcome === 'uncertain') {
+    throw result.error;
+  }
+  return {
+    paymentId: attempt.payment_id,
+    holdSuccess: result.outcome === 'succeeded',
+    stripeError: result.error,
+  };
+};
 
 /**
  * Defensively resolves a Stripe Customer ID when users.stripe_cus_id is missing.
@@ -38,46 +592,41 @@ const resolveStripeCustomerDefensively = async (userId, stripePmId) => {
 const isPermanentStripeError = (err) =>
   err?.type === 'StripeCardError' || err?.type === 'StripeInvalidRequestError';
 
-/**
- * Charge a card immediately (automatic capture). Funds stay in the platform balance
- * until they are paid out to the seller or refunded to the buyer.
- *
- * The idempotency key makes a repeated attempt return the same PaymentIntent, so
- * crash recovery and retries never charge twice.
- * A PaymentIntent that does not end in `succeeded` (e.g. needs 3DS while off-session)
- * is cancelled and reported as a card error.
- */
-const createEscrowPaymentIntent = async ({ paymentId, amount, stripeCusId, stripePmId, idempotencyKey, metadata }) => {
-  const paymentIntent = await stripe.paymentIntents.create(
-    {
-      amount,
-      currency: CURRENCY,
-      customer: stripeCusId,
-      payment_method: stripePmId,
-      confirm: true,
-      off_session: true,
-      metadata: {
-        ...metadata,
-        payment_id: paymentId,
-        platform: 'realtime-auction',
+
+/** Charge immediately, preserving ambiguous Stripe outcomes for reconciliation. */
+const createEscrowPaymentIntent = async ({
+  paymentId,
+  amount,
+  stripeCusId,
+  stripePmId,
+  idempotencyKey,
+  metadata,
+}) => {
+  try {
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount,
+        currency: CURRENCY,
+        customer: stripeCusId,
+        payment_method: stripePmId,
+        confirm: true,
+        off_session: true,
+        metadata: {
+          ...metadata,
+          payment_id: paymentId,
+          platform: 'realtime-auction',
+        },
       },
-    },
-    { idempotencyKey }
-  );
-
-  if (paymentIntent.status !== 'succeeded') {
-    try {
-      await stripe.paymentIntents.cancel(paymentIntent.id);
-    } catch (cancelErr) {
-      console.error(`[Payment] Failed to cancel non-succeeded PI ${paymentIntent.id}:`, cancelErr.message);
-    }
-    const err = new Error(`Payment was not completed (Stripe status: ${paymentIntent.status})`);
-    err.type = 'StripeCardError';
-    err.code = 'payment_not_completed';
-    throw err;
+      { idempotencyKey }
+    );
+    return classifyChargePaymentIntent(paymentIntent);
+  } catch (error) {
+    return {
+      outcome: isPermanentStripeError(error) ? 'failed' : 'uncertain',
+      paymentIntent: error.payment_intent || null,
+      error,
+    };
   }
-
-  return paymentIntent;
 };
 
 /**
@@ -91,119 +640,7 @@ const writeAuditLogSafely = async (entry) => {
   }
 };
 
-/**
- * Charge the auction winner and move the payment from hold_pending to held.
- *
- * Errors other than card failures (network, Stripe outage, DB failure after the
- * charge) are thrown: the auction-end job retries and resumeEscrowCharge() repeats
- * the call with the same idempotency key.
- */
-const chargeWinner = async ({ paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, feeRate, stripeCusId, stripePmId }) => {
-  let paymentIntent;
-  try {
-    paymentIntent = await createEscrowPaymentIntent({
-      paymentId,
-      amount: amountInCents,
-      stripeCusId,
-      stripePmId,
-      idempotencyKey: `charge_${paymentId}`,
-      metadata: {
-        auction_id: auctionId,
-        buyer_id: winnerId,
-        seller_id: sellerId,
-        fee_rate: String(feeRate),
-      },
-    });
-  } catch (err) {
-    if (!isPermanentStripeError(err)) throw err;
-
-    console.error(`[Payment] Escrow charge failed for auction ${auctionId}:`, err.message);
-    const graceExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await pool.query(
-      `UPDATE payments
-       SET status = 'grace_period',
-           grace_expires_at = $1,
-           capture_attempts = capture_attempts + 1,
-           updated_at = NOW()
-       WHERE id = $2 AND status = 'hold_pending'`,
-      [graceExpiresAt, paymentId]
-    );
-    await pool.query(
-      `UPDATE auctions SET status = 'pending_payment', updated_at = NOW()
-       WHERE id = $1 AND status = 'ended'`,
-      [auctionId]
-    );
-    await writeAuditLogSafely({
-      referenceId: paymentId,
-      referenceType: 'payment',
-      action: 'escrow_charge_failed',
-      deltaState: {
-        error: err.message,
-        stripe_code: err.code || null,
-        amount: amountInCents,
-        buyer_id: winnerId,
-        grace_expires_at: graceExpiresAt.toISOString(),
-      },
-      actorId: null,
-    });
-    return { paymentId, holdSuccess: false, stripeError: err };
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(
-      `UPDATE payments
-       SET status = 'held', stripe_pi_id = $1, updated_at = NOW()
-       WHERE id = $2 AND status = 'hold_pending'`,
-      [paymentIntent.id, paymentId]
-    );
-    const auctionUpdate = await client.query(
-      `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
-       WHERE id = $1 AND status IN ('ended', 'pending_payment')`,
-      [auctionId]
-    );
-    if (auctionUpdate.rowCount === 0) {
-      throw new Error(`Invalid state transition: Auction ${auctionId} could not be updated to awaiting_ship`);
-    }
-    await client.query('COMMIT');
-  } catch (dbErr) {
-    await client.query('ROLLBACK');
-    console.error(`[Payment] DB update failed after escrow charge ${paymentIntent.id} for auction ${auctionId}; will retry with the same idempotency key.`, dbErr.message);
-    throw dbErr;
-  } finally {
-    client.release();
-  }
-
-  await writeAuditLogSafely({
-    referenceId: paymentId,
-    referenceType: 'payment',
-    action: 'escrow_charge_success',
-    deltaState: {
-      stripe_pi_id: paymentIntent.id,
-      amount: amountInCents,
-      fee: feeAmount,
-      buyer_id: winnerId,
-    },
-    actorId: null,
-  });
-
-  return { paymentId, holdSuccess: true, stripeError: null };
-};
-
-/**
- * Create the escrow charge for the auction winner.
- *
- * Flow:
- *   1. Look up the winner's payment method and Stripe customer
- *   2. Calculate platform fee
- *   3. Insert payment (status = hold_pending)
- *   4. Charge immediately (automatic capture, idempotent)
- *   5a. Success → status = held, auction → awaiting_ship
- *   5b. Card failure → status = grace_period, auction → pending_payment
- *
- * @returns {Object} { paymentId, holdSuccess, stripeError }
- */
+/** Commit the winner's payment and its attempt together before requesting a Stripe charge. */
 export const createEscrowCharge = async ({ auctionId, winnerId, sellerId, amountInCents }) => {
   const pmResult = await pool.query(
     `SELECT ap.payment_method_id, pm.stripe_pm_id
@@ -233,54 +670,46 @@ export const createEscrowCharge = async ({ auctionId, winnerId, sellerId, amount
     }
   }
 
-  const { feeAmount, feeRate } = await calculatePlatformFee(amountInCents);
 
+  const { feeAmount } = await calculatePlatformFee(amountInCents);
   const paymentId = uuidv7();
-  await pool.query(
-    `INSERT INTO payments (id, auction_id, buyer_id, seller_id, amount, platform_fee_amount,
-                           payment_method_id, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'hold_pending')`,
-    [paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, localPmId]
-  );
-
-  return chargeWinner({ paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, feeRate, stripeCusId, stripePmId });
+  const client = await pool.connect();
+  let attempt;
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO payments (id, auction_id, buyer_id, seller_id, amount, platform_fee_amount, payment_method_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'hold_pending')`,
+      [paymentId, auctionId, winnerId, sellerId, amountInCents, feeAmount, localPmId]
+    );
+    attempt = await insertChargeAttempt(client, {
+      paymentId,
+      kind: 'initial',
+      buyerId: winnerId,
+      amount: amountInCents,
+      feeAmount,
+      paymentMethodId: localPmId,
+    });
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+  return escrowAttemptResult(attempt);
 };
 
-/**
- * Resume an escrow charge interrupted by a crash or a transient error
- * (payment still hold_pending). Uses the same idempotency key as the first attempt.
- */
+/** Resume the same durable attempt after a crash or transient error. */
 export const resumeEscrowCharge = async (paymentId) => {
-  const result = await pool.query(
-    `SELECT p.id, p.auction_id, p.buyer_id, p.seller_id, p.amount, p.platform_fee_amount,
-            pm.stripe_pm_id, u.stripe_cus_id
-     FROM payments p
-     JOIN payment_methods pm ON pm.id = p.payment_method_id
-     JOIN users u ON u.id = p.buyer_id
-     WHERE p.id = $1 AND p.status = 'hold_pending'`,
+  const { rows } = await pool.query(
+    `SELECT pa.*
+     FROM payment_attempts pa
+     JOIN payments p ON p.id = pa.payment_id
+     WHERE p.id = $1 AND p.status = 'hold_pending' AND pa.status = 'pending'`,
     [paymentId]
   );
-
-  if (result.rows.length === 0) {
-    console.log(`[Payment] resumeEscrowCharge: payment ${paymentId} is not hold_pending. Skipping.`);
-    return null;
-  }
-
-  const p = result.rows[0];
-  const amountInCents = Number(p.amount);
-  const { feeRate } = await calculatePlatformFee(amountInCents);
-
-  return chargeWinner({
-    paymentId: p.id,
-    auctionId: p.auction_id,
-    winnerId: p.buyer_id,
-    sellerId: p.seller_id,
-    amountInCents,
-    feeAmount: Number(p.platform_fee_amount),
-    feeRate,
-    stripeCusId: p.stripe_cus_id,
-    stripePmId: p.stripe_pm_id,
-  });
+  return rows.length ? escrowAttemptResult(rows[0]) : null;
 };
 
 /**
@@ -345,8 +774,7 @@ const writeAuditLog = async ({ referenceId, referenceType, action, deltaState, a
 };
 
 /**
- * Retry an Auth Hold that previously failed.
- * Can use a new payment method or the existing one.
+ * Retry a failed charge with a new durable attempt created in the payment claim transaction.
  */
 export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
   const paymentResult = await pool.query(
@@ -407,141 +835,54 @@ export const retryPayment = async ({ paymentId, buyerId, paymentMethodId }) => {
     }
   }
 
-  // Atomic lock: prevent duplicate holds and TOCTOU on grace_expires_at
-  const lockResult = await pool.query(
-    `UPDATE payments 
-     SET status = 'hold_pending', payment_method_id = $1, updated_at = NOW()
-     WHERE id = $2 AND status = 'grace_period' AND grace_expires_at IS NOT NULL AND grace_expires_at > NOW()
-     RETURNING id`,
-    [finalPaymentMethodId, paymentId]
-  );
 
-  if (lockResult.rowCount === 0) {
-    throw { status: 422, message: 'Payment is currently being processed, status changed, or grace period expired' };
-  }
-
+  const client = await pool.connect();
+  let attempt;
   try {
-    // Same key while the attempt counter is unchanged: a retry after a timeout
-    // returns the charge that may already have succeeded instead of charging again
-    const paymentIntent = await createEscrowPaymentIntent({
+    await client.query('BEGIN');
+    const lock = await client.query(
+      `UPDATE payments SET status = 'hold_pending', payment_method_id = $1, updated_at = NOW()
+       WHERE id = $2 AND status = 'grace_period' AND grace_expires_at IS NOT NULL AND grace_expires_at > NOW()
+       RETURNING *`,
+      [finalPaymentMethodId, paymentId]
+    );
+    if (!lock.rowCount) {
+      throw {
+        status: 422,
+        message: 'Payment is currently being processed, status changed, or grace period expired',
+      };
+    }
+    const claimed = lock.rows[0];
+    attempt = await insertChargeAttempt(client, {
       paymentId,
-      amount: Number(payment.amount),
-      stripeCusId,
-      stripePmId,
-      idempotencyKey: `charge_${paymentId}_retry_${payment.capture_attempts}`,
-      metadata: {
-        auction_id: payment.auction_id,
-        buyer_id: payment.buyer_id,
-        seller_id: payment.seller_id,
-        retry: 'true',
-      },
+      kind: 'retry',
+      buyerId,
+      amount: claimed.amount,
+      feeAmount: claimed.platform_fee_amount,
+      paymentMethodId: finalPaymentMethodId,
     });
-
-    // Hold succeeded - DB updates must be atomic
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(
-        `UPDATE payments
-         SET status = 'held', stripe_pi_id = $1, updated_at = NOW()
-         WHERE id = $2`,
-        [paymentIntent.id, paymentId]
-      );
-
-      const auctionUpdate = await client.query(
-        `UPDATE auctions SET status = 'awaiting_ship', shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days', updated_at = NOW()
-         WHERE id = $1 AND status = 'pending_payment'`,
-        [payment.auction_id]
-      );
-
-      if (auctionUpdate.rowCount === 0) {
-        throw new Error(`Invalid state transition: Auction ${payment.auction_id} could not be updated to awaiting_ship`);
-      }
-      await client.query('COMMIT');
-    } catch (dbErr) {
-      await client.query('ROLLBACK');
-      // No compensation: the payment returns to grace_period with the same attempt
-      // counter, so the buyer's next retry reuses this charge via the idempotency key
-      console.error(`[Payment] DB update failed after escrow charge ${paymentIntent.id} for auction ${payment.auction_id}.`, dbErr.message);
-      throw dbErr;
-    } finally {
-      client.release();
-    }
-
-    await writeAuditLogSafely({
-      referenceId: paymentId,
-      referenceType: 'payment',
-      action: 'escrow_charge_retry_success',
-      deltaState: { stripe_pi_id: paymentIntent.id },
-      actorId: buyerId,
-    });
-
-    // Isolate side effects
-    try {
-      await emitToUser(buyerId, EventNames.PAYMENT_STATUS, {
-        auctionId: payment.auction_id,
-        status: PaymentStatus.HELD,
-        amount: Number(payment.amount)
-      });
-    } catch (sideEffectError) {
-      console.error(`[Payment] Retry side-effects failed for payment ${paymentId}:`, sideEffectError);
-    }
-
-    return { success: true };
-
+    await client.query('COMMIT');
   } catch (err) {
-    console.error(`[Payment] Retry failed for payment ${paymentId}:`, err.message);
-
-    if (err.type === 'StripeCardError') {
-      // It's a card error, user's fault, revert to grace_period and increment attempts
-      await pool.query(
-        `UPDATE payments
-         SET status = 'grace_period', capture_attempts = capture_attempts + 1, updated_at = NOW()
-         WHERE id = $1`,
-        [paymentId]
-      );
-
-      await writeAuditLog({
-        referenceId: paymentId,
-        referenceType: 'payment',
-        action: 'auth_hold_retry_failed',
-        deltaState: { error: err.message, stripe_code: err.code || null },
-        actorId: buyerId,
-      });
-
-      throw { status: 402, code: 'HOLD_FAILED', message: err.message };
-    } else {
-      // System/Network error (StripeAPIError, StripeConnectionError)
-      // Revert to grace_period, do not increment attempts
-      await pool.query(
-        `UPDATE payments
-         SET status = 'grace_period', updated_at = NOW()
-         WHERE id = $1`,
-        [paymentId]
-      );
-
-      await writeAuditLog({
-        referenceId: paymentId,
-        referenceType: 'payment',
-        action: 'auth_hold_retry_failed',
-        deltaState: { error: err.message, stripe_code: err.code || null, system_error: true },
-        actorId: buyerId,
-      });
-      
-      throw { status: 503, code: 'SYSTEM_ERROR', message: 'Hệ thống thanh toán đang gián đoạn, vui lòng thử lại sau' };
-    }
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
+  const result = await runChargeAttempt(attempt).catch(() => {
+    throw processingError();
+  });
+  if (!result || result.outcome === 'uncertain') {
+    throw processingError();
+  }
+  if (result.outcome === 'failed') {
+    throw { status: 402, code: 'HOLD_FAILED', message: result.error.message };
+  }
+  return { success: true };
 };
 
 /**
- * Accept a Second Chance offer — runner-up agrees to purchase.
- *
- * Flow (3-step Stripe pattern):
- *   1. Validate: payment is in second_chance, user is the runner-up, not expired
- *   2. Atomic lock: status → hold_pending
- *   3. Stripe PaymentIntent.create (outside transaction)
- *   4a. Success: update payment + auction in transaction, schedule emergency-capture
- *   4b. Failure: → NO_SALE (no grace period for runner-up per design doc)
+ * Claim the second-chance offer and its attempt together before charging the runner-up.
+ * An uncertain outcome keeps the offer locked until the charge is confirmed.
  */
 export const acceptSecondChance = async ({ auctionId, userId }) => {
   // Step 1: Validate pre-conditions
@@ -621,178 +962,53 @@ export const acceptSecondChance = async ({ auctionId, userId }) => {
   // Calculate platform fee for the new amount
   const { feeAmount } = await calculatePlatformFee(Number(payment.second_chance_amount));
 
-  // Step 2: Atomic lock — claim by transitioning to hold_pending
-  const lockResult = await pool.query(
-    `UPDATE payments
-     SET status = 'hold_pending', updated_at = NOW()
-     WHERE id = $1
-       AND status = 'second_chance'
-       AND second_chance_runner_up_id = $2
-       AND second_chance_expires_at > NOW()
-     RETURNING id`,
-    [payment.id, userId]
-  );
 
-  if (lockResult.rowCount === 0) {
-    throw { status: 422, code: 'INVALID_PAYMENT_STATE', message: 'Offer has been processed, expired, or state changed' };
-  }
-
-  // Step 3: Stripe call (OUTSIDE transaction)
+  const client = await pool.connect();
+  let attempt;
   try {
-    const paymentIntent = await createEscrowPaymentIntent({
-      paymentId: payment.id,
-      amount: Number(payment.second_chance_amount),
-      stripeCusId,
-      stripePmId,
-      idempotencyKey: `charge_${payment.id}_sc_${userId}`,
-      metadata: {
-        auction_id: auctionId,
-        buyer_id: userId,
-        seller_id: payment.seller_id,
-        second_chance: 'true',
-      },
-    });
-
-    // Step 4a: Stripe SUCCESS — wrap DB updates in transaction
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      // Audit snapshot BEFORE swapping buyer (preserves full history)
-      await writeAuditLog({
-        referenceId: payment.id,
-        referenceType: 'payment',
-        action: 'second_chance_accepted',
-        deltaState: {
-          old_buyer_id: payment.original_buyer_id,
-          old_amount: Number(payment.original_amount),
-          old_stripe_pi_id: payment.old_stripe_pi_id,
-          new_buyer_id: userId,
-          new_amount: Number(payment.second_chance_amount),
-          new_stripe_pi_id: paymentIntent.id,
-          new_fee: feeAmount,
-        },
-        actorId: userId,
-      }, client);
-
-      // Update payment: swap buyer, amount, PI
-      await client.query(
-        `UPDATE payments
-         SET status = 'held',
-             buyer_id = $1,
-             amount = second_chance_amount,
-             platform_fee_amount = $2,
-             payment_method_id = $3,
-             stripe_pi_id = $4,
-             updated_at = NOW()
-         WHERE id = $5`,
-        [userId, feeAmount, localPmId, paymentIntent.id, payment.id]
-      );
-
-      // Update auction: swap winner, update price
-      const auctionUpdate = await client.query(
-        `UPDATE auctions
-         SET status = 'awaiting_ship',
-             shipping_deadline_at = NOW() + INTERVAL '${SHIPPING_DEADLINE_DAYS} days',
-             winner_id = $1,
-             current_price = $2,
-             updated_at = NOW()
-         WHERE id = $3 AND status = 'second_chance'`,
-        [userId, payment.second_chance_amount, auctionId]
-      );
-
-      if (auctionUpdate.rowCount === 0) {
-        throw new Error(`Invalid state transition: Auction ${auctionId} could not be updated to awaiting_ship`);
-      }
-
-      // Clear old winner's bid (defense-in-depth, worker already does this)
-      await client.query(
-        `UPDATE bids SET is_winning = false
-         WHERE auction_id = $1 AND bidder_id = $2 AND is_winning = true`,
-        [auctionId, payment.original_buyer_id]
-      );
-
-      // Mark runner-up's bid as winning
-      await client.query(
-        `UPDATE bids SET is_winning = true
-         WHERE auction_id = $1 AND bidder_id = $2 AND amount = $3
-           AND is_winning = false`,
-        [auctionId, userId, payment.second_chance_amount]
-      );
-
-      await client.query('COMMIT');
-    } catch (txErr) {
-      await client.query('ROLLBACK');
-      // No compensation: back to second_chance; accepting again reuses this charge
-      // through the idempotency key instead of charging twice
-      console.error(`[Payment] DB TX failed after escrow charge ${paymentIntent.id} for auction ${auctionId}:`, txErr.message);
-      await pool.query(
-        `UPDATE payments SET status = 'second_chance', updated_at = NOW() WHERE id = $1 AND status = 'hold_pending'`,
-        [payment.id]
-      );
-      throw { status: 503, code: 'SYSTEM_ERROR', message: 'Payment system is temporarily unavailable, please try again' };
-    } finally {
-      client.release();
-    }
-
-    // Side effects AFTER commit (isolated)
-    try {
-      const sellerReceives = Number(payment.second_chance_amount) - feeAmount;
-
-      await emitToUser(userId, 'auction:won', {
-        auctionId,
-        finalPrice: Number(payment.second_chance_amount),
-        paymentStatus: PaymentStatus.HELD,
-        paymentId: payment.id,
-      });
-
-      await emitToUser(payment.seller_id, 'auction:second-chance-accepted', {
-        auctionId,
-        amount: Number(payment.second_chance_amount),
-        platformFee: feeAmount,
-        sellerReceives,
-        status: AuctionStatus.AWAITING_SHIP,
-        message: 'A new buyer has accepted the offer. Please prepare for shipping.',
-      });
-    } catch (sideEffectErr) {
-      console.error(`[Payment] Second chance accept side-effects failed for payment ${payment.id}:`, sideEffectErr);
-    }
-
-    return {
-      paymentId: payment.id,
-      status: PaymentStatus.HELD,
-      amount: Number(payment.second_chance_amount),
-    };
-
-  } catch (err) {
-    // Step 4b: Stripe FAILURE — NO_SALE (no grace period for runner-up)
-    if (err.type === 'StripeCardError' || err.type === 'StripeInvalidRequestError') {
-      console.error(`[Payment] Second chance hold failed for auction ${auctionId}:`, err.message);
-
-      await transitionToNoSale({
-        paymentId: payment.id,
-        auctionId,
-        payment,
-        reason: `stripe_error: ${err.message}`,
-        userId,
-      });
-
-      throw { status: 402, code: 'HOLD_FAILED', message: 'Payment hold failed. The auction will end without a sale.' };
-    }
-
-    // Already-handled error from DB TX failure (PI compensation done above)
-    if (err.status && err.code) throw err;
-
-    // System error — revert to second_chance so runner-up can try again
-    // (network timeout, Stripe outage — not runner-up's fault)
-    console.error(`[Payment] Second chance system error for auction ${auctionId}:`, err.message);
-    await pool.query(
-      `UPDATE payments SET status = 'second_chance', updated_at = NOW() WHERE id = $1`,
-      [payment.id]
+    await client.query('BEGIN');
+    const lock = await client.query(
+      `UPDATE payments SET status = 'hold_pending', updated_at = NOW()
+       WHERE id = $1 AND status = 'second_chance' AND second_chance_runner_up_id = $2
+       AND second_chance_expires_at > NOW() RETURNING *`,
+      [payment.id, userId]
     );
-
-    throw { status: 503, code: 'SYSTEM_ERROR', message: 'Payment system is temporarily unavailable, please try again' };
+    if (!lock.rowCount) {
+      throw {
+        status: 422,
+        code: 'INVALID_PAYMENT_STATE',
+        message: 'Offer has been processed, expired, or state changed',
+      };
+    }
+    attempt = await insertChargeAttempt(client, {
+      paymentId: payment.id,
+      kind: 'second_chance',
+      buyerId: userId,
+      amount: lock.rows[0].second_chance_amount,
+      feeAmount,
+      paymentMethodId: localPmId,
+    });
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
+  const result = await runChargeAttempt(attempt).catch(() => {
+    throw processingError();
+  });
+  if (!result || result.outcome === 'uncertain') {
+    throw processingError();
+  }
+  if (result.outcome === 'failed') {
+    throw {
+      status: 402,
+      code: 'HOLD_FAILED',
+      message: 'Payment hold failed. The auction will end without a sale.',
+    };
+  }
+  return { paymentId: payment.id, status: PaymentStatus.HELD, amount: Number(attempt.amount) };
 };
 
 /**
@@ -897,27 +1113,20 @@ const transitionToNoSale = async ({ paymentId, auctionId, payment, reason, userI
   try {
     await client.query('BEGIN');
 
-    await client.query(
-      `UPDATE payments SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
-      [paymentId]
+    const claimed = await client.query(
+      `UPDATE payments SET status = 'no_sale', updated_at = NOW()
+       WHERE id = $1 AND status = 'second_chance' AND second_chance_runner_up_id = $2
+       RETURNING id`,
+      [paymentId, userId]
     );
+    if (!claimed.rowCount) {
+      throw { status: 422, code: 'INVALID_PAYMENT_STATE', message: 'Offer has already been processed or state changed' };
+    }
 
     await client.query(
       `UPDATE auctions SET status = 'no_sale', updated_at = NOW() WHERE id = $1`,
       [auctionId]
     );
-
-    await writeAuditLog({
-      referenceId: paymentId,
-      referenceType: 'payment',
-      action: 'second_chance_hold_failed',
-      deltaState: {
-        runner_up_id: userId,
-        original_buyer_id: payment.original_buyer_id,
-        reason,
-      },
-      actorId: null,
-    }, client);
 
     await client.query('COMMIT');
   } catch (err) {
@@ -926,6 +1135,14 @@ const transitionToNoSale = async ({ paymentId, auctionId, payment, reason, userI
   } finally {
     client.release();
   }
+
+  await writeAuditLogSafely({
+    referenceId: paymentId,
+    referenceType: 'payment',
+    action: 'second_chance_hold_failed',
+    deltaState: { runner_up_id: userId, original_buyer_id: payment.original_buyer_id, reason },
+    actorId: null,
+  });
 
   // Notifications after commit
   try {
