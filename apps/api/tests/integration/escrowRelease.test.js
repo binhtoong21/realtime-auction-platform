@@ -5,8 +5,9 @@ import { redisClient } from '../../src/config/redis.js';
 import stripe from '../../src/config/stripe.js';
 import { confirmDelivery, autoConfirmDelivery, expireShippingDeadline } from '../../src/services/fulfillment.service.js';
 import { createDisputeFromRequest, withdrawDispute, resolveDispute } from '../../src/services/dispute.service.js';
+import { emitToUser } from '../../src/services/socket.service.js';
 import { schedulePayoutJob } from '../../src/jobs/queue.js';
-import { DisputeReason } from '@auction/shared-constants';
+import { DisputeReason, EventNames } from '@auction/shared-constants';
 import { resetDb, createUser, createAuction } from './helpers/db.js';
 
 vi.mock('../../src/config/stripe.js', () => ({
@@ -22,6 +23,7 @@ vi.mock('../../src/config/stripe.js', () => ({
     refunds: {
       create: vi.fn(async () => ({ id: 're_1', status: 'succeeded' })),
       retrieve: vi.fn(),
+      list: vi.fn(async () => ({ data: [] })),
     },
   },
 }));
@@ -157,7 +159,7 @@ describe('escrow money out (release, auto-confirm, dispute, refund)', () => {
   });
 
   it('5. expireShippingDeadline with refund pending -> payment stays releasing, auction no_sale', async () => {
-    const { auctionId, paymentId } = await setupEscrowFixture({ auctionStatus: 'awaiting_ship', paymentStatus: 'held' });
+    const { buyerId, auctionId, paymentId } = await setupEscrowFixture({ auctionStatus: 'awaiting_ship', paymentStatus: 'held' });
     stripe.refunds.create.mockResolvedValueOnce({ id: 're_1', status: 'pending' });
 
     const result = await expireShippingDeadline(auctionId);
@@ -168,6 +170,14 @@ describe('escrow money out (release, auto-confirm, dispute, refund)', () => {
 
     const auction = await getAuction(auctionId);
     expect(auction.status).toBe('no_sale');
+
+    expect(emitToUser).toHaveBeenCalledWith(
+      buyerId,
+      EventNames.PAYMENT_STATUS,
+      expect.objectContaining({
+        message: 'Người bán không giao hàng đúng hạn. Hệ thống đang xử lý hoàn tiền cho bạn.',
+      })
+    );
   });
 
   it('6. Dispute: createDisputeFromRequest on a held payment -> frozen; withdrawDispute -> back to held', async () => {

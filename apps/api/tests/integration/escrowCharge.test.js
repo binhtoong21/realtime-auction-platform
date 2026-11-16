@@ -14,7 +14,11 @@ vi.mock('../../src/config/stripe.js', () => ({
   default: {
     paymentIntents: { create: vi.fn(), cancel: vi.fn(async () => ({})), retrieve: vi.fn(), search: vi.fn() },
     paymentMethods: { retrieve: vi.fn() },
-    refunds: { create: vi.fn(async () => ({ id: 're_orphan', status: 'succeeded' })), retrieve: vi.fn() },
+    refunds: {
+      create: vi.fn(async () => ({ id: 're_orphan', status: 'succeeded' })),
+      retrieve: vi.fn(),
+      list: vi.fn(async () => ({ data: [] })),
+    },
   },
 }));
 
@@ -230,12 +234,32 @@ describe('payment attempts ledger', () => {
     const attempt = await getAttempt(payment.id);
     await pool.query(`UPDATE payment_attempts SET created_at = NOW() - INTERVAL '3 hours',
       stripe_requested_at = NOW() - INTERVAL '2 hours',
+      stripe_last_requested_at = NOW() - INTERVAL '2 hours',
       updated_at = NOW() - INTERVAL '6 minutes' WHERE id = $1`, [attempt.id]);
     stripe.paymentIntents.search.mockResolvedValueOnce({ data: [] });
     await reconcilePendingAttempts();
     expect(await getAttempt(payment.id)).toMatchObject({ status: 'failed', error: 'no_charge_created' });
     expect((await getPayment(payment.id)).status).toBe('grace_period');
     expect((await getPayment(payment.id)).capture_attempts).toBe(1);
+  });
+
+  it('keeps an attempt pending when the last request is within the expiration window', async () => {
+    const fixture = await setupEndedAuction();
+    stripe.paymentIntents.create.mockRejectedValueOnce(connectionError());
+    await expect(createEscrowCharge({ ...fixture, amountInCents: 5000 })).rejects.toMatchObject({ type: 'StripeConnectionError' });
+    const { rows: [payment] } = await pool.query('SELECT * FROM payments WHERE auction_id = $1', [fixture.auctionId]);
+    const attempt = await getAttempt(payment.id);
+    await pool.query(
+      `UPDATE payment_attempts SET created_at = NOW() - INTERVAL '3 hours',
+       stripe_requested_at = NOW() - INTERVAL '2 hours',
+       stripe_last_requested_at = NOW() - INTERVAL '30 minutes',
+       updated_at = NOW() - INTERVAL '6 minutes' WHERE id = $1`,
+      [attempt.id]
+    );
+    stripe.paymentIntents.search.mockResolvedValueOnce({ data: [] });
+    await reconcilePendingAttempts();
+    expect(await getAttempt(payment.id)).toMatchObject({ status: 'pending' });
+    expect((await getPayment(payment.id)).status).toBe('hold_pending');
   });
 });
 
@@ -300,11 +324,13 @@ describe('attempt execution safety', () => {
   it('keeps a 30-minute empty search pending and fails it after one hour', async () => {
     const { attempt } = await pendingAttempt();
     await pool.query(`UPDATE payment_attempts SET stripe_requested_at = NOW() - INTERVAL '30 minutes',
+      stripe_last_requested_at = NOW() - INTERVAL '30 minutes',
       updated_at = NOW() - INTERVAL '6 minutes' WHERE id = $1`, [attempt.id]);
     stripe.paymentIntents.search.mockResolvedValueOnce({ data: [] });
     await reconcilePendingAttempts();
     expect(await getAttempt(attempt.payment_id)).toMatchObject({ status: 'pending', locked_until: null });
     await pool.query(`UPDATE payment_attempts SET stripe_requested_at = NOW() - INTERVAL '2 hours',
+      stripe_last_requested_at = NOW() - INTERVAL '2 hours',
       updated_at = NOW() - INTERVAL '6 minutes' WHERE id = $1`, [attempt.id]);
     stripe.paymentIntents.search.mockResolvedValueOnce({ data: [] });
     await reconcilePendingAttempts();
@@ -436,6 +462,25 @@ describe('attempt execution safety', () => {
       `SELECT status, error FROM orphan_refunds WHERE stripe_pi_id = 'pi_refund_overdue'`
     );
     expect(refund).toMatchObject({ status: 'pending', error: 'Network timeout' });
+  });
+
+  it('recovers an existing succeeded refund for a pending orphan obligation without calling create', async () => {
+    const { attempt } = await pendingAttempt();
+    await pool.query(
+      `INSERT INTO orphan_refunds (stripe_pi_id, attempt_id, status, created_at, updated_at)
+       VALUES ('pi_refund_existing', $1, 'pending', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '6 minutes')`,
+      [attempt.id]
+    );
+    stripe.refunds.list.mockResolvedValueOnce({
+      data: [{ id: 're_old', status: 'succeeded' }],
+    });
+    await retryOrphanRefunds();
+    const { rows: [refund] } = await pool.query(
+      `SELECT * FROM orphan_refunds WHERE stripe_pi_id = 'pi_refund_existing'`
+    );
+    expect(refund.status).toBe('refunded');
+    expect(refund.stripe_refund_id).toBe('re_old');
+    expect(stripe.refunds.create).not.toHaveBeenCalled();
   });
 
   it('does not report an uncommitted success after another executor takes the lease', async () => {
@@ -588,5 +633,22 @@ describe('createEscrowCharge', () => {
     expect(keys).toEqual([attempt.id, attempt.id]);
     expect((await getPayment(rows[0].id)).status).toBe('held');
     expect(await getAuctionStatus(auctionId)).toBe('awaiting_ship');
+  });
+
+  it('deduplicates concurrent escrow charges for the same auction to one payment and one Stripe request', async () => {
+    const fixture = await setupEndedAuction();
+    stripe.paymentIntents.create.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return succeededPi('pi_concurrent');
+    });
+
+    await Promise.allSettled([
+      createEscrowCharge({ ...fixture, amountInCents: 5000 }),
+      createEscrowCharge({ ...fixture, amountInCents: 5000 }),
+    ]);
+
+    const { rows: payments } = await pool.query('SELECT * FROM payments WHERE auction_id = $1', [fixture.auctionId]);
+    expect(payments).toHaveLength(1);
+    expect(stripe.paymentIntents.create).toHaveBeenCalledTimes(1);
   });
 });
