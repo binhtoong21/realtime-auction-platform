@@ -23,7 +23,7 @@ export const processBid = async ({ auctionId, userId, amount, idempotencyKey }) 
       `UPDATE auctions 
        SET 
           current_price = $1, 
-          extended_count = extended_count + 1, 
+          extended_count = extended_count + CASE WHEN end_at - now() < interval '2 minutes' THEN 1 ELSE 0 END, 
           end_at = CASE 
                      WHEN end_at - now() < interval '2 minutes' 
                      THEN end_at + interval '5 minutes' 
